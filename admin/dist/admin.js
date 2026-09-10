@@ -881,17 +881,18 @@ async function openChallengeAction(id) {
         }
       });
     }
-    if (c.resolutionProof?.beforeImage && !citizenPhotos.some(p => p.url === c.resolutionProof.beforeImage)) {
-      citizenPhotos.unshift({ url: c.resolutionProof.beforeImage, name: 'Ground Evidence Photo 1' });
+    // Only fallback to single image fields if no attachments were provided
+    if (citizenPhotos.length === 0) {
+      if (c.resolutionProof?.beforeImage && !c.resolutionProof.beforeImage.startsWith('/images/')) {
+        citizenPhotos.push({ url: c.resolutionProof.beforeImage, name: 'Ground Evidence Photo 1' });
+      } else if (c.coverImage && !c.coverImage.startsWith('/images/')) {
+        citizenPhotos.push({ url: c.coverImage, name: 'Primary Ground Photo' });
+      } else if (c.image && !c.image.startsWith('/images/')) {
+        citizenPhotos.push({ url: c.image, name: 'Ground Photo' });
+      }
     }
-    if (c.coverImage && !citizenPhotos.some(p => p.url === c.coverImage)) {
-      citizenPhotos.unshift({ url: c.coverImage, name: 'Primary Ground Photo' });
-    }
-    if (c.image && !citizenPhotos.some(p => p.url === c.image)) {
-      citizenPhotos.unshift({ url: c.image, name: 'Ground Photo' });
-    }
-    if (c.videoUrl && !citizenVideos.some(v => v.url === c.videoUrl)) {
-      citizenVideos.unshift({ url: c.videoUrl, name: 'Citizen Field Video' });
+    if (citizenVideos.length === 0 && c.videoUrl) {
+      citizenVideos.push({ url: c.videoUrl, name: 'Citizen Field Video' });
     }
 
     const fallbackPhoto = c.category==='Water Management'?'/others/images/water-tap.jpg':(c.category==='Sanitation & Environment'?'/others/images/garbage-street.jpg':(c.category==='Energy & Technology'?'/others/images/street-light.jpg':'/others/images/pothole-road.jpg'));

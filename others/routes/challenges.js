@@ -13,18 +13,29 @@ const {
 const { protect, optionalAuth } = require('../middleware/auth');
 const { authorize } = require('../middleware/roleCheck');
 const upload = require('../middleware/upload');
+const cacheService = require('../services/cacheService');
+
+// Auto-invalidate challenges and dependent caches on any mutation
+router.use((req, res, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    cacheService.del('challenges');
+    cacheService.del('problems');
+    cacheService.del('analytics');
+  }
+  next();
+});
 
 // Public feed & map
-router.get('/feed', optionalAuth, getPublicFeed);
-router.get('/map-data', getMapData);
-router.get('/stats', getChallengeStats);
+router.get('/feed', optionalAuth, cacheService.middleware('challenges:feed', 6), getPublicFeed);
+router.get('/map-data', cacheService.middleware('challenges:map', 15), getMapData);
+router.get('/stats', cacheService.middleware('challenges:stats', 15), getChallengeStats);
 router.post('/classify', classifyChallengeText);
 router.post('/check-duplicates', checkDuplicates);
 router.post('/parse-voice', parseVoice);
-router.get('/my', protect, getMyChallenges);
-router.get('/', optionalAuth, getChallenges);
+router.get('/my', protect, cacheService.middleware('challenges:my', 5), getMyChallenges);
+router.get('/', optionalAuth, cacheService.middleware('challenges:list', 5), getChallenges);
 router.post('/', optionalAuth, (req, res, next) => { req.uploadSubDir = 'challenges'; next(); }, upload.array('attachments', 10), createChallenge);
-router.get('/:id', optionalAuth, getChallenge);
+router.get('/:id', optionalAuth, cacheService.middleware('challenges:single', 10), getChallenge);
 router.put('/:id', protect, updateChallenge);
 router.get('/:id/chat', optionalAuth, getChallengeChat);
 router.post('/:id/chat', optionalAuth, postChallengeChatMessage);

@@ -40,6 +40,18 @@ const {
   Certificate
 } = require('./database');
 
+const cacheService = require('../others/services/cacheService');
+
+// Auto-invalidate problems and dependent caches on mutations
+router.use((req, res, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    cacheService.del('problems');
+    cacheService.del('challenges');
+    cacheService.del('analytics');
+  }
+  next();
+});
+
 /* ══════════════════════════════════════════
    HEURISTIC HELPER FUNCTIONS (Stages 1 & 2)
    ══════════════════════════════════════════ */
@@ -410,7 +422,7 @@ function enrichProblemDoc(p) {
   return obj;
 }
 
-router.get('/problems', async (req, res) => {
+router.get('/problems', cacheService.middleware('problems:list', 6), async (req, res) => {
   try {
     const { category, impact, discipline, search } = req.query;
 
@@ -426,7 +438,7 @@ router.get('/problems', async (req, res) => {
       ];
     }
 
-    let problems = await Problem.find(query).sort({ createdAt: -1 });
+    let problems = await Problem.find(query).sort({ createdAt: -1 }).lean();
 
     const enriched = problems.map(enrichProblemDoc);
     res.json(enriched);
@@ -804,7 +816,7 @@ router.post('/projects', async (req, res) => {
   }
 });
 
-router.get('/projects', async (req, res) => {
+router.get('/projects', cacheService.middleware('problems:projects', 6), async (req, res) => {
   try {
     const { status } = req.query;
     let query = {};
@@ -815,7 +827,7 @@ router.get('/projects', async (req, res) => {
         query.$or = [{ stage: status }, { status: status }];
       }
     }
-    let projects = await Project.find(query).sort({ createdAt: -1 });
+    let projects = await Project.find(query).sort({ createdAt: -1 }).lean();
 
     // If projects table is empty, seed defaults
     if (projects.length === 0) {

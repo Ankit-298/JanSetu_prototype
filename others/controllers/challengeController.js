@@ -67,6 +67,7 @@ exports.getChallenges = async (req, res, next) => {
 
     const [challenges, total] = await Promise.all([
       Challenge.find(query)
+        .select('-resolutionProof.beforeImage -resolutionProof.afterImage -needMoreInfo.responses.mediaUrls -chatMessages')
         .populate('submittedBy', 'name email avatar role')
         .populate('assignedUniversity', 'name shortName logo')
         .populate('assignedBy', 'name')
@@ -225,8 +226,34 @@ exports.createChallenge = async (req, res, next) => {
       }
     }
 
-    const coverImage = (attachments.length > 0 ? attachments[0].url : null) || reqCoverImage || reqImage || null;
-    const finalFilePath = topFilePath || (attachments.length > 0 ? attachments[0].filePath : null);
+    const photoAttachments = attachments.filter(a => !(a.mimetype && a.mimetype.startsWith('video/')) && !/\.(mp4|webm|mov|ogg|mkv)$/i.test(a.url || a.filename));
+    const videoAttachment = attachments.find(a => (a.mimetype && a.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv)$/i.test(a.url || a.filename));
+    let videoUrl = videoAttachment ? videoAttachment.url : (req.body.videoUrl || null);
+
+    // If videoUrl was passed as raw base64 data URL, upload to Supabase
+    if (videoUrl && typeof videoUrl === 'string' && videoUrl.startsWith('data:')) {
+      try {
+        const vidUpload = await uploadBase64ToSupabase(videoUrl, 'citizen_video.mp4', 'problems');
+        if (vidUpload && vidUpload.publicUrl) {
+          videoUrl = vidUpload.publicUrl;
+          if (!videoAttachment) {
+            attachments.push({
+              filename: vidUpload.filename,
+              originalName: 'citizen_video.mp4',
+              mimetype: 'video/mp4',
+              size: vidUpload.size,
+              url: vidUpload.publicUrl,
+              filePath: vidUpload.filePath
+            });
+          }
+        }
+      } catch (vidErr) {
+        console.warn('[ChallengeController] Video base64 upload fallback:', vidErr.message);
+      }
+    }
+
+    const coverImage = (photoAttachments.length > 0 ? photoAttachments[0].url : null) || (attachments.length > 0 ? attachments[0].url : null) || reqCoverImage || reqImage || null;
+    const finalFilePath = (photoAttachments.length > 0 ? photoAttachments[0].filePath : null) || topFilePath || (attachments.length > 0 ? attachments[0].filePath : null);
 
     // Resolve submitting user (support guest demo submission if token not present)
     let submitterUserId = req.user ? req.user.id : null;
@@ -262,9 +289,10 @@ exports.createChallenge = async (req, res, next) => {
       filePath: finalFilePath,
       attachments,
       coverImage,
-      image: reqImage || coverImage,
+      image: (photoAttachments.length > 0 ? photoAttachments[0].url : null) || coverImage || reqImage,
+      videoUrl,
       resolutionProof: {
-        beforeImage: coverImage || reqImage || (attachments.length > 0 ? attachments[0].url : null),
+        beforeImage: (photoAttachments.length > 0 ? photoAttachments[0].url : null) || coverImage || reqImage,
         beforeFilePath: finalFilePath,
         summary: 'Citizen ground reality evidence'
       },

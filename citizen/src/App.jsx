@@ -11,13 +11,14 @@ function App() {
       document.body.appendChild(script);
     };
 
-    // Load scripts exactly like in citizen.html
+    // Load scripts with cache buster so code fixes are picked up immediately across LAN
+    const cb = `?v=${Date.now()}`;
     loadScript('https://checkout.razorpay.com/v1/checkout.js');
     setTimeout(() => {
-      loadScript('/citizen/translations.js');
+      loadScript('/citizen/translations.js' + cb);
       setTimeout(() => {
-        loadScript('/citizen/citizen.js');
-        setTimeout(() => loadScript('/citizen/citizenLogic.js'), 200);
+        loadScript('/citizen/citizen.js' + cb);
+        setTimeout(() => loadScript('/citizen/citizenLogic.js' + cb), 200);
       }, 200);
     }, 200);
   }, []);
@@ -114,7 +115,7 @@ function App() {
           <span data-i18n="sidebar_my_reports">My Reports</span>
         </button>
 
-        <button className="nav-item" id="navProblemChatBtn" onClick={() => { openChatModal() }} style={{"position":"relative"}}>
+        <button className="nav-item" id="navProblemChatBtn" onClick={() => { if (typeof window !== 'undefined' && window.openChatModal) window.openChatModal(); else if (typeof openChatModal === 'function') openChatModal(); }} style={{"position":"relative"}}>
           <svg viewBox="0 0 24 24">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
@@ -2349,7 +2350,7 @@ function App() {
             </div>
           </div>
         </div>
-        <button className="modal-close-btn" onClick={() => { closeModal('problemChatModal') }}>✕</button>
+        <button className="modal-close-btn" onClick={() => { if (typeof window !== 'undefined' && window.closeModal) window.closeModal('problemChatModal'); else if (typeof closeModal === 'function') closeModal('problemChatModal'); }}>✕</button>
       </div>
 
       {/* Split View Container */}
@@ -2387,7 +2388,7 @@ function App() {
           </div>
 
           {/* Message Input Form */}
-          <form id="chatMessageForm" onSubmit={(e) => { e.preventDefault(); (window.sendProblemChatMessage || sendProblemChatMessage)(); }}
+          <form id="chatMessageForm" onSubmit={(e) => { e.preventDefault(); if (typeof window !== 'undefined' && window.sendProblemChatMessage) window.sendProblemChatMessage(); else if (typeof sendProblemChatMessage === 'function') sendProblemChatMessage(); }}
             style={{"padding":"10px 16px","background":"#FFFFFF","borderTop":"1px solid #E2E8F0","display":"flex","gap":"10px","alignItems":"center","flexShrink":"0"}}>
             <input type="text" id="chatTextInput" placeholder="Type a message to University Taskforce &amp; Admin Authority..."
               style={{"flex":"1","padding":"10px 14px","borderRadius":"12px","border":"1.5px solid #CBD5E1","fontSize":"12.5px","outline":"none"}} />

@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const { logActivity } = require('../services/notificationService');
+const { sendRealOtp, verifyRealOtp } = require('../public/otpService');
 
 const DEMO_PRESETS = {
   'admin@jansetu.in': {
@@ -378,34 +379,93 @@ exports.updateProfile = async (req, res, next) => {
   }
 };
 
-// @desc    Send OTP (Dummy OTP 123456 as requested)
+// @desc    Send Real Random OTP (Nodemailer Email / Phone Support)
 // @route   POST /api/auth/send-otp
 // @access  Public
 exports.sendOtp = async (req, res, next) => {
   try {
-    const { target, type } = req.body;
-    const otp = '123456'; // User requested dummy OTP 123456 everywhere
-    res.status(200).json({
-      success: true,
-      message: `OTP sent to ${target || 'contact'}. Use demo OTP: 123456`,
-      otp,
-      expiresIn: 300
-    });
+    const { target, email, mobile, name } = req.body;
+    const recipient = (target || email || mobile || '').trim();
+
+    if (!recipient) {
+      return res.status(400).json({ success: false, message: 'Please provide email or mobile number.' });
+    }
+
+    try {
+      delete require.cache[require.resolve('../public/otpService')];
+    } catch (_) {}
+    const freshOtpService = require('../public/otpService');
+
+    const result = await freshOtpService.sendRealOtp(recipient, name || 'Citizen', req.body.purpose || 'create_account');
+    return res.status(200).json(result);
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Verify OTP (Accepts 123456)
+// @desc    Verify OTP
 // @route   POST /api/auth/verify-otp
 // @access  Public
 exports.verifyOtp = async (req, res, next) => {
   try {
-    const { otp } = req.body;
-    if (otp !== '123456') {
-      return res.status(400).json({ success: false, message: 'अमान्य OTP! कृपया सही OTP (123456) दर्ज करें।' });
+    const { target, email, mobile, otp } = req.body;
+    const recipient = (target || email || mobile || '').trim();
+
+    if (!otp) {
+      return res.status(400).json({ success: false, message: 'Please enter the 6-digit OTP.' });
     }
-    res.status(200).json({ success: true, message: 'OTP verified successfully' });
+
+    const freshOtpService = require('../public/otpService');
+    const verification = freshOtpService.verifyRealOtp(recipient, otp);
+    if (!verification.success) {
+      return res.status(400).json(verification);
+    }
+
+    res.status(200).json(verification);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Reset password via verified OTP
+// @route   POST /api/auth/reset-password-otp
+// @access  Public
+exports.resetPasswordOtp = async (req, res, next) => {
+  try {
+    const { target, otp, newPassword } = req.body;
+    const recipient = (target || '').trim();
+
+    if (!recipient || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Missing target, OTP or new password.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
+
+    const verification = verifyRealOtp(recipient, otp);
+    if (!verification.success) {
+      return res.status(400).json(verification);
+    }
+
+    // Try finding and updating user in database
+    const user = await User.findOne({
+      $or: [
+        { email: recipient.toLowerCase() },
+        { phone: recipient },
+        { citizenId: recipient.toUpperCase() }
+      ]
+    }).select('+password');
+
+    if (user) {
+      user.password = newPassword;
+      await user.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Password updated successfully! You can now log in with your new password.'
+    });
   } catch (error) {
     next(error);
   }

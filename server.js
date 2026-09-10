@@ -16,6 +16,9 @@ const errorHandler = require('./others/middleware/errorHandler');
 connectDB();
 
 const app = express();
+app.set('trust proxy', true);
+
+const cacheService = require('./others/services/cacheService');
 
 // Ensure upload directory exists
 const uploadDir = process.env.UPLOAD_PATH || './others/public/uploads';
@@ -34,22 +37,30 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting
+// Helper to check if IP is local/private network
+const isLanIp = (req) => {
+  const ip = req.ip || req.connection?.remoteAddress || '';
+  return /^(::ffff:)?(127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.|::1)/.test(ip);
+};
+
+// Rate limiting (with local LAN whitelist)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10000, // Generous limit for real-time dev/demo polling
+  skip: isLanIp,
   message: { success: false, message: 'Too many requests, please try again later.' }
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10000, // Generous limit for dev, evaluation & demo login
+  skip: isLanIp,
   message: { success: false, message: 'Too many auth attempts.' }
 });
 
 // Body parsers
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Compression
 app.use(compression());
@@ -63,15 +74,27 @@ if (process.env.NODE_ENV === 'development') {
 app.use('/api/auth', authLimiter);
 app.use('/api', apiLimiter);
 
-// Static files - serve public directory
+// Static files caching options (Media/fonts cached for LAN speed; scripts/html revalidated instantly)
+const staticOptions = {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (/\.(jpg|jpeg|png|gif|webp|svg|ico|woff2?|ttf|eot)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+};
+
 // Static files - Modular and Public directories
-app.use('/citizen', express.static(path.join(__dirname, 'citizen/dist')));
-app.use('/university', express.static(path.join(__dirname, 'university/dist')));
-app.use('/admin', express.static(path.join(__dirname, 'admin/dist')));
-app.use('/industries', express.static(path.join(__dirname, 'industries/dist')));
-app.use('/industry', express.static(path.join(__dirname, 'industries/dist')));
-app.use('/others', express.static(path.join(__dirname, 'others/public')));
-app.use(express.static(path.join(__dirname, 'others/public')));
+app.use('/citizen', express.static(path.join(__dirname, 'citizen/dist'), staticOptions));
+app.use('/university', express.static(path.join(__dirname, 'university/dist'), staticOptions));
+app.use('/admin', express.static(path.join(__dirname, 'admin/dist'), staticOptions));
+app.use('/industries', express.static(path.join(__dirname, 'industries/dist'), staticOptions));
+app.use('/industry', express.static(path.join(__dirname, 'industries/dist'), staticOptions));
+app.use('/others', express.static(path.join(__dirname, 'others/public'), staticOptions));
+app.use(express.static(path.join(__dirname, 'others/public'), staticOptions));
 
 // No-cache helper for dashboard views to prevent back-button history leaks
 const sendDashboard = (filePath) => (req, res) => {
@@ -241,7 +264,7 @@ app.get('/api/location/reverse-geocode', async (req, res) => {
 const University = require('./others/models/University');
 const IndustryPartner = require('./others/models/IndustryPartner');
 
-app.get('/api/universities', async (req, res) => {
+app.get('/api/universities', cacheService.middleware('universities', 30), async (req, res) => {
   try {
     // Automatically ensure all active university portal profile institutions exist in universities collection
     try {
@@ -315,7 +338,7 @@ app.get('/api/universities/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-app.get('/api/industry', async (req, res) => {
+app.get('/api/industry', cacheService.middleware('industry', 30), async (req, res) => {
   try {
     const partners = await IndustryPartner.find({ isActive: true })
       .select('name type sector description logo location contact capabilities stats');
@@ -336,7 +359,11 @@ app.get('/dashboard/admin', sendDashboard('admin/dist/index.html'));
 
 // Auth pages
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'others/public', 'login.html')));
-app.get('/register', (req, res) => res.sendFile(path.join(__dirname, 'others/public', 'register.html')));
+app.get(['/register', '/register.html'], (req, res) => {
+  const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  const separator = query ? (query.includes('mode=') ? '' : '&mode=register') : '?mode=register';
+  res.redirect(`/login${query}${separator}`);
+});
 app.get('/forgot-password', (req, res) => res.sendFile(path.join(__dirname, 'others/public', 'forgot-password.html')));
 
 // Pages

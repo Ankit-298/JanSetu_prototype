@@ -511,7 +511,7 @@ function CitizenChatModal({ problem, onClose }) {
   );
 }
 
-function VideoPlayerModal({ videoTitle, onClose }) {
+function VideoPlayerModal({ videoTitle, videoUrl, onClose }) {
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -530,33 +530,42 @@ function VideoPlayerModal({ videoTitle, onClose }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto'
     }} onClick={onClose}>
       <div style={{
-        background: '#0F172A', borderRadius: 16, width: '100%', maxWidth: 580,
+        background: '#0F172A', borderRadius: 16, width: '100%', maxWidth: 720,
         overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)',
         boxShadow: '0 25px 60px rgba(0,0,0,0.6)', position: 'relative', margin: 'auto'
       }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#FFFFFF', fontSize: 13, fontWeight: 700 }}>
-            <Video size={16} color="#38BDF8" /> {videoTitle || 'Citizen Ground Video (0:45 min)'}
+            <Video size={16} color="#38BDF8" /> {videoTitle || 'Citizen Ground Video'}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}>
             <X size={18} />
           </button>
         </div>
-        <div style={{ position: 'relative', background: '#020617', height: 320, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
-          <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(37,99,235,0.25)', border: '2px solid #3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-            <Play size={30} color="#60A5FA" style={{ marginLeft: 4 }} />
-          </div>
-          <div style={{ color: '#FFFFFF', fontSize: 15, fontWeight: 700 }}>Citizen Field Video & Audio Recording</div>
-          <div style={{ color: '#94A3B8', fontSize: 12, marginTop: 6, maxWidth: 380, lineHeight: 1.5 }}>
-            Recorded on ground by primary citizen submitter. 45-second verified audio-visual footage documenting civic risk, community impact, and urgent intervention requirement.
-          </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.08)', color: '#CBD5E1', padding: '4px 10px', borderRadius: 6 }}>1080p 30fps</span>
-            <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.08)', color: '#CBD5E1', padding: '4px 10px', borderRadius: 6 }}>Duration: 0:45s</span>
-            <span style={{ fontSize: 11, background: 'rgba(34,197,94,0.15)', color: '#4ADE80', padding: '4px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <CheckCircle2 size={12} /> GPS Audio Synced
-            </span>
-          </div>
+        <div style={{ position: 'relative', background: '#020617', padding: videoUrl ? '0' : '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+          {videoUrl ? (
+            <div style={{ width: '100%', background: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <video
+                src={videoUrl}
+                controls
+                autoPlay
+                playsInline
+                style={{ width: '100%', maxHeight: '480px', objectFit: 'contain', background: '#000' }}
+              >
+                Your browser does not support HTML5 video playback.
+              </video>
+            </div>
+          ) : (
+            <>
+              <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(37,99,235,0.25)', border: '2px solid #3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                <Play size={30} color="#60A5FA" style={{ marginLeft: 4 }} />
+              </div>
+              <div style={{ color: '#FFFFFF', fontSize: 15, fontWeight: 700 }}>No Video Uploaded</div>
+              <div style={{ color: '#94A3B8', fontSize: 12, marginTop: 6, maxWidth: 380, lineHeight: 1.5 }}>
+                No video file was submitted by the citizen for this civic issue.
+              </div>
+            </>
+          )}
         </div>
         <div style={{ padding: '12px 18px', background: '#0B1120', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: '#64748B' }}>Verified Submission via JanSetu Citizen App</span>

@@ -24,6 +24,10 @@ if (isSupabaseConfigured()) {
       auth: { persistSession: false }
     });
     console.log(`[Supabase Storage] Initialized client for ${supabaseUrl} (Bucket: ${supabaseBucket})`);
+    supabase.storage.updateBucket(supabaseBucket, { public: true }).then(({ error }) => {
+      if (error) console.warn('[Supabase Storage] Notice updating bucket to public:', error.message);
+      else console.log(`[Supabase Storage] Bucket "${supabaseBucket}" verified as public`);
+    }).catch(() => {});
   } catch (err) {
     console.error('[Supabase Storage] Initialization error:', err.message);
   }
@@ -45,12 +49,24 @@ async function uploadBufferToSupabase({ buffer, originalname, mimetype, folder =
   const uniqueName = `${Date.now()}_${Math.round(Math.random() * 1e6)}_${safeBase}`;
   const filePath = `${folder}/${uniqueName}`;
 
+  // Automatically resolve accurate MIME type for videos and images
+  let resolvedMime = mimetype;
+  const ext = path.extname(safeBase).toLowerCase();
+  if (ext === '.mp4') resolvedMime = 'video/mp4';
+  else if (ext === '.webm') resolvedMime = 'video/webm';
+  else if (ext === '.mov') resolvedMime = 'video/quicktime';
+  else if (ext === '.mkv') resolvedMime = 'video/x-matroska';
+  else if (ext === '.png') resolvedMime = 'image/png';
+  else if (ext === '.jpg' || ext === '.jpeg') resolvedMime = 'image/jpeg';
+  else if (ext === '.gif') resolvedMime = 'image/gif';
+  else if (!resolvedMime) resolvedMime = 'application/octet-stream';
+
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase.storage
         .from(supabaseBucket)
         .upload(filePath, buffer, {
-          contentType: mimetype || 'image/png',
+          contentType: resolvedMime,
           upsert: true
         });
 
@@ -71,7 +87,7 @@ async function uploadBufferToSupabase({ buffer, originalname, mimetype, folder =
         publicUrl,
         filename: uniqueName,
         size: buffer.length,
-        mimetype: mimetype || 'image/png',
+        mimetype: resolvedMime,
         storageType: 'supabase'
       };
     } catch (err) {
@@ -94,7 +110,7 @@ async function uploadBufferToSupabase({ buffer, originalname, mimetype, folder =
     publicUrl: `/uploads/${folder}/${uniqueName}`,
     filename: uniqueName,
     size: buffer.length,
-    mimetype: mimetype || 'image/png',
+    mimetype: resolvedMime,
     storageType: 'local'
   };
 }
@@ -112,26 +128,30 @@ async function uploadBase64ToSupabase(base64Str, originalname = 'citizen_evidenc
 
   // If it is already an http(s) URL or relative server path (not base64), return as-is
   if (!base64Str.startsWith('data:')) {
+    const ext = path.extname(base64Str).toLowerCase();
+    const resolvedMime = ext === '.mp4' ? 'video/mp4' : (ext === '.webm' ? 'video/webm' : 'image/png');
     return {
       filePath: null,
       publicUrl: base64Str,
       filename: path.basename(base64Str),
       size: 0,
-      mimetype: 'image/png',
+      mimetype: resolvedMime,
       storageType: 'existing'
     };
   }
 
-  const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  // Support all MIME types including video/mp4, video/webm, audio, etc.
+  const matches = base64Str.match(/^data:([^;]+);base64,([\s\S]+)$/);
   let mimetype = 'image/png';
   let buffer;
 
   if (matches && matches.length === 3) {
-    mimetype = matches[1];
+    mimetype = matches[1].trim();
     buffer = Buffer.from(matches[2], 'base64');
   } else {
-    // raw base64 string
-    buffer = Buffer.from(base64Str, 'base64');
+    const commaIdx = base64Str.indexOf(',');
+    const raw = commaIdx !== -1 ? base64Str.slice(commaIdx + 1) : base64Str;
+    buffer = Buffer.from(raw, 'base64');
   }
 
   return uploadBufferToSupabase({

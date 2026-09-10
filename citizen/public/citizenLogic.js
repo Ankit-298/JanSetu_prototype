@@ -15,8 +15,37 @@
     let exploreDistrictFilter = 'same_district';
     const jansetuSyncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('jansetu_realtime_sync') : null;
 
+    let activeChatProblemId = null;
+    let chatSearchQuery = '';
+    const chatMessagesCache = {}; // { [problemId]: [] }
+    const chatUnreadState = {};   // { [problemId]: boolean }
+
+    function appendChatMessageToStore(pId, rep, msg) {
+      if (!pId || !msg) return;
+      if (!chatMessagesCache[pId]) chatMessagesCache[pId] = [];
+
+      // Deduplication check: verify against object reference, _id, or content + sender + timestamp
+      const isDup = chatMessagesCache[pId].some(existing => {
+        if (existing === msg) return true;
+        if (existing._id && msg._id && String(existing._id) === String(msg._id)) return true;
+        if (existing.text && msg.text && existing.text.trim() === msg.text.trim() && existing.sender === msg.sender &&
+            Math.abs(new Date(existing.timestamp || 0).getTime() - new Date(msg.timestamp || 0).getTime()) < 5000) {
+          return true;
+        }
+        return false;
+      });
+
+      if (!isDup) {
+        chatMessagesCache[pId].push(msg);
+      }
+
+      if (rep) {
+        rep.chatMessages = chatMessagesCache[pId];
+      }
+    }
+
     if (jansetuSyncChannel) {
-      jansetuSyncChannel.onmessage = function (ev) {
+      jansetuSyncChannel.addEventListener('message', function (ev) {
         if (ev && ev.data && ev.data.type === 'FILES_DELETED') {
           const { challengeId, mongoId } = ev.data;
           const rep = allReportsList.find(r => r.id === challengeId || (mongoId && r.mongoId === mongoId));
@@ -36,15 +65,10 @@
           const { challengeId, mongoId, message } = ev.data;
           const rep = allReportsList.find(r => r.id === challengeId || (mongoId && r.mongoId === mongoId)) || exploreList.find(r => r.id === challengeId || (mongoId && r.mongoId === mongoId));
           const pId = rep ? rep.id : challengeId;
-          if (pId) {
-            if (!chatMessagesCache[pId]) chatMessagesCache[pId] = [];
-            chatMessagesCache[pId].push(message);
-            if (rep) {
-              if (!Array.isArray(rep.chatMessages)) rep.chatMessages = [];
-              rep.chatMessages.push(message);
-            }
+          if (pId && message) {
+            appendChatMessageToStore(pId, rep, message);
             if (message.senderType !== 'citizen' && !message.isCitizen) {
-              const chatModalOpen = document.getElementById('problemChatModal')?.classList.contains('active');
+              const chatModalOpen = document.getElementById('problemChatModal')?.classList.contains('active') || document.getElementById('problemChatModal')?.classList.contains('open');
               if (!chatModalOpen || activeChatProblemId !== pId) {
                 chatUnreadState[pId] = true;
               }
@@ -56,7 +80,7 @@
             updateNavChatUnreadIndicator();
           }
         }
-      };
+      });
     }
 
     function getCurrentUser() {
@@ -264,7 +288,7 @@
 
       // Setup realtime sync listener across browser tabs/windows
       if (jansetuSyncChannel) {
-        jansetuSyncChannel.onmessage = (e) => {
+        jansetuSyncChannel.addEventListener('message', (e) => {
           if (e.data && e.data.type === 'NEW_CHALLENGE') {
             if (e.data.challenge) {
               const commC = e.data.challenge;
@@ -321,7 +345,7 @@
             saveExploreState();
             renderAllViews();
           }
-        };
+        });
       }
 
       // Window storage listener for cross-tab updates
@@ -2768,7 +2792,24 @@
       const fileList = Array.from(input.files);
 
       for (const file of fileList) {
-        if (type === 'photo') {
+        const isVideo = (file.type && file.type.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv|3gp|avi)$/i.test(file.name) || type === 'video';
+        const isPhoto = !isVideo && (type === 'photo' || (file.type && file.type.startsWith('image/')) || /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(file.name));
+
+        if (isVideo) {
+          if (file.size > 80 * 1024 * 1024) {
+            alert(currentLanguage === 'hi' ? 'कृपया 80MB से कम आकार का वीडियो चुनें।' : 'Please select a video smaller than 80MB.');
+            continue;
+          }
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+          });
+          if (dataUrl) {
+            selectedMediaFiles.push({ file, type: 'video', name: file.name, dataUrl, size: file.size });
+          }
+        } else if (isPhoto) {
           const dataUrl = await compressImage(file, 1200, 1200, 0.85);
           if (dataUrl) {
             selectedMediaFiles.push({ file, type: 'photo', name: file.name, dataUrl, size: file.size });
@@ -2791,9 +2832,10 @@
       }
 
       const photoCount = selectedMediaFiles.filter(m => m.type === 'photo').length;
+      const videoCount = selectedMediaFiles.filter(m => m.type === 'video').length;
       const summaryText = currentLanguage === 'hi'
-        ? `📸 कुल ${selectedMediaFiles.length} साक्ष्य संलग्न (${photoCount} फ़ोटो)`
-        : `📸 Total ${selectedMediaFiles.length} Evidence Attached (${photoCount} Photo${photoCount !== 1 ? 's' : ''})`;
+        ? `📸 कुल ${selectedMediaFiles.length} साक्ष्य संलग्न (${photoCount} फ़ोटो${videoCount > 0 ? `, ${videoCount} वीडियो` : ''})`
+        : `📸 Total ${selectedMediaFiles.length} Evidence Attached (${photoCount} Photo${photoCount !== 1 ? 's' : ''}${videoCount > 0 ? `, ${videoCount} Video` : ''})`;
 
       container.innerHTML = `
         <div style="font-size: 11.5px; font-weight: 800; color: #166534; background: #DCFCE7; border: 1px solid #86EFAC; padding: 4px 10px; border-radius: 8px; margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;">
@@ -2802,10 +2844,10 @@
       ` + selectedMediaFiles.map((m, idx) => `
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: #FFFDF9; border: 1.5px solid #FED7AA; border-radius: 12px; margin-top: 8px; box-shadow: 0 2px 8px rgba(255,153,51,0.08);">
         <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-          ${m.dataUrl ? `<img src="${m.dataUrl}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1.5px solid #16A34A; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.1);" alt="Proof Thumb" />` : `<span style="font-size: 26px;">${m.type === 'video' ? '🎥' : '📄'}</span>`}
+          ${m.type === 'video' ? `<div style="width: 50px; height: 50px; border-radius: 8px; background: #0F172A; display: flex; align-items: center; justify-content: center; font-size: 24px; border: 1.5px solid #2563EB; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">🎥</div>` : (m.dataUrl ? `<img src="${m.dataUrl}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1.5px solid #16A34A; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.1);" alt="Proof Thumb" />` : `<span style="font-size: 26px;">📄</span>`)}
           <div style="min-width: 0;">
             <div style="font-size: 12.5px; font-weight: 800; color: #15803D; display: flex; align-items: center; gap: 4px;">
-              <span>✓</span> <span>${m.type === 'photo' ? (currentLanguage === 'hi' ? `फ़ोटो #${idx + 1}` : `Photo #${idx + 1}`) : (currentLanguage === 'hi' ? 'दस्तावेज़ संलग्न' : 'File Attached')}</span>
+              <span>✓</span> <span>${m.type === 'photo' ? (currentLanguage === 'hi' ? `फ़ोटो #${idx + 1}` : `Photo #${idx + 1}`) : (m.type === 'video' ? (currentLanguage === 'hi' ? 'फ़ील्ड वीडियो' : 'Field Video') : (currentLanguage === 'hi' ? 'दस्तावेज़ संलग्न' : 'File Attached'))}</span>
             </div>
             <div style="font-size: 11px; color: var(--gray-600); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; margin-top: 2px;">${m.name} (${Math.round((m.size || 1000) / 1024)} KB)</div>
           </div>
@@ -2900,20 +2942,51 @@
       const userId = user ? (user.id || user._id || '').toString() : '';
       const userName = user && user.name ? user.name : 'Citizen';
 
+      // Pre-resolve dataUrl for any selected media that may not have completed reading
+      for (const m of selectedMediaFiles) {
+        if (!m.dataUrl && m.file) {
+          const isVid = m.type === 'video' || (m.file && m.file.type && m.file.type.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv|3gp|avi)$/i.test(m.name || '');
+          if (isVid) {
+            m.dataUrl = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => resolve(null);
+              reader.readAsDataURL(m.file);
+            });
+            if (m.dataUrl && !m.dataUrl.startsWith('data:video/')) {
+              const comma = m.dataUrl.indexOf(',');
+              if (comma !== -1) m.dataUrl = `data:video/mp4;base64,${m.dataUrl.slice(comma + 1)}`;
+            }
+          }
+        }
+      }
+
       // Extract user uploaded images (support multiple photos)
-      const photoMedias = selectedMediaFiles.filter(m => m.type === 'photo' && m.dataUrl);
+      const photoMedias = selectedMediaFiles.filter(m => (m.type === 'photo' || (m.file && m.file.type && m.file.type.startsWith('image/'))) && m.dataUrl && !m.dataUrl.startsWith('data:video/'));
       const primaryPhoto = photoMedias.length > 0 ? photoMedias[0].dataUrl : null;
       const finalImage = primaryPhoto || getCategoryFallbackImage(category);
 
       let attachments = [];
       if (selectedMediaFiles.length > 0) {
-        attachments = selectedMediaFiles.map((m, idx) => ({
-          filename: m.name || `citizen_evidence_${idx + 1}.png`,
-          originalName: m.name || `citizen_evidence_${idx + 1}.png`,
-          mimetype: m.type === 'photo' ? 'image/jpeg' : (m.file?.type || 'application/octet-stream'),
-          size: m.size || (m.dataUrl ? m.dataUrl.length : 1000),
-          url: m.dataUrl || finalImage
-        }));
+        attachments = selectedMediaFiles.map((m, idx) => {
+          const isVid = m.type === 'video' || (m.file && m.file.type && m.file.type.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv|3gp|avi)$/i.test(m.name || '');
+          if (isVid) {
+            return {
+              filename: m.name || `citizen_video_${idx + 1}.mp4`,
+              originalName: m.name || `citizen_video_${idx + 1}.mp4`,
+              mimetype: 'video/mp4',
+              size: m.size || (m.dataUrl ? m.dataUrl.length : 1000),
+              url: m.dataUrl // Strictly video, never falls back to photo
+            };
+          }
+          return {
+            filename: m.name || `citizen_evidence_${idx + 1}.png`,
+            originalName: m.name || `citizen_evidence_${idx + 1}.png`,
+            mimetype: m.type === 'photo' ? 'image/jpeg' : (m.file?.type || 'application/octet-stream'),
+            size: m.size || (m.dataUrl ? m.dataUrl.length : 1000),
+            url: m.dataUrl || finalImage
+          };
+        }).filter(att => att.url);
       } else if (finalImage) {
         attachments = [{
           filename: 'citizen_evidence.png',
@@ -2923,6 +2996,8 @@
           url: finalImage
         }];
       }
+
+      const videoAttachment = attachments.find(a => (a.mimetype && a.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv|3gp|avi)$/i.test(a.filename || ''));
 
       const payload = {
         title,
@@ -2938,6 +3013,7 @@
         isPublic: true,
         image: finalImage,
         coverImage: finalImage,
+        videoUrl: videoAttachment ? videoAttachment.url : null,
         resolutionProof: {
           beforeImage: finalImage,
           summary: 'Citizen ground reality evidence'
@@ -3597,12 +3673,13 @@
     /* ============================================================
        TRIPARTITE PROBLEM CHAT HUB (Citizen, University Guide & Admin)
        ============================================================ */
-    let activeChatProblemId = null;
-    let chatSearchQuery = '';
-    const chatMessagesCache = {}; // { [problemId]: [] }
-    const chatUnreadState = {};   // { [problemId]: boolean }
+    async function openChatModal(targetProblemId) {
+      if (allReportsList.length === 0 && exploreList.length === 0) {
+        try {
+          await fetchLiveChallenges(true);
+        } catch (e) {}
+      }
 
-    function openChatModal(targetProblemId) {
       let candidateProblems = allReportsList.slice();
       if (candidateProblems.length === 0) {
         candidateProblems = exploreList.slice(0, 10);
@@ -3615,17 +3692,33 @@
         return;
       }
 
-      activeChatProblemId = targetProblemId || candidateProblems[0].id;
+      let matchedProblem = null;
+      if (targetProblemId) {
+        const tStr = String(targetProblemId).trim();
+        matchedProblem = allReportsList.find(r => r.id === tStr || r.mongoId === tStr || r._id === tStr || (r.id && r.id.toLowerCase() === tStr.toLowerCase()))
+          || exploreList.find(r => r.id === tStr || r.mongoId === tStr || r._id === tStr || (r.id && r.id.toLowerCase() === tStr.toLowerCase()));
+      }
+
+      activeChatProblemId = matchedProblem ? matchedProblem.id : (candidateProblems[0] ? candidateProblems[0].id : null);
 
       renderChatProblemChannels();
-      selectChatProblem(activeChatProblemId);
+      if (activeChatProblemId) {
+        selectChatProblem(activeChatProblemId);
+      }
       openModal('problemChatModal');
 
       // Bind search input
       const sInp = document.getElementById('chatSearchInput');
       if (sInp) {
+        sInp.value = '';
+        chatSearchQuery = '';
         sInp.oninput = (e) => filterChatProblems(e.target.value);
       }
+
+      setTimeout(() => {
+        const inp = document.getElementById('chatTextInput');
+        if (inp) inp.focus();
+      }, 250);
     }
     window.openChatModal = openChatModal;
 
@@ -3672,7 +3765,7 @@
                   NEW
                 </span>
               ` : ''}
-              <span style="font-size: 10px; font-weight: 700; color: ${r.status === 'Solved' ? '#166534' : '#C2410C'}; background: ${r.status === 'Solved' ? '#F0FDF4' : '#FFF7ED'}; padding: 2px 6px; border-radius: 6px;">${r.status}</span>
+              <span style="font-size: 10px; font-weight: 700; color: ${r.status === 'Solved' ? '#166534' : '#C2410C'}; background: ${r.status === 'Solved' ? '#F0FDF4' : '#FFF7ED'}; padding: 2px 6px; border-radius: 6px;">${r.status || 'Active'}</span>
             </div>
           </div>
           <div style="font-size: 12.5px; font-weight: 800; color: #0F172A; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.title}</div>
@@ -3688,16 +3781,22 @@
     window.renderChatProblemChannels = renderChatProblemChannels;
 
     async function selectChatProblem(problemId) {
+      if (!problemId) return;
       activeChatProblemId = problemId;
-      const targetRep = allReportsList.find(r => r.id === problemId) || exploreList.find(r => r.id === problemId);
+      const targetRep = allReportsList.find(r => r.id === problemId || r.mongoId === problemId || r._id === problemId || (r.id && r.id.toLowerCase() === String(problemId).toLowerCase()))
+        || exploreList.find(r => r.id === problemId || r.mongoId === problemId || r._id === problemId || (r.id && r.id.toLowerCase() === String(problemId).toLowerCase()));
+
+      if (targetRep && targetRep.id) {
+        activeChatProblemId = targetRep.id;
+      }
 
       // Turn off unread state for this problem
-      chatUnreadState[problemId] = false;
+      chatUnreadState[activeChatProblemId] = false;
       if (targetRep && Array.isArray(targetRep.chatMessages)) {
         targetRep.chatMessages.forEach(m => { m.readByCitizen = true; });
       }
-      if (chatMessagesCache[problemId]) {
-        chatMessagesCache[problemId].forEach(m => { m.readByCitizen = true; });
+      if (chatMessagesCache[activeChatProblemId]) {
+        chatMessagesCache[activeChatProblemId].forEach(m => { m.readByCitizen = true; });
       }
 
       renderChatProblemChannels();
@@ -3705,14 +3804,31 @@
       renderChatMessagesStream(targetRep);
       renderChatQuickChips();
 
-      // Fetch latest messages from API
-      const targetMongoId = targetRep?.mongoId || problemId;
+      // Fetch latest messages from API with deduplication
+      const targetMongoId = targetRep?.mongoId || activeChatProblemId;
       try {
         const res = await fetch(`/api/challenges/${targetMongoId}/chat`);
         const json = await res.json();
         if (json.success && Array.isArray(json.chatMessages)) {
-          chatMessagesCache[problemId] = json.chatMessages;
-          if (targetRep) targetRep.chatMessages = json.chatMessages;
+          const existingList = chatMessagesCache[activeChatProblemId] || [];
+          const merged = [];
+          const seen = new Set();
+
+          // Combine and deduplicate
+          [...json.chatMessages, ...existingList].forEach(m => {
+            if (!m || !m.text) return;
+            const key = m._id ? String(m._id) : `${m.sender || ''}_${m.text.trim()}_${m.time || ''}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              merged.push(m);
+            }
+          });
+
+          // Sort by timestamp
+          merged.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+
+          chatMessagesCache[activeChatProblemId] = merged;
+          if (targetRep) targetRep.chatMessages = merged;
           renderChatMessagesStream(targetRep);
         }
       } catch (e) {}
@@ -3728,39 +3844,40 @@
       const header = document.getElementById('chatRoomHeader');
       if (!header) return;
       if (!rep) {
-        header.innerHTML = `<div style="font-size:13px; color:#64748B;">Select a problem channel on the left to start conversation.</div>`;
+        header.innerHTML = `<div style="font-size:13px; color:#64748B; padding: 6px 0;">Select a problem channel on the left to start conversation.</div>`;
         return;
       }
 
-      const univName = rep.assign && rep.assign !== 'Verification in progress by JanSetu Authority'
+      const univName = rep.assign && rep.assign !== 'Under validation by JanSetu Authority' && rep.assign !== 'Verification in progress by JanSetu Authority'
         ? rep.assign
-        : 'BIT Mesra Civil & Environmental Lab';
+        : 'IIT Delhi / BIT Mesra Lab';
 
       header.innerHTML = `
-        <div style="flex: 1; min-width: 0;">
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px;">
-            <span style="font-size: 11px; font-weight: 800; color: #1E3A8A; background: #DBEAFE; padding: 2px 8px; border-radius: 8px;">${rep.id}</span>
-            <span style="font-size: 10.5px; font-weight: 700; color: #0284C7; background: #E0F2FE; padding: 2px 8px; border-radius: 8px;">📂 ${rep.category}</span>
-            <span style="font-size: 10.5px; font-weight: 800; color: ${rep.status === 'Solved' ? '#166534' : '#C2410C'}; background: ${rep.status === 'Solved' ? '#DCFCE7' : '#FFEDD5'}; padding: 2px 8px; border-radius: 8px;">● ${rep.status}</span>
+        <div style="flex: 1; min-width: 250px; max-width: 100%;">
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px;">
+            <span style="font-size: 11px; font-weight: 800; color: #1E3A8A; background: #DBEAFE; border: 1px solid #BFDBFE; padding: 2px 7px; border-radius: 6px;">${rep.id}</span>
+            <span style="font-size: 10.5px; font-weight: 700; color: #0369A1; background: #E0F2FE; border: 1px solid #BAE6FD; padding: 2px 7px; border-radius: 6px;">📂 ${rep.category || 'General'}</span>
+            <span style="font-size: 10.5px; font-weight: 800; color: ${rep.status === 'Solved' ? '#166534' : '#C2410C'}; background: ${rep.status === 'Solved' ? '#DCFCE7' : '#FFEDD5'}; border: 1px solid ${rep.status === 'Solved' ? '#86EFAC' : '#FED7AA'}; padding: 2px 7px; border-radius: 6px;">● ${rep.status || 'Active'}</span>
           </div>
-          <div style="font-size: 14px; font-weight: 900; color: #0F172A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${rep.title}</div>
-          <div style="font-size: 11px; color: #64748B; margin-top: 1px;">📍 ${rep.location}</div>
+          <div style="font-size: 14.5px; font-weight: 850; color: #0F172A; line-height: 1.35; margin: 2px 0 3px; word-break: break-word;">${rep.title}</div>
+          <div style="font-size: 11.5px; color: #64748B; display: flex; align-items: center; gap: 4px;">
+            <span>📍</span> <span>${rep.location || 'Jharkhand'}</span>
+          </div>
         </div>
 
-        {/* Identity Badges of University Guide & Admin Authority */}
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 6px; background: #EFF6FF; border: 1.5px solid #BFDBFE; padding: 4px 10px; border-radius: 10px;">
-            <span style="font-size: 16px;">🏛️</span>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto;">
+          <div style="display: flex; align-items: center; gap: 7px; background: #EFF6FF; border: 1.5px solid #BFDBFE; padding: 5px 11px; border-radius: 10px; box-shadow: 0 1px 3px rgba(37,99,235,0.06);">
+            <span style="font-size: 17px;">🏛️</span>
             <div>
               <div style="font-size: 11px; font-weight: 800; color: #1E3A8A;">Prof. R. K. Sharma</div>
-              <div style="font-size: 9.5px; color: #2563EB; font-weight: 700;">University Faculty Guide (${univName.length > 20 ? univName.slice(0, 18) + '...' : univName})</div>
+              <div style="font-size: 9.5px; color: #2563EB; font-weight: 700;">University Guide (${univName.length > 22 ? univName.slice(0, 20) + '...' : univName})</div>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px; background: #FFFBEB; border: 1.5px solid #FDE68A; padding: 4px 10px; border-radius: 10px;">
-            <span style="font-size: 16px;">🛡️</span>
+          <div style="display: flex; align-items: center; gap: 7px; background: #FFFDF0; border: 1.5px solid #FDE68A; padding: 5px 11px; border-radius: 10px; box-shadow: 0 1px 3px rgba(217,119,6,0.06);">
+            <span style="font-size: 17px;">🛡️</span>
             <div>
               <div style="font-size: 11px; font-weight: 800; color: #92400E;">Shri S. K. Verma</div>
-              <div style="font-size: 9.5px; color: #D97706; font-weight: 700;">JanSetu Admin Officer (District Municipal Desk)</div>
+              <div style="font-size: 9.5px; color: #D97706; font-weight: 700;">JanSetu Admin Officer (District Desk)</div>
             </div>
           </div>
         </div>
@@ -3771,13 +3888,26 @@
       const stream = document.getElementById('chatMessagesStream');
       if (!stream) return;
 
-      const msgs = (rep && chatMessagesCache[rep.id]) || (rep && rep.chatMessages) || [];
+      const rawMsgs = (rep && chatMessagesCache[rep.id]) || (rep && rep.chatMessages) || [];
+
+      // Deduplicate messages by _id or (sender + text + timestamp)
+      const msgs = [];
+      const seen = new Set();
+      rawMsgs.forEach(m => {
+        if (!m || !m.text) return;
+        const key = m._id ? String(m._id) : `${m.sender || ''}_${m.text.trim()}_${m.time || ''}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          msgs.push(m);
+        }
+      });
+
       if (msgs.length === 0) {
         stream.innerHTML = `
-          <div style="text-align: center; padding: 40px 20px; color: #64748B;">
-            <div style="font-size: 32px; margin-bottom: 8px;">🤝</div>
-            <div style="font-weight: 800; font-size: 14px; color: #0F172A;">Tripartite Problem Discussion Channel</div>
-            <div style="font-size: 12px; margin-top: 4px; max-width: 440px; margin-left: auto; margin-right: auto;">
+          <div style="text-align: center; padding: 40px 20px; color: #64748B; margin: auto;">
+            <div style="font-size: 34px; margin-bottom: 10px;">🤝</div>
+            <div style="font-weight: 800; font-size: 14.5px; color: #0F172A;">Tripartite Problem Discussion Channel</div>
+            <div style="font-size: 12px; margin-top: 5px; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.5;">
               Direct communication between you (Citizen), your assigned University Engineering Guide, and Municipal Administrative Officers. Send a message below to start.
             </div>
           </div>
@@ -3796,24 +3926,24 @@
 
         const roleBadge = isCitizen
           ? '👤 Citizen'
-          : (isUniv ? `🏛️ ${m.senderRole || 'University Faculty Guide'}` : `🛡️ ${m.senderRole || 'JanSetu Administrative Officer'}`);
+          : (isUniv ? `🏛️ ${m.senderRole || 'University Faculty Guide'}` : `🛡️ ${m.senderRole || 'JanSetu Admin Officer'}`);
 
         const bubbleBg = isCitizen
           ? 'linear-gradient(135deg, #002D62 0%, #1E3A8A 100%)'
-          : (isUniv ? '#EFF6FF' : '#FFFDF2');
+          : (isUniv ? '#FFFFFF' : '#FFFDF2');
 
         const bubbleColor = isCitizen ? '#FFFFFF' : '#0F172A';
         const bubbleBorder = isCitizen ? 'none' : (isUniv ? '1.5px solid #BFDBFE' : '1.5px solid #FDE68A');
         const alignSelf = isCitizen ? 'flex-end' : 'flex-start';
 
         return `
-        <div style="display: flex; flex-direction: column; align-items: ${alignSelf}; max-width: 80%; gap: 3px;">
+        <div style="display: flex; flex-direction: column; align-items: ${alignSelf}; max-width: 82%; gap: 3px;">
           <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; margin-bottom: 2px;">
             <span style="font-weight: 800; color: ${isCitizen ? '#1E3A8A' : (isUniv ? '#1D4ED8' : '#B45309')};">${senderTitle}</span>
             <span style="font-size: 9.5px; font-weight: 700; color: ${isCitizen ? '#059669' : (isUniv ? '#2563EB' : '#D97706')}; background: ${isCitizen ? '#ECFDF5' : (isUniv ? '#DBEAFE' : '#FEF3C7')}; padding: 1px 6px; border-radius: 8px;">${roleBadge}</span>
             <span style="color: #94A3B8; font-size: 10px;">${m.time || 'Just now'}</span>
           </div>
-          <div style="background: ${bubbleBg}; color: ${bubbleColor}; border: ${bubbleBorder}; padding: 9px 14px; border-radius: ${isCitizen ? '14px 14px 2px 14px' : '14px 14px 14px 2px'}; font-size: 12.5px; line-height: 1.45; box-shadow: 0 2px 6px rgba(0,0,0,0.05); word-break: break-word;">
+          <div style="background: ${bubbleBg}; color: ${bubbleColor}; border: ${bubbleBorder}; padding: 9px 14px; border-radius: ${isCitizen ? '14px 14px 3px 14px' : '14px 14px 14px 3px'}; font-size: 13px; line-height: 1.5; box-shadow: 0 1.5px 6px rgba(0,0,0,0.06); word-break: break-word;">
             ${m.text}
           </div>
         </div>
@@ -3837,8 +3967,7 @@
       ];
 
       cont.innerHTML = chips.map(c => `
-        <button type="button" onclick="sendProblemChatMessage('${c.replace(/'/g, "\\'")}')"
-          style="white-space: nowrap; font-size: 11px; font-weight: 700; color: #002D62; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 4px 10px; border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
+        <button type="button" class="chat-chip-btn" onclick="sendProblemChatMessage('${c.replace(/'/g, "\\'")}')">
           ${c}
         </button>
       `).join('');
@@ -3876,12 +4005,8 @@
         readByAdmin: false
       };
 
-      if (!chatMessagesCache[activeChatProblemId]) chatMessagesCache[activeChatProblemId] = [];
-      chatMessagesCache[activeChatProblemId].push(newMsg);
-      if (targetRep) {
-        if (!Array.isArray(targetRep.chatMessages)) targetRep.chatMessages = [];
-        targetRep.chatMessages.push(newMsg);
-      }
+      // Append once using deduplicating store helper (prevents 2x duplicate message bug)
+      appendChatMessageToStore(activeChatProblemId, targetRep, newMsg);
 
       renderChatMessagesStream(targetRep);
       renderChatProblemChannels();
@@ -4884,7 +5009,7 @@
                   </span>
 
                   ${(item.type === 'message' || item.category === 'messages' || item.problemId) ? `
-                    <button type="button" onclick="event.stopPropagation(); window.openCitizenChatReplyModal('${item.problemId || ''}', '${(item.title || '').replace(/'/g, "\\'")}')" style="background: linear-gradient(135deg, #2563EB, #1D4ED8); color: #FFF; border: none; padding: 3px 10px; border-radius: 6px; font-size: 10.5px; font-weight: 750; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-left: auto; box-shadow: 0 1px 3px rgba(37,99,235,0.25);">
+                    <button type="button" onclick="event.stopPropagation(); window.openCitizenChatReplyModal('${item.problemId || ''}', '${(item.title || '').replace(/'/g, "\\'")}', '${item.reportId || ''}')" style="background: linear-gradient(135deg, #2563EB, #1D4ED8); color: #FFF; border: none; padding: 3px 10px; border-radius: 6px; font-size: 10.5px; font-weight: 750; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-left: auto; box-shadow: 0 1px 3px rgba(37,99,235,0.25);">
                       💬 Reply to University
                     </button>
                   ` : ''}
@@ -4907,43 +5032,43 @@
       }).join('');
     }
 
-    window.openCitizenChatReplyModal = async function(problemId, problemTitle) {
-      if (!problemId) {
+    window.openCitizenChatReplyModal = async function(problemId, problemTitle, reportId) {
+      // 1. Close notifications modal so Problem Chat Hub is prominently displayed
+      closeModal('notificationsModal');
+
+      // 2. Ensure live challenges are available
+      if (allReportsList.length === 0 && exploreList.length === 0) {
         try {
-          const res = await fetch('/api/problems');
-          const probs = await res.json();
-          if (Array.isArray(probs) && probs.length > 0) {
-            problemId = probs[0]._id;
-          }
+          await fetchLiveChallenges(true);
         } catch (e) {}
       }
-      if (!problemId) {
-        alert("Problem identifier not found for this inquiry.");
-        return;
-      }
-      const reply = prompt("Reply to University Innovation Team (" + (problemTitle || "Problem Inquiry") + "):\n\nEnter your response to faculty guide and researchers:");
-      if (!reply || !reply.trim()) return;
 
-      try {
-        const user = (typeof getCurrentUser === 'function' && getCurrentUser()) || { name: 'Rajesh Mahto', email: 'rajesh@gmail.com' };
-        const res = await fetch('/api/problems/' + problemId + '/citizen-reply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: reply.trim(),
-            citizenName: user.name || 'Rajesh Mahto',
-            citizenEmail: user.email || 'rajesh@gmail.com'
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
-          alert('✅ Reply successfully dispatched to University Innovation Team!\n\n"' + reply.trim() + '"\n\nThe university guide has received your response in their notifications.');
-        } else {
-          alert('Failed to send reply: ' + (data.error || 'Server error'));
-        }
-      } catch (e) {
-        alert('Failed to dispatch reply: ' + e.message);
+      // 3. Resolve target problem
+      let targetId = reportId || problemId;
+      let cleanTitle = (problemTitle || '')
+        .replace(/^Message from University Guide:\s*/i, '')
+        .replace(/^University Innovation Team:\s*/i, '')
+        .trim();
+
+      let matched = null;
+      if (targetId) {
+        const tStr = String(targetId).trim().toLowerCase();
+        matched = allReportsList.find(r => (r.id && r.id.toLowerCase() === tStr) || (r.mongoId && String(r.mongoId).toLowerCase() === tStr) || (r._id && String(r._id).toLowerCase() === tStr))
+          || exploreList.find(r => (r.id && r.id.toLowerCase() === tStr) || (r.mongoId && String(r.mongoId).toLowerCase() === tStr) || (r._id && String(r._id).toLowerCase() === tStr));
       }
+
+      if (!matched && cleanTitle) {
+        const cLower = cleanTitle.toLowerCase();
+        matched = allReportsList.find(r => r.title && (r.title.toLowerCase().includes(cLower) || cLower.includes(r.title.toLowerCase())))
+          || exploreList.find(r => r.title && (r.title.toLowerCase().includes(cLower) || cLower.includes(r.title.toLowerCase())));
+      }
+
+      if (!matched && (allReportsList.length > 0 || exploreList.length > 0)) {
+        matched = allReportsList[0] || exploreList[0];
+      }
+
+      const pIdToOpen = matched ? matched.id : (targetId || null);
+      openChatModal(pIdToOpen);
     };
 
     function openNotificationsModal() {
@@ -5473,6 +5598,7 @@
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           el.classList.add('active');
+          el.classList.add('open');
         });
       });
 
@@ -5480,14 +5606,16 @@
         openModalsStack.push(id);
       }
     }
+    window.openModal = openModal;
 
     function closeModal(id) {
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('active');
+      el.classList.remove('open');
 
       setTimeout(() => {
-        if (!el.classList.contains('active')) {
+        if (!el.classList.contains('active') && !el.classList.contains('open')) {
           el.style.visibility = 'hidden';
           el.style.zIndex = '';
         }
@@ -5500,6 +5628,8 @@
         highestModalZ = 1000;
       }
     }
+    window.closeModal = closeModal;
+    window.openChatModal = openChatModal;
 
     let toastTimer = null;
     function showToast(message) {
@@ -5512,6 +5642,7 @@
         toast.classList.remove('show');
       }, 2400);
     }
+    window.showToast = showToast;
 
     // Trap Back navigation while authenticated: keep user on dashboard
     if (window.history && window.history.pushState) {

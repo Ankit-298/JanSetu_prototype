@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       // Update hero CTA buttons — fix the selector to target the actual hero submit button
-      document.querySelectorAll('.hero-ctas .btn-primary, .hero-ctas a[href*="register"], a[href="/register.html?role=citizen"]').forEach(btn => {
+      document.querySelectorAll('.hero-ctas .btn-primary, .hero-ctas a[href*="register"], a[href="/login?mode=register&role=citizen"]').forEach(btn => {
         btn.href = submitUrl;
         btn.textContent = 'Submit a Challenge →';
       });
@@ -215,7 +215,7 @@ async function populateCategories() {
 
   const catUrl = (typeof Auth !== 'undefined' && Auth.isLoggedIn())
     ? '/dashboard/citizen.html#submit'
-    : '/register.html?role=citizen';
+    : '/login?mode=register&role=citizen';
 
   grid.innerHTML = CATEGORIES.map(cat => `
     <div class="category-card" onclick="window.location.href='${catUrl}&category=${encodeURIComponent(cat.name)}'">

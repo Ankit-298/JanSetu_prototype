@@ -80,6 +80,7 @@ const challengeSchema = new mongoose.Schema({
   filePath: { type: String, default: null },
   coverImage: { type: String, default: null },
   image: { type: String, default: null },
+  videoUrl: { type: String, default: null },
   attachments: [{
     filename: String,
     originalName: String,
