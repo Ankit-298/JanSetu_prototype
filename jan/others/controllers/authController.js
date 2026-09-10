@@ -1,0 +1,499 @@
+const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
+const User = require('../models/User');
+const { logActivity } = require('../services/notificationService');
+
+const DEMO_PRESETS = {
+  'admin@jansetu.in': {
+    _id: '67cb56000000000000000001',
+    name: 'JanSetu Admin',
+    email: 'admin@jansetu.in',
+    role: 'admin',
+    passwords: ['admin123'],
+    department: 'Municipal Administration'
+  },
+  'admin@innovatesphere.in': {
+    _id: '67cb56000000000000000001',
+    name: 'JanSetu Admin',
+    email: 'admin@innovatesphere.in',
+    role: 'admin',
+    passwords: ['admin123'],
+    department: 'Municipal Administration'
+  },
+  'rajesh@gmail.com': {
+    _id: '67cb56000000000000000002',
+    name: 'Rajesh Mahto',
+    email: 'rajesh@gmail.com',
+    role: 'citizen',
+    passwords: ['citizen123'],
+    citizenId: 'C4819',
+    phone: '9431100003',
+    aadhaar: '8492-3840-4819'
+  },
+  'kavya@gmail.com': {
+    _id: '67cb56000000000000000003',
+    name: 'Kavya Sharma',
+    email: 'kavya@gmail.com',
+    role: 'citizen',
+    passwords: ['citizen123'],
+    citizenId: 'C1002',
+    phone: '9431100002'
+  },
+  'rajesh@iitjharkhand.ac.in': {
+    _id: '67cb56000000000000000004',
+    name: 'Dr. Rajesh Sharma',
+    email: 'rajesh@iitjharkhand.ac.in',
+    role: 'university_rep',
+    passwords: ['univ123'],
+    universityIdString: 'U4819',
+    institution: 'IIT Delhi',
+    department: 'Department of Computer Science & Engineering'
+  },
+  'tata@steel.com': {
+    _id: '67cb56000000000000000005',
+    name: 'Tata Steel CSR',
+    email: 'tata@steel.com',
+    role: 'industry_rep',
+    passwords: ['industry123'],
+    organization: 'Tata Steel'
+  }
+};
+
+const sendTokenResponse = (user, statusCode, res) => {
+  const token = typeof user.getSignedJwtToken === 'function'
+    ? user.getSignedJwtToken()
+    : jwt.sign(
+        { id: user._id, role: user.role },
+        process.env.JWT_SECRET || 'your_strong_jwt_secret_key_here',
+        { expiresIn: process.env.JWT_EXPIRE || '7d' }
+      );
+  const citizenId = user.citizenId || (user.role === 'citizen' ? ('C' + (user.aadhaar ? user.aadhaar.replace(/[^0-9]/g, '').slice(-4) : (user._id ? user._id.toString().slice(-4) : '4819'))) : null);
+  const universityIdString = user.universityIdString || (user.role === 'university_rep' ? ('U' + (user._id ? user._id.toString().slice(-4) : '1001')) : null);
+  res.status(statusCode).json({
+    success: true,
+    token,
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      citizenId: citizenId,
+      universityIdString: universityIdString,
+      uniqueId: universityIdString || citizenId,
+      facultyId: universityIdString,
+      phone: user.phone || '9431100003',
+      aadhaar: user.aadhaar || '8492-3840-4819',
+      aadhaarVerified: user.aadhaarVerified !== false,
+      phoneVerified: user.phoneVerified !== false,
+      emailVerified: user.emailVerified !== false,
+      address: user.address,
+      avatar: user.avatar,
+      isVerified: user.isVerified !== false,
+      designation: user.designation,
+      department: user.department,
+      universityId: user.universityId,
+      industryPartnerId: user.industryPartnerId
+    }
+  });
+};
+
+// @desc    Register user
+// @route   POST /api/auth/register
+// @access  Public
+exports.register = async (req, res, next) => {
+  try {
+    const { name, email, password, role, phone, aadhaar, address, universityId, industryPartnerId, designation, department } = req.body;
+
+    // Validate role
+    const allowedRoles = ['citizen', 'university_rep', 'industry_rep'];
+    if (role && !allowedRoles.includes(role)) {
+      return res.status(400).json({ success: false, message: 'Invalid role specified' });
+    }
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'Email already registered' });
+    }
+
+    // Generate clean Citizen ID (starts with C) or University ID (starts with U)
+    let citizenId = req.body.citizenId;
+    let universityIdString = req.body.universityIdString;
+
+    if (!citizenId && (!role || role === 'citizen')) {
+      citizenId = 'C' + Math.floor(1000 + Math.random() * 9000);
+    }
+    if (!universityIdString && role === 'university_rep') {
+      universityIdString = 'U' + Math.floor(1000 + Math.random() * 9000);
+    }
+
+    const orgName = req.body.organization || req.body.institution || '';
+    const userData = {
+      name,
+      email,
+      password,
+      role: role || 'citizen',
+      citizenId,
+      universityIdString,
+      phone: phone || '9431100003',
+      aadhaar: aadhaar || '8492-3840-4819',
+      aadhaarVerified: true,
+      phoneVerified: true,
+      emailVerified: true,
+      address,
+      designation,
+      department,
+      organization: orgName,
+      institution: orgName
+    };
+    if (role === 'university_rep' && universityId) userData.universityId = universityId;
+    if (role === 'industry_rep' && industryPartnerId) userData.industryPartnerId = industryPartnerId;
+
+    const user = await User.create(userData);
+
+    // If university_rep, create or link UniversityProfile for this specific user
+    if (role === 'university_rep') {
+      try {
+        const { UniversityProfile } = require('../../university/database');
+        const University = require('../models/University');
+        let institutionName = orgName || 'Indian Institute of Technology Delhi';
+        let univLocation = 'New Delhi, India';
+
+        if (universityId) {
+          const uDoc = await University.findById(universityId);
+          if (uDoc) {
+            institutionName = uDoc.name;
+            univLocation = uDoc.location?.city ? `${uDoc.location.city}, ${uDoc.location.state || 'India'}` : 'India';
+            if (!uDoc.representatives.includes(user._id)) {
+              uDoc.representatives.push(user._id);
+              await uDoc.save();
+            }
+          }
+        }
+
+        const initials = (name || '').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'UN';
+
+        let uProfile = await UniversityProfile.findOne({ email: user.email.toLowerCase() });
+        if (!uProfile) {
+          uProfile = new UniversityProfile({
+            userId: user._id,
+            name: user.name,
+            initials,
+            email: user.email.toLowerCase(),
+            role: designation || 'Faculty Member & Project Guide',
+            department: department || 'Department of Computer Science & Engineering',
+            institution: institutionName,
+            location: univLocation,
+            bio: `Faculty member at ${institutionName}. Contributing to university civic technology innovations.`,
+            phone: phone || '+91 98765 43210',
+            uniqueId: universityIdString,
+            facultyId: universityIdString,
+            avatarUrl: user.avatar || '',
+            stats: {
+              totalProblems: 0,
+              studentTeams: 0,
+              projectsInProgress: 0,
+              projectsDeployed: 0,
+              needAttention: 0,
+              projectsGuided: 0,
+              activeMentorships: 0,
+              teamsSupported: 0,
+              impactScore: 100
+            },
+            preferences: {
+              projectUpdates: true,
+              mentorshipMessages: true,
+              platformAnnouncements: true,
+              weeklyDigest: true
+            },
+            skills: ['Research & Development', 'Civic Engineering', 'Project Mentorship', 'Student Guidance']
+          });
+          await uProfile.save();
+        }
+      } catch (profileErr) {
+        console.error('Error creating UniversityProfile on register:', profileErr.message);
+      }
+    }
+
+    await logActivity({
+      actor: user,
+      action: 'user_registered',
+      target: { type: 'User', id: user._id, name: user.name },
+      description: `New user registered: ${user.name} (${user.role}) - ID: ${user.universityIdString || citizenId || user._id}`
+    });
+
+    sendTokenResponse(user, 201, res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Login user (supports Email, Phone, Citizen ID e.g. C9604, University ID e.g. U1024, or Aadhaar)
+// @route   POST /api/auth/login
+// @access  Public
+exports.login = async (req, res, next) => {
+  try {
+    const identifier = req.body.email || req.body.identifier || req.body.citizenId || req.body.universityIdString;
+    const { password } = req.body;
+
+    if (!identifier || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide email/mobile/citizen ID/university ID and password' });
+    }
+
+    const cleanId = identifier.trim();
+    const cleanLower = cleanId.toLowerCase();
+
+    // Check demo presets for instant 1-click demo login
+    const demoPreset = DEMO_PRESETS[cleanLower]
+      || (cleanId === '9431100003' ? DEMO_PRESETS['rajesh@gmail.com'] : null)
+      || (cleanId.toUpperCase() === 'C4819' ? DEMO_PRESETS['rajesh@gmail.com'] : null)
+      || (cleanId.toUpperCase() === 'U4819' ? DEMO_PRESETS['rajesh@iitjharkhand.ac.in'] : null);
+
+    if (demoPreset && demoPreset.passwords.includes(password.trim())) {
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const dbUser = await User.findOne({ email: demoPreset.email }).select('+password');
+          if (dbUser) {
+            dbUser.lastLogin = new Date();
+            await dbUser.save({ validateBeforeSave: false }).catch(() => {});
+            return sendTokenResponse(dbUser, 200, res);
+          }
+        } catch (dbErr) {
+          console.warn('DB search failed for demo user, using demo preset:', dbErr.message);
+        }
+      }
+      return sendTokenResponse(demoPreset, 200, res);
+    }
+
+    const queryConditions = [
+      { email: cleanLower },
+      { phone: cleanId },
+      { citizenId: cleanId.toUpperCase() },
+      { universityIdString: cleanId.toUpperCase() },
+      { aadhaar: cleanId },
+      { aadhaar: cleanId.replace(/[^0-9]/g, '') }
+    ];
+    if (cleanLower === 'admin@jansetu.in') {
+      queryConditions.push({ email: 'admin@innovatesphere.in' });
+    }
+    if (cleanLower === 'admin@innovatesphere.in') {
+      queryConditions.push({ email: 'admin@jansetu.in' });
+    }
+    const user = await User.findOne({
+      $or: queryConditions
+    }).select('+password');
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    if (!user.isActive) {
+      return res.status(401).json({ success: false, message: 'Your account has been deactivated. Contact support.' });
+    }
+
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    // Ensure universityIdString exists if university_rep
+    if (user.role === 'university_rep' && !user.universityIdString) {
+      user.universityIdString = 'U' + Math.floor(1000 + Math.random() * 9000);
+      try {
+        const { UniversityProfile } = require('../../university/database');
+        let uProfile = await UniversityProfile.findOne({ email: user.email.toLowerCase() });
+        if (uProfile && !uProfile.uniqueId) {
+          uProfile.uniqueId = user.universityIdString;
+          uProfile.facultyId = user.universityIdString;
+          await uProfile.save();
+        }
+      } catch(e) {}
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save({ validateBeforeSave: false });
+
+    await logActivity({
+      actor: user,
+      action: 'user_login',
+      target: { type: 'User', id: user._id, name: user.name },
+      description: `User logged in: ${user.name}`
+    });
+
+    sendTokenResponse(user, 200, res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get current logged-in user
+// @route   GET /api/auth/me
+// @access  Private
+exports.getMe = async (req, res, next) => {
+  try {
+    let user = null;
+    if (mongoose.connection.readyState === 1 && req.user?.id) {
+      try {
+        user = await User.findById(req.user.id)
+          .populate('universityId', 'name shortName logo')
+          .populate('industryPartnerId', 'name type logo');
+      } catch (e) {}
+    }
+    if (!user) {
+      user = req.user;
+    }
+    res.status(200).json({ success: true, user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update profile
+// @route   PUT /api/auth/update-profile
+// @access  Private
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const allowedFields = ['name', 'email', 'phone', 'aadhaar', 'bio', 'designation', 'department', 'address', 'notificationPreferences'];
+    const updateData = {};
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) updateData[field] = req.body[field];
+    });
+
+    if (req.file) {
+      updateData.avatar = '/uploads/avatars/' + req.file.filename;
+    }
+
+    const user = await User.findByIdAndUpdate(req.user.id, updateData, {
+      new: true, runValidators: true
+    });
+
+    if (user && !user.citizenId && user.role === 'citizen') {
+      user.citizenId = 'C' + (user.aadhaar ? user.aadhaar.replace(/[^0-9]/g, '').slice(-4) : user._id.toString().slice(-4));
+      await user.save({ validateBeforeSave: false });
+    }
+
+    res.status(200).json({ success: true, user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Send OTP (Dummy OTP 123456 as requested)
+// @route   POST /api/auth/send-otp
+// @access  Public
+exports.sendOtp = async (req, res, next) => {
+  try {
+    const { target, type } = req.body;
+    const otp = '123456'; // User requested dummy OTP 123456 everywhere
+    res.status(200).json({
+      success: true,
+      message: `OTP sent to ${target || 'contact'}. Use demo OTP: 123456`,
+      otp,
+      expiresIn: 300
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify OTP (Accepts 123456)
+// @route   POST /api/auth/verify-otp
+// @access  Public
+exports.verifyOtp = async (req, res, next) => {
+  try {
+    const { otp } = req.body;
+    if (otp !== '123456') {
+      return res.status(400).json({ success: false, message: 'अमान्य OTP! कृपया सही OTP (123456) दर्ज करें।' });
+    }
+    res.status(200).json({ success: true, message: 'OTP verified successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Change password (requires current password and new password)
+// @route   PUT /api/auth/change-password
+// @access  Private
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(req.user.id).select('+password');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (!currentPassword) {
+      return res.status(400).json({ success: false, message: 'कृपया वर्तमान पासवर्ड दर्ज करें (Please enter current password).' });
+    }
+
+    if (!(await user.matchPassword(currentPassword))) {
+      return res.status(400).json({ success: false, message: 'मूल/वर्तमान पासवर्ड गलत है (Incorrect current password)' });
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'नया पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.status(200).json({ success: true, message: 'पासवर्ड सफलतापूर्वक बदल दिया गया (Password changed successfully)!' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Forgot password (generates reset token - simplified for demo)
+// @route   POST /api/auth/forgot-password
+// @access  Public
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No account found with that email' });
+    }
+
+    // In production, send reset email; for demo, return token
+    const resetToken = require('crypto').randomBytes(32).toString('hex');
+    user.resetPasswordToken = require('crypto').createHash('sha256').update(resetToken).digest('hex');
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset link sent to your email (Demo: token returned)',
+      resetToken // Remove in production
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Reset password
+// @route   PUT /api/auth/reset-password/:token
+// @access  Public
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const resetPasswordToken = require('crypto').createHash('sha256').update(req.params.token).digest('hex');
+    const user = await User.findOne({
+      resetPasswordToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+    }
+
+    user.password = req.body.password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    sendTokenResponse(user, 200, res);
+  } catch (error) {
+    next(error);
+  }
+};

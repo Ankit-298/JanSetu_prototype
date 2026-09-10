@@ -1,0 +1,397 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+const connectDB = require('./others/config/database');
+const errorHandler = require('./others/middleware/errorHandler');
+
+// Connect Database
+connectDB();
+
+const app = express();
+
+// Ensure upload directory exists
+const uploadDir = process.env.UPLOAD_PATH || './others/public/uploads';
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+// Security Middleware
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
+
+// CORS
+app.use(cors({
+  origin: process.env.CLIENT_URL || '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Rate limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10000, // Generous limit for real-time dev/demo polling
+  message: { success: false, message: 'Too many requests, please try again later.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10000, // Generous limit for dev, evaluation & demo login
+  message: { success: false, message: 'Too many auth attempts.' }
+});
+
+// Body parsers
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Compression
+app.use(compression());
+
+// Logging
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
+
+// Rate limit auth routes
+app.use('/api/auth', authLimiter);
+app.use('/api', apiLimiter);
+
+// Static files - serve public directory
+// Static files - Modular and Public directories
+app.use('/citizen', express.static(path.join(__dirname, 'citizen/dist')));
+app.use('/university', express.static(path.join(__dirname, 'university/dist')));
+app.use('/admin', express.static(path.join(__dirname, 'admin/dist')));
+app.use('/industries', express.static(path.join(__dirname, 'industries/dist')));
+app.use('/industry', express.static(path.join(__dirname, 'industries/dist')));
+app.use('/others', express.static(path.join(__dirname, 'others/public')));
+app.use(express.static(path.join(__dirname, 'others/public')));
+
+// No-cache helper for dashboard views to prevent back-button history leaks
+const sendDashboard = (filePath) => (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.sendFile(path.join(__dirname, filePath));
+};
+
+// Clean Modular Routes & Navigation
+app.get('/citizen', sendDashboard('citizen/dist/index.html'));
+app.get('/citizen/*', sendDashboard('citizen/dist/index.html'));
+app.get('/university', sendDashboard('university/dist/index.html'));
+app.get('/university/*', sendDashboard('university/dist/index.html'));
+app.get('/admin', sendDashboard('admin/dist/index.html'));
+app.get('/admin/*', sendDashboard('admin/dist/index.html'));
+app.get('/industries', sendDashboard('industries/dist/index.html'));
+app.get('/industries/*', sendDashboard('industries/dist/index.html'));
+app.get('/industry', sendDashboard('industries/dist/index.html'));
+
+// Backward-compatible dashboard paths
+app.get('/dashboard/citizen.html', (req, res) => res.redirect('/citizen'));
+app.get('/dashboard/university.html', (req, res) => res.redirect('/university'));
+app.get('/dashboard/admin.html', (req, res) => res.redirect('/admin'));
+app.get('/dashboard/industry.html', (req, res) => res.redirect('/industries'));
+
+// Mount API Routes
+app.use('/api/auth', require('./others/routes/auth'));
+app.use('/api/challenges', require('./others/routes/challenges'));
+app.use('/api/notifications', require('./others/routes/notifications'));
+app.use('/api/analytics', require('./others/routes/analytics'));
+app.use('/api/admin', require('./others/routes/admin'));
+app.use('/api', require('./university/api'));
+
+// Comments standalone route (for delete)
+const { deleteComment, toggleCommentLike } = require('./others/controllers/commentController');
+const { protect: commentProtect } = require('./others/middleware/auth');
+app.delete('/api/comments/:id', commentProtect, deleteComment);
+app.post('/api/comments/:id/like', commentProtect, toggleCommentLike);
+
+// Public map-data shortcut
+app.get('/api/map-data', (req, res, next) => { req.url = '/challenges/map-data'; require('./others/routes/challenges')(req, res, next); });
+
+// Reverse Geocode endpoint for accurate GPS auto-detection
+app.get('/api/location/reverse-geocode', async (req, res) => {
+  try {
+    const lat = parseFloat(req.query.lat);
+    const lng = parseFloat(req.query.lng);
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({ success: false, message: 'Valid lat and lng query params required' });
+    }
+
+    const jharkhandDistricts = [
+      'Ranchi', 'Dhanbad', 'Bokaro', 'East Singhbhum', 'West Singhbhum',
+      'Hazaribagh', 'Deoghar', 'Giridih', 'Ramgarh', 'Palamu',
+      'Garhwa', 'Chatra', 'Koderma', 'Jamtara', 'Godda',
+      'Sahibganj', 'Pakur', 'Khunti', 'Gumla', 'Simdega',
+      'Lohardaga', 'Seraikela Kharsawan', 'Latehar', 'Dumka'
+    ];
+
+    const districtCenters = {
+      'Ranchi': { lat: 23.3441, lng: 85.3096 },
+      'Dhanbad': { lat: 23.7957, lng: 86.4304 },
+      'Bokaro': { lat: 23.6693, lng: 86.1511 },
+      'East Singhbhum': { lat: 22.8046, lng: 86.2029 },
+      'West Singhbhum': { lat: 22.5668, lng: 85.8080 },
+      'Hazaribagh': { lat: 23.9925, lng: 85.3637 },
+      'Deoghar': { lat: 24.4826, lng: 86.7000 },
+      'Giridih': { lat: 24.1852, lng: 86.3079 },
+      'Ramgarh': { lat: 23.6300, lng: 85.5100 },
+      'Palamu': { lat: 24.0300, lng: 84.0700 },
+      'Garhwa': { lat: 24.1800, lng: 83.8100 },
+      'Chatra': { lat: 24.2100, lng: 84.8700 },
+      'Koderma': { lat: 24.4700, lng: 85.5900 },
+      'Jamtara': { lat: 23.9600, lng: 86.8000 },
+      'Godda': { lat: 24.8300, lng: 87.2100 },
+      'Sahibganj': { lat: 25.2500, lng: 87.6500 },
+      'Pakur': { lat: 24.6300, lng: 87.8500 },
+      'Khunti': { lat: 23.0700, lng: 85.2800 },
+      'Gumla': { lat: 23.0400, lng: 84.5400 },
+      'Simdega': { lat: 22.6200, lng: 84.5000 },
+      'Lohardaga': { lat: 23.4400, lng: 84.6800 },
+      'Seraikela Kharsawan': { lat: 22.7000, lng: 85.9800 },
+      'Latehar': { lat: 23.7400, lng: 84.5000 },
+      'Dumka': { lat: 24.2700, lng: 87.2500 }
+    };
+
+    let nominatimData = null;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const osmUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      const resp = await fetch(osmUrl, {
+        headers: { 'User-Agent': 'JanSetuCivicApp/2.0 (jansetu.jharkhand.gov)' },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (resp.ok) {
+        nominatimData = await resp.json();
+      }
+    } catch (e) {
+      // Graceful timeout or offline fallback
+    }
+
+    let state = 'Jharkhand';
+    let rawDistrict = '';
+    let block = '';
+    let panchayat = '';
+    let village = '';
+    let landmark = '';
+    let formattedAddress = '';
+
+    if (nominatimData && nominatimData.address) {
+      const a = nominatimData.address;
+      formattedAddress = nominatimData.display_name || '';
+      state = a.state || 'Jharkhand';
+      rawDistrict = (a.state_district || a.district || a.county || '').replace(/\s+District$/i, '').trim();
+      block = a.county || a.subdistrict || a.tehsil || a.taluk || a.municipality || '';
+      panchayat = a.suburb || a.neighbourhood || a.quarter || a.city_district || a.hamlet || '';
+      village = a.village || a.town || a.residential || a.suburb || '';
+      landmark = a.amenity || a.building || a.road || '';
+    }
+
+    // Match district against valid 24 districts
+    let matchedDistrict = jharkhandDistricts.find(d => 
+      rawDistrict && (rawDistrict.toLowerCase().includes(d.toLowerCase()) || d.toLowerCase().includes(rawDistrict.toLowerCase()))
+    );
+
+    if (!matchedDistrict) {
+      let minDistance = Infinity;
+      matchedDistrict = 'Ranchi';
+      for (const [name, coords] of Object.entries(districtCenters)) {
+        const d = Math.hypot(coords.lat - lat, coords.lng - lng);
+        if (d < minDistance) {
+          minDistance = d;
+          matchedDistrict = name;
+        }
+      }
+    }
+
+    if (!block) block = `${matchedDistrict} Sadar`;
+    if (!panchayat) panchayat = village || `${matchedDistrict} Panchayat`;
+    if (!village) village = landmark || 'Ward 1';
+    if (!landmark && formattedAddress) {
+      landmark = formattedAddress.split(',')[0] || '';
+    }
+
+    res.json({
+      success: true,
+      data: {
+        state,
+        district: matchedDistrict,
+        block,
+        panchayat,
+        village,
+        landmark,
+        formattedAddress,
+        coordinates: { lat, lng }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Universities public route
+const University = require('./others/models/University');
+const IndustryPartner = require('./others/models/IndustryPartner');
+
+app.get('/api/universities', async (req, res) => {
+  try {
+    // Automatically ensure all active university portal profile institutions exist in universities collection
+    try {
+      const { UniversityProfile } = require('./university/database');
+      const profiles = await UniversityProfile.find().lean();
+      for (const profile of profiles) {
+        if (profile && profile.institution) {
+          const instName = profile.institution.trim();
+          const escaped = instName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const existing = await University.findOne({
+            $or: [
+              { name: { $regex: new RegExp('^' + escaped + '$', 'i') } },
+              { shortName: { $regex: new RegExp('^' + escaped + '$', 'i') } }
+            ]
+          });
+          if (!existing) {
+            await University.create({
+              name: instName,
+              shortName: instName.length > 20 ? (instName.match(/\b([A-Z])/g)?.join('') || instName) : instName,
+              type: instName.toLowerCase().includes('iit') ? 'iit' : instName.toLowerCase().includes('nit') ? 'nit' : 'central',
+              location: {
+                city: profile.location?.split(',')[0]?.trim() || 'New Delhi',
+                district: 'University Campus',
+                state: profile.location?.split(',')[1]?.trim() || 'Delhi',
+                pincode: '110016'
+              },
+              contact: {
+                email: profile.email || 'faculty@university.ac.in',
+                phone: profile.phone || '+91 11 2659 1000'
+              },
+              departments: [profile.department || 'Department of Engineering and Technology'],
+              expertiseDomains: [
+                'Energy & Technology',
+                'Healthcare',
+                'Water Management',
+                'Urban Infrastructure',
+                'Sanitation & Environment',
+                'Public Administration'
+              ],
+              facilities: { hasIncubationCenter: true, hasResearchLab: true, hasInnovationHub: true, hasTBICenter: true },
+              naacGrade: 'A++',
+              stats: { totalAssigned: 18, totalResolved: 14, performanceScore: 98 },
+              isActive: true,
+              isVerified: true
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error auto-syncing profile university:', e.message);
+    }
+
+    const { search, domain } = req.query;
+    const query = { isActive: true };
+    if (search) query.name = { $regex: search, $options: 'i' };
+    if (domain) query.expertiseDomains = domain;
+    const universities = await University.find(query)
+      .select('name shortName type location contact logo expertiseDomains departments facilities stats naacGrade')
+      .sort('-stats.performanceScore');
+    res.json({ success: true, data: universities });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+app.get('/api/universities/:id', async (req, res) => {
+  try {
+    const u = await University.findById(req.params.id).populate('representatives', 'name email avatar designation');
+    if (!u) return res.status(404).json({ success: false, message: 'University not found' });
+    res.json({ success: true, data: u });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.get('/api/industry', async (req, res) => {
+  try {
+    const partners = await IndustryPartner.find({ isActive: true })
+      .select('name type sector description logo location contact capabilities stats');
+    res.json({ success: true, data: partners });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// SPA fallback - serve index.html for non-API routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'others/public', 'index.html'));
+});
+
+// Dashboard routes
+app.get('/dashboard/citizen', sendDashboard('citizen/dist/index.html'));
+app.get('/dashboard/university', sendDashboard('university/dist/index.html'));
+app.get('/dashboard/industry', sendDashboard('industries/dist/index.html'));
+app.get('/dashboard/admin', sendDashboard('admin/dist/index.html'));
+
+// Auth pages
+app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'others/public', 'login.html')));
+app.get('/register', (req, res) => res.sendFile(path.join(__dirname, 'others/public', 'register.html')));
+app.get('/forgot-password', (req, res) => res.sendFile(path.join(__dirname, 'others/public', 'forgot-password.html')));
+
+// Pages
+app.get('/feed', (req, res) => res.redirect('/dashboard/citizen'));
+app.get('/map', (req, res) => res.sendFile(path.join(__dirname, 'others/public', 'map.html')));
+app.get('/intro', (req, res) => res.sendFile(path.join(__dirname, 'others/public', 'intro.html')));
+
+
+// API 404
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ success: false, message: `API route ${req.originalUrl} not found` });
+});
+
+// Page 404
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(__dirname, 'others/public', '404.html'));
+});
+
+// Error Handler
+app.use(errorHandler);
+
+const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || '0.0.0.0';
+
+function getNetworkIp() {
+  try {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if ((net.family === 'IPv4' || net.family === 4) && !net.internal) {
+          return net.address;
+        }
+      }
+    }
+  } catch (e) {}
+  return 'localhost';
+}
+
+const server = app.listen(PORT, HOST, () => {
+  const localIp = getNetworkIp();
+  console.log(`\n🚀 InnovateSphere Server running on all network interfaces (${HOST}:${PORT})`);
+  console.log(`🌐 Local:   http://localhost:${PORT}`);
+  console.log(`📡 Network: http://${localIp}:${PORT}`);
+  console.log(`📊 Admin Dashboard: http://${localIp}:${PORT}/dashboard/admin`);
+  console.log(`👤 Citizen Dashboard: http://${localIp}:${PORT}/dashboard/citizen`);
+  console.log(`\n📌 Demo Credentials:`);
+  console.log(`   Admin:      admin@innovatesphere.in / admin123`);
+  console.log(`   Citizen:    rajesh@gmail.com / citizen123`);
+  console.log(`   University: rajesh@iitjharkhand.ac.in / univ123`);
+  console.log(`   Industry:   tata@steel.com / industry123\n`);
+});
+
+// Handle unhandled rejections
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Rejection:', err?.message || err);
+});
+
+module.exports = app;

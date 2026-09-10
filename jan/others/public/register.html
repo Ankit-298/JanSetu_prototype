@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Account — JanSetu | Citizen Participation Portal</title>
+  <meta name="description" content="Register on JanSetu to report civic issues, track university solutions, and participate in community building.">
+  <link rel="icon" type="image/png" href="/jansetu-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <script>
+    (function () {
+      function redirectIfAuth() {
+        var token = localStorage.getItem('is_token') || localStorage.getItem('token');
+        if (token) {
+          var u = null;
+          try { u = JSON.parse(localStorage.getItem('is_user') || localStorage.getItem('user')); } catch (e) {}
+          var role = (u && u.role) ? u.role : 'citizen';
+          var routes = {
+            citizen: '/citizen',
+            university_rep: '/university',
+            industry_rep: '/industries',
+            admin: '/admin'
+          };
+          window.location.replace(routes[role] || '/citizen');
+        }
+      }
+      redirectIfAuth();
+      window.addEventListener('pageshow', function () {
+        redirectIfAuth();
+      });
+    })();
+  </script>
+</head>
+<body>
+<div class="auth-layout">
+  <!-- Left Panel -->
+  <div class="auth-left">
+    <div class="auth-left-grid"></div>
+    <div class="auth-left-content">
+      <a href="/" class="auth-logo">
+        <img src="/jansetu-logo.png" alt="JanSetu Logo" class="auth-logo-img" onerror="this.src='/others/jansetu-logo.png'" />
+        <div class="auth-logo-text">
+          <div class="auth-logo-name">
+            <span>JanSetu</span>
+            <span class="auth-logo-badge">झारखंड</span>
+          </div>
+          <span class="auth-logo-sub">जन सेतु · Citizen &amp; Societal Innovation</span>
+        </div>
+      </a>
+
+      <h1 class="auth-left-title">
+        Join JanSetu<br>Civic Innovation &amp;<br>Resolution Movement
+      </h1>
+      <p class="auth-left-desc">
+        Connect your community directly with premier universities like BIT Mesra, IIT Delhi, and industry sponsors like Tata Steel to solve real civic challenges.
+      </p>
+
+      <div class="auth-features">
+        <div class="auth-feature">
+          <div class="auth-feature-icon">✨</div>
+          <div class="auth-feature-text">100% Free Civic Problem Registration for every Jharkhand citizen</div>
+        </div>
+        <div class="auth-feature">
+          <div class="auth-feature-icon">📸</div>
+          <div class="auth-feature-text">Multiple photo proof uploads directly synced with Supabase cloud storage</div>
+        </div>
+        <div class="auth-feature">
+          <div class="auth-feature-icon">🔒</div>
+          <div class="auth-feature-text">Aadhaar verified ground reporter credentials with government work order slips</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="auth-left-stats">
+      <div>
+        <div class="auth-left-stat-num">3 Portals</div>
+        <div class="auth-left-stat-lbl">Citizen / Univ / Industry</div>
+      </div>
+      <div>
+        <div class="auth-left-stat-num">24 Districts</div>
+        <div class="auth-left-stat-lbl">Jharkhand Coverage</div>
+      </div>
+      <div>
+        <div class="auth-left-stat-num">Free</div>
+        <div class="auth-left-stat-lbl">Civic Service</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="auth-right">
+    <div class="auth-form-container">
+      <div class="auth-form-header">
+        <a href="/" class="auth-back-link">
+          <span>←</span> Back to JanSetu Home
+        </a>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <img src="/jansetu-logo.png" alt="JanSetu" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1.5px solid #FF9933;" onerror="this.src='/others/jansetu-logo.png'" />
+          <h2 class="auth-form-title" style="margin:0;">Create JanSetu Account</h2>
+        </div>
+        <p class="auth-form-subtitle">Already registered? <a href="/login.html">Sign in here</a></p>
+      </div>
+
+      <div id="registerAlert" style="display:none"></div>
+
+      <!-- Role Selector (3-Cards) -->
+      <div style="margin-bottom:20px;">
+        <label class="form-label">I am joining JanSetu as<span class="required">*</span></label>
+        <div class="role-selector-3col">
+          <div class="role-card-option">
+            <input type="radio" name="role" id="role-citizen" value="citizen" checked>
+            <label class="role-card-label" for="role-citizen">
+              <span class="role-card-icon">👤</span>
+              <span class="role-card-title">Citizen</span>
+              <span class="role-card-desc">Ground Reporter</span>
+            </label>
+          </div>
+          <div class="role-card-option">
+            <input type="radio" name="role" id="role-university" value="university_rep">
+            <label class="role-card-label" for="role-university">
+              <span class="role-card-icon">🏛️</span>
+              <span class="role-card-title">University</span>
+              <span class="role-card-desc">Faculty &amp; R&amp;D Team</span>
+            </label>
+          </div>
+          <div class="role-card-option">
+            <input type="radio" name="role" id="role-industry" value="industry_rep">
+            <label class="role-card-label" for="role-industry">
+              <span class="role-card-icon">🏭</span>
+              <span class="role-card-title">Industry</span>
+              <span class="role-card-desc">CSR &amp; Sponsor</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <form id="registerForm" novalidate>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label class="form-label" for="regName">Full Name<span class="required">*</span></label>
+            <div class="input-with-icon">
+              <span class="input-icon">👤</span>
+              <input type="text" class="form-control" id="regName" placeholder="Your full name" required>
+            </div>
+            <div class="form-error" id="nameError" style="display:none"></div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="regPhone">Mobile Number<span class="required">*</span></label>
+            <div class="input-with-icon">
+              <span class="input-icon">📞</span>
+              <input type="tel" class="form-control" id="regPhone" placeholder="+91 9XXXXXXXXX" value="+91 9431100003" required>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="regEmail">Email Address<span class="required">*</span></label>
+          <div class="input-with-icon">
+            <span class="input-icon">✉️</span>
+            <input type="email" class="form-control" id="regEmail" placeholder="e.g. yourname@gmail.com" required>
+          </div>
+          <div class="form-error" id="regEmailError" style="display:none"></div>
+        </div>
+
+        <!-- Aadhaar & OTP Section -->
+        <div class="form-group">
+          <label class="form-label" for="regAadhaar">
+            Aadhaar Card Number (12 Digits)<span class="required">*</span>
+          </label>
+          <div class="input-with-icon">
+            <span class="input-icon">🇮🇳</span>
+            <input type="text" class="form-control" id="regAadhaar" placeholder="XXXX-XXXX-XXXX" maxlength="14" value="8492-3840-4819" required>
+          </div>
+          <div class="form-error" id="regAadhaarError" style="display:none"></div>
+        </div>
+
+        <!-- OTP Verification Card -->
+        <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:12px 14px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#166534;display:flex;align-items:center;gap:6px;">
+              <span>🛡️</span> <span>Aadhaar OTP Verification</span>
+            </div>
+            <div style="font-size:11px;color:#15803D;margin-top:2px;">
+              Demo OTP: <strong style="letter-spacing:1px;">123456</strong>
+            </div>
+          </div>
+          <button type="button" onclick="triggerRegisterOtp()" style="background:#16A34A;color:#FFFFFF;border:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(22,163,74,0.3);">
+            ✓ Verify via OTP
+          </button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label class="form-label" for="regPassword">Password<span class="required">*</span></label>
+            <div class="input-with-icon">
+              <span class="input-icon">🔒</span>
+              <input type="password" class="form-control" id="regPassword" placeholder="Min 6 characters" required>
+            </div>
+            <div class="form-error" id="passwordError" style="display:none"></div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="regConfirmPassword">Confirm Password<span class="required">*</span></label>
+            <div class="input-with-icon">
+              <span class="input-icon">🔒</span>
+              <input type="password" class="form-control" id="regConfirmPassword" placeholder="Repeat password" required>
+            </div>
+            <div class="form-error" id="confirmPasswordError" style="display:none"></div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-auth-submit" id="registerBtn" style="margin-top:8px;">
+          <span class="btn-text">Create Account &amp; Enter Portal →</span>
+          <div class="btn-spinner"></div>
+        </button>
+      </form>
+
+      <!-- Instant Demo Users Box on Register Page -->
+      <div class="demo-section-box">
+        <div class="demo-section-header">
+          <span class="demo-section-title">⚡ Want to Test Without Registering?</span>
+          <span class="demo-section-badge">Demo Users</span>
+        </div>
+        <div class="demo-roles-grid">
+          <button type="button" onclick="quickLogin('admin@jansetu.in','admin123')" class="demo-role-btn">
+            <span class="demo-role-icon">🛡️</span>
+            <div>
+              <div class="demo-role-name">Admin Portal</div>
+              <div class="demo-role-sub">Shri S. K. Verma</div>
+            </div>
+          </button>
+          <button type="button" onclick="quickLogin('rajesh@gmail.com','citizen123')" class="demo-role-btn">
+            <span class="demo-role-icon">👤</span>
+            <div>
+              <div class="demo-role-name">Citizen Portal</div>
+              <div class="demo-role-sub">Rajesh Mahto</div>
+            </div>
+          </button>
+          <button type="button" onclick="quickLogin('rajesh@iitjharkhand.ac.in','univ123')" class="demo-role-btn">
+            <span class="demo-role-icon">🏛️</span>
+            <div>
+              <div class="demo-role-name">University Portal</div>
+              <div class="demo-role-sub">Prof. R. K. Sharma</div>
+            </div>
+          </button>
+          <button type="button" onclick="quickLogin('tata@steel.com','industry123')" class="demo-role-btn">
+            <span class="demo-role-icon">🏭</span>
+            <div>
+              <div class="demo-role-name">Industry Portal</div>
+              <div class="demo-role-sub">Tata Steel CSR</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal for Register OTP -->
+<div id="regOtpModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;max-width:400px;width:92%;padding:24px;text-align:center;box-shadow:0 20px 48px rgba(0,0,0,0.25);border:1.5px solid #86EFAC;">
+    <div style="font-size:18px;font-weight:900;color:#0F172A;margin-bottom:6px;">
+      🛡️ Aadhaar Verification
+    </div>
+    <p style="font-size:12.5px;color:#64748B;margin-bottom:14px;">Enter the 6-digit OTP sent to your linked mobile number.</p>
+
+    <div style="background:#F0FDF4;border:1.5px dashed #22C55E;border-radius:12px;padding:12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="text-align:left;">
+        <div style="font-size:10px;font-weight:800;color:#15803D;text-transform:uppercase;">💡 Demo Verification OTP</div>
+        <div style="font-size:22px;font-weight:900;letter-spacing:4px;color:#166534;">123456</div>
+      </div>
+      <button type="button" onclick="document.getElementById('regOtpInput').value='123456'" style="padding:5px 12px;font-size:11.5px;font-weight:800;background:#16A34A;color:#FFF;border:none;border-radius:8px;cursor:pointer;">
+        ⚡ Auto-Fill
+      </button>
+    </div>
+
+    <input type="text" id="regOtpInput" maxlength="6" style="width:100%;height:48px;font-size:22px;letter-spacing:8px;text-align:center;font-weight:900;border:2px solid #CBD5E1;border-radius:10px;color:#002D62;background:#F8FAFC;margin-bottom:16px;" placeholder="123456" />
+
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeRegOtpModal()" style="padding:9px 18px;border-radius:10px;font-weight:700;">Cancel</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="confirmRegisterOtp()" style="padding:9px 22px;font-weight:800;border-radius:10px;background:#16A34A;">✓ Verify OTP</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/utils.js"></script>
+<script src="/js/auth.js"></script>
+<script>
+  window.triggerRegisterOtp = () => {
+    document.getElementById('regOtpModal').style.display = 'flex';
+  };
+  window.closeRegOtpModal = () => {
+    document.getElementById('regOtpModal').style.display = 'none';
+  };
+  window.confirmRegisterOtp = () => {
+    const val = document.getElementById('regOtpInput').value.trim();
+    if (val === '123456') {
+      alert('✅ Mobile & Aadhaar OTP verified successfully!');
+      closeRegOtpModal();
+    } else {
+      alert('Invalid OTP. Please enter 123456.');
+    }
+  };
+</script>
+</body>
+</html>
