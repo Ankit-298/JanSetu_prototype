@@ -138,60 +138,111 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     console.log(`[VoiceAgent] Heard: "${text}" at Phase: ${current}`);
     const t = text.toLowerCase();
 
-    // 1. Language Selection Phase
+    // 1. Language Selection Phase - EXACT CLICK ON SPOKEN LANGUAGE CARD
     if (current === 'intro_lang') {
-      if (/english|angreji/i.test(t)) {
-        handleSelectLanguage('en');
+      const isEnglish = /english|inglish|angrezi|angreji|eng|british/i.test(t);
+      const isHindi = /hindi|hindustani|hindee/i.test(t);
+
+      if (isEnglish) {
+        animateCursorToAndClick('#langCardEn', () => {
+          handleSelectLanguage('en');
+        });
+      } else if (isHindi) {
+        animateCursorToAndClick('#langCardHi', () => {
+          handleSelectLanguage('hi');
+        });
       } else {
-        handleSelectLanguage('hi');
+        // Prompt clearly if ambiguous
+        speak(lang === 'en'
+          ? 'Please say: English or Hindi.'
+          : 'Kripya batayein: Hindi ya English?');
       }
     }
 
     // 2. Assistance Choice Phase (Civic Problem or Status ONLY)
     else if (current === 'assistance_choice') {
       if (/status|sthiti|track|jaanch|kya hua|progress|jh-\d+/i.test(t)) {
-        handleCheckStatusAction(text);
+        animateCursorToAndClick('#actionCardStatus', () => {
+          handleCheckStatusAction(text);
+        });
       } else if (/report|samasya|problem|shikayat|darj|issue|complaint|madad|karna hai|karni hai|haan/i.test(t)) {
-        handleReportProblemAction();
+        animateCursorToAndClick('#actionCardReport', () => {
+          handleReportProblemAction();
+        });
       } else {
         // Off-topic guardrail: Strictly civic issues and status
         speak(lang === 'en'
-          ? 'I can only assist with reporting civic grievances (roads, water, electricity, sanitation) or tracking status. Please tell me your problem or provide a Tracking ID.'
-          : 'Main keval JanSetu nagarik samasyaon (sadak, paani, bijli, kachra) ko darj karne aur unki sthiti batane me madad kar sakta hoon. Kripya apni samasya batayein ya apna Tracking ID batayein.');
+          ? 'I can only assist with reporting civic problems (roads, water, electricity, sanitation) or tracking status. Please say: Report a problem or Check status.'
+          : 'Main keval JanSetu nagarik samasyaon (sadak, paani, bijli, kachra) ko darj karne aur unki sthiti batane me madad kar sakta hoon. Kripya kahein: Samasya darj karein ya Sthiti jaanchein.');
       }
     }
 
-    // 3. Step 1: Category Selection
+    // 3. Step 1: Category Selection - EXACT matching for whatever the person says (English & Hindi)
     else if (current === 'driving_category') {
-      let searchKeyword = 'water';
-      if (/sadak|road|gaddha|pothole|pul|bridge|divider/i.test(t)) searchKeyword = 'road';
-      else if (/kooda|kachra|safai|garbage|waste|dustbin/i.test(t)) searchKeyword = 'clean';
-      else if (/bijli|light|power|current|transformer|wire/i.test(t)) searchKeyword = 'electric';
-      else if (/hospital|dawa|doctor|swasthya|health/i.test(t)) searchKeyword = 'health';
-      else if (/school|padhai|teacher|kitab/i.test(t)) searchKeyword = 'school';
-      else if (/khet|kisan|crop|fasal|farming/i.test(t)) searchKeyword = 'farm';
-      else if (/naala|drain|water|paani|leak|sewer/i.test(t)) searchKeyword = 'water';
+      let targetKey = null;
 
-      const catButtons = Array.from(document.querySelectorAll('#categoryChipsContainer .category-chip-btn'));
-      const targetBtn = catButtons.find(b => b.textContent.toLowerCase().includes(searchKeyword)) || catButtons[0];
+      // Roads & Infra (English & Hindi)
+      if (/road|pothole|street|highway|bridge|culvert|divider|path|footpath|infrastructure|sadak|gaddha|gaddhe|pul|rasta|khadda/i.test(t)) {
+        targetKey = 'Urban Infrastructure';
+      }
+      // Cleanliness / Sanitation (English & Hindi)
+      else if (/garbage|clean|cleanliness|trash|waste|dustbin|dirt|sweeper|sanitation|kooda|kachra|safai|gandagi|durgandh/i.test(t)) {
+        targetKey = 'Sanitation & Environment';
+      }
+      // Electricity / Power (English & Hindi)
+      else if (/electric|electricity|power|current|light|streetlight|wire|transformer|pole|bijli|batti|taar/i.test(t)) {
+        targetKey = 'Energy & Technology';
+      }
+      // Water Supply / Drainage (English & Hindi)
+      else if (/water|tap|pipeline|leak|drinking water|supply|drain|drainage|waterlog|sewer|paani|pani|nal|pipe|jal|naala|naali/i.test(t)) {
+        targetKey = 'Water Management';
+      }
+      // Healthcare (English & Hindi)
+      else if (/health|hospital|doctor|clinic|medicine|nurse|medical|swasthya|dawa|aspatal|ilaj/i.test(t)) {
+        targetKey = 'Healthcare';
+      }
+      // Education / School (English & Hindi)
+      else if (/school|college|education|teacher|student|class|shiksha|vidyalaya|padhai|kitab/i.test(t)) {
+        targetKey = 'Education';
+      }
+      // Farming / Agriculture (English & Hindi)
+      else if (/farm|farming|agriculture|crop|farmer|irrigation|khet|kisan|fasal|krishi|sinchai/i.test(t)) {
+        targetKey = 'Agriculture';
+      }
+      // Other issues (English & Hindi)
+      else if (/other|corruption|ration|pension|admin|bhatta|anya/i.test(t)) {
+        targetKey = 'Public Administration';
+      }
 
-      if (targetBtn) {
-        animateCursorToAndClick(targetBtn, () => {
-          speak(lang === 'en' 
-            ? 'Alright, I have selected the category.' 
-            : 'Theek hai, maine category choose kar liya hai.');
+      if (targetKey) {
+        const catButtons = Array.from(document.querySelectorAll('#categoryChipsContainer .category-chip-btn'));
+        const targetBtn = catButtons.find(b => {
+          const onclickAttr = b.getAttribute('onclick') || '';
+          return onclickAttr.toLowerCase().includes(targetKey.toLowerCase());
+        }) || catButtons.find(b => b.textContent.toLowerCase().includes(targetKey.toLowerCase())) || catButtons[0];
 
-          setTimeout(() => {
-            animateCursorToAndClick('#stepSection1 .btn-modal-primary', () => {
-              setPhase('driving_desc');
-              setTimeout(() => {
-                speak(lang === 'en'
-                  ? 'Please describe your problem in detail — what is happening?'
-                  : 'Aap apni problem vistaar se batayein ki kya problem ho rahi hai?');
-              }, 400);
+        if (targetBtn) {
+          animateCursorToAndClick(targetBtn, () => {
+            speak(lang === 'en' 
+              ? 'Alright, I have selected the category.' 
+              : 'Theek hai, maine category choose kar liya hai.');
+
+            setTimeout(() => {
+              animateCursorToAndClick('#stepSection1 .btn-modal-primary', () => {
+                setPhase('driving_desc');
+                setTimeout(() => {
+                  speak(lang === 'en'
+                    ? 'Please describe your problem in detail — what is happening?'
+                    : 'Aap apni problem vistaar se batayein ki kya problem ho rahi hai?');
+                }, 400);
+              }, 600);
             }, 600);
-          }, 600);
-        });
+          });
+        }
+      } else {
+        speak(lang === 'en'
+          ? 'Please specify your category: Roads, Water, Electricity, Cleanliness, Healthcare, or School.'
+          : 'Kripya category batayein: Sadak, Paani, Bijli, Safai ya School.');
       }
     }
 
@@ -203,18 +254,18 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       let cleanTitle = text.length > 35 ? text.slice(0, 35) + '...' : text;
       let cleanDesc = text;
 
-      if (/naala|water|paani|leak/i.test(t)) {
-        cleanTitle = 'नाली की रुकावट एवं जलभराव की समस्या';
-        cleanDesc = `${text} - क्षेत्र में नाली जाम होने से गंदा पानी सड़क पर बह रहा है। कृपया शीघ्र सफाई कराई जाए।`;
+      if (/naala|water|paani|leak|drain/i.test(t)) {
+        cleanTitle = lang === 'en' ? 'Drainage blockage and water supply issue' : 'नाली की रुकावट एवं जलभराव की समस्या';
+        cleanDesc = `${text} - Immediate resolution required.`;
       } else if (/sadak|road|gaddha|pothole/i.test(t)) {
-        cleanTitle = 'सड़क की जर्जर स्थिति एवं गड्ढों की मरम्मत';
-        cleanDesc = `${text} - मुख्य मार्ग पर गड्ढे होने से आवागमन में भारी असुविधा हो रही है।`;
-      } else if (/kooda|kachra|safai/i.test(t)) {
-        cleanTitle = 'कचरा जमाव एवं नियमित सफाई की आवश्यकता';
-        cleanDesc = `${text} - सार्वजनिक स्थल पर कचरा पड़ा होने से दुर्गंध फैल रही है।`;
-      } else if (/bijli|light|transformer/i.test(t)) {
-        cleanTitle = 'बिजली ट्रांसफॉर्मर खराबी एवं स्ट्रीटलाइट बंद';
-        cleanDesc = `${text} - विद्युत आपूर्ति बाधित होने से क्षेत्र में समस्या हो रही है।`;
+        cleanTitle = lang === 'en' ? 'Damaged road and pothole repair' : 'सड़क की जर्जर स्थिति एवं गड्ढों की मरम्मत';
+        cleanDesc = `${text} - Road repair required for public safety.`;
+      } else if (/kooda|kachra|safai|garbage/i.test(t)) {
+        cleanTitle = lang === 'en' ? 'Garbage dump and sanitation issue' : 'कचरा जमाव एवं नियमित सफाई की आवश्यकता';
+        cleanDesc = `${text} - Cleaning and waste management required.`;
+      } else if (/bijli|light|transformer|electric/i.test(t)) {
+        cleanTitle = lang === 'en' ? 'Electricity and streetlight fault' : 'बिजली ट्रांसफॉर्मर खराबी एवं स्ट्रीटलाइट बंद';
+        cleanDesc = `${text} - Power and light maintenance required.`;
       }
 
       if (descEl) descEl.value = cleanDesc;
@@ -223,55 +274,57 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       setPhase('driving_priority');
       setTimeout(() => {
         speak(lang === 'en'
-          ? 'What is the urgency of this problem — Urgent, High, or Normal?'
+          ? 'What is the priority of this problem — Urgent, High, or Normal?'
           : 'Is samasya ki priority kya hai — Urgent, High ya Normal?');
       }, 500);
     }
 
-    // 5. Step 2: Priority Selection
+    // 5. Step 2: Priority Selection - EXACT matching on user speech
     else if (current === 'driving_priority') {
       let prioValue = 'high';
-      if (/urgent|turant|emergency|bahut/i.test(t)) prioValue = 'urgent';
-      else if (/high|bada|zyada/i.test(t)) prioValue = 'high';
-      else if (/normal|sadharan|theek|medium/i.test(t)) prioValue = 'normal';
+      if (/urgent|turant|emergency|bahut|critical|immediate/i.test(t)) prioValue = 'urgent';
+      else if (/high|bada|zyada|uchh|ucch|severe|major/i.test(t)) prioValue = 'high';
+      else if (/normal|sadharan|theek|medium|madhyam|minor|low/i.test(t)) prioValue = 'normal';
 
       const prioRadio = document.querySelector(`input[name="priorityChoice"][value="${prioValue}"]`);
-      if (prioRadio) {
-        prioRadio.checked = true;
-        try { prioRadio.parentElement?.click(); } catch (e) {}
-      }
+      const prioTarget = prioRadio ? (prioRadio.parentElement || prioRadio) : null;
 
-      speak(lang === 'en' ? 'Priority set. Now let us set the location.' : 'Priority select ho gayi hai.');
+      if (prioTarget) {
+        animateCursorToAndClick(prioTarget, () => {
+          if (prioRadio) prioRadio.checked = true;
+          speak(lang === 'en' ? 'Priority set.' : 'Priority select ho gayi hai.');
 
-      setTimeout(() => {
-        animateCursorToAndClick('#stepSection2 .btn-modal-primary', () => {
-          setPhase('driving_loc');
           setTimeout(() => {
-            speak(lang === 'en'
-              ? 'Now we need your location. Please click Use Current GPS on the left.'
-              : 'Aapka location dalna hai, to left me Use Current GPS par click karein.');
+            animateCursorToAndClick('#stepSection2 .btn-modal-primary', () => {
+              setPhase('driving_loc');
+              setTimeout(() => {
+                speak(lang === 'en'
+                  ? 'Now we need your location. Please click Use Current GPS on the left.'
+                  : 'Aapka location dalna hai, to left me Use Current GPS par click karein.');
 
-            // Auto-click "Use Current Location"
-            setTimeout(() => {
-              animateCursorToAndClick('.btn-gps-autodetect', () => {
+                // Auto-click "Use Current Location"
                 setTimeout(() => {
-                  speak(lang === 'en' ? 'Location found.' : 'Theek hai, location mil gayi.');
-                  setTimeout(() => {
-                    animateCursorToAndClick('#stepSection3 .btn-modal-primary', () => {
-                      setPhase('driving_photo');
+                  animateCursorToAndClick('.btn-gps-autodetect', () => {
+                    setTimeout(() => {
+                      speak(lang === 'en' ? 'Location found.' : 'Theek hai, location mil gayi.');
                       setTimeout(() => {
-                        speak(lang === 'en'
-                          ? 'Do you have a photo of the problem?'
-                          : 'Kya aapke paas photo hai?');
-                      }, 500);
-                    }, 600);
-                  }, 800);
-                }, 1400);
-              }, 700);
-            }, 600);
-          }, 500);
-        }, 700);
-      }, 600);
+                        animateCursorToAndClick('#stepSection3 .btn-modal-primary', () => {
+                          setPhase('driving_photo');
+                          setTimeout(() => {
+                            speak(lang === 'en'
+                              ? 'Do you have a photo of the problem?'
+                              : 'Kya aapke paas photo hai?');
+                          }, 500);
+                        }, 600);
+                      }, 800);
+                    }, 1400);
+                  }, 700);
+                }, 600);
+              }, 500);
+            }, 700);
+          }, 600);
+        });
+      }
     }
 
     // 6. Step 4: Proof - Photo
@@ -378,10 +431,18 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
   // Step 1: Language Selection Handler
   const handleSelectLanguage = (chosenLang) => {
     setLang(chosenLang);
+    if (typeof window !== 'undefined' && typeof window.setLanguage === 'function') {
+      try { window.setLanguage(chosenLang); } catch (e) {}
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (e) {}
+      recognitionRef.current.lang = chosenLang === 'en' ? 'en-IN' : 'hi-IN';
+      try { recognitionRef.current.start(); } catch (e) {}
+    }
     setPhase('assistance_choice');
     const prompt = chosenLang === 'en'
-      ? 'Welcome to JanSetu! How can I help you today? You can report a civic problem or track your grievance status.'
-      : 'JanSetu me main aapki kya madad kar sakta hoon? Aap nagarik samasya darj kar sakte hain ya shikayat ki sthiti jaan sakte hain.';
+      ? 'Welcome to JanSetu! How can I help you today? Please say: Report a problem or Check status.'
+      : 'JanSetu me main aapki kya madad kar sakta hoon? Aap bol sakte hain: Samasya darj karein ya Sthiti jaanchein.';
     speak(prompt);
   };
 
