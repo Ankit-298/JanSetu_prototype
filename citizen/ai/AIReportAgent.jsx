@@ -147,10 +147,17 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       }
     }
 
-    // 2. Assistance Choice Phase
+    // 2. Assistance Choice Phase (Civic Problem or Status ONLY)
     else if (current === 'assistance_choice') {
-      if (/report|samasya|problem|shikayat|darj|issue|complaint|madad|karna hai/i.test(t)) {
+      if (/status|sthiti|track|jaanch|kya hua|progress|jh-\d+/i.test(t)) {
+        handleCheckStatusAction(text);
+      } else if (/report|samasya|problem|shikayat|darj|issue|complaint|madad|karna hai|karni hai|haan/i.test(t)) {
         handleReportProblemAction();
+      } else {
+        // Off-topic guardrail: Strictly civic issues and status
+        speak(lang === 'en'
+          ? 'I can only assist with reporting civic grievances (roads, water, electricity, sanitation) or tracking status. Please tell me your problem or provide a Tracking ID.'
+          : 'Main keval JanSetu nagarik samasyaon (sadak, paani, bijli, kachra) ko darj karne aur unki sthiti batane me madad kar sakta hoon. Kripya apni samasya batayein ya apna Tracking ID batayein.');
       }
     }
 
@@ -373,9 +380,33 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     setLang(chosenLang);
     setPhase('assistance_choice');
     const prompt = chosenLang === 'en'
-      ? 'Welcome to JanSetu! How can I help you today? You can report a problem or track status.'
-      : 'JanSetu me main aapki kya madad kar sakta hoon? Aap samasya darj kar sakte hain ya status jaan sakte hain.';
+      ? 'Welcome to JanSetu! How can I help you today? You can report a civic problem or track your grievance status.'
+      : 'JanSetu me main aapki kya madad kar sakta hoon? Aap nagarik samasya darj kar sakte hain ya shikayat ki sthiti jaan sakte hain.';
     speak(prompt);
+  };
+
+  // Status Inquiry Handler using MongoDB + Sarvam AI
+  const handleCheckStatusAction = async (text = '') => {
+    speak(lang === 'en' ? 'Checking your grievance records...' : 'Aapki shikayat ki sthiti jaanch rahe hain...');
+    try {
+      const matchId = text.match(/JH-\d{4}-\d+/i) || text.match(/\d{4,6}/);
+      const res = await fetch('/api/voice-agent/status-inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trackingId: matchId ? matchId[0] : null,
+          citizenEmail: 'citizen@jansetu.in'
+        })
+      });
+      const data = await res.json();
+      if (data.speech) {
+        speak(data.speech);
+      }
+    } catch (e) {
+      speak(lang === 'en'
+        ? 'Could not fetch status right now. You can also check in My Reports.'
+        : 'Is samay status prapt nahi ho saka. Kripya apna Tracking ID jaise JH-2026-XXXX batayein ya My Reports me dekhein.');
+    }
   };
 
   // Step 2: "Report Problem" trigger
@@ -597,7 +628,7 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
                     <div
                       className="action-card-white"
-                      onClick={() => speak('Kripya apna Tracking ID batayein jaise JH-2026-XXXX')}
+                      onClick={() => handleCheckStatusAction('status')}
                     >
                       <div className="action-icon-pill" style={{ background: '#FEF3C7', color: '#D97706' }}>🔍</div>
                       <div className="action-card-title">स्थिति जांचें</div>

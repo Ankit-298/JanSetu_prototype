@@ -85,26 +85,81 @@ class AudioStreamer {
   }
 }
 
+let currentSarvamAudio = null;
+
 /**
- * Speak text in Hindi / Hinglish with smooth Indian voice
+ * Speak text in Hindi / English using Sarvam AI Bulbul V3 with browser fallback
  */
-function speakText(text, onEnd) {
-  if (!('speechSynthesis' in window) || !text) {
+async function speakText(text, langOrOnEnd, maybeOnEnd) {
+  if (!text) return;
+
+  let lang = 'hi';
+  let onEnd = null;
+
+  if (typeof langOrOnEnd === 'string') {
+    lang = langOrOnEnd.startsWith('en') ? 'en' : 'hi';
+    onEnd = maybeOnEnd;
+  } else if (typeof langOrOnEnd === 'function') {
+    onEnd = langOrOnEnd;
+  }
+
+  // Stop any currently playing speech
+  stopSpeaking();
+
+  // Try Sarvam AI Real-Time TTS first
+  try {
+    const res = await fetch('/api/voice-agent/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: text.trim(),
+        lang,
+        speaker: 'aditya'
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.dataUrl) {
+        const audio = new Audio(data.dataUrl);
+        currentSarvamAudio = audio;
+        audio.onended = () => {
+          currentSarvamAudio = null;
+          if (onEnd) onEnd();
+        };
+        audio.onerror = () => {
+          currentSarvamAudio = null;
+          fallbackBrowserSpeech(text, lang, onEnd);
+        };
+        await audio.play();
+        return;
+      }
+    }
+  } catch (e) {
+    // Network or server issue -> fallback
+  }
+
+  // Fallback to browser synthesis
+  fallbackBrowserSpeech(text, lang, onEnd);
+}
+
+function fallbackBrowserSpeech(text, lang, onEnd) {
+  if (!('speechSynthesis' in window)) {
     if (onEnd) setTimeout(onEnd, 1500);
     return;
   }
 
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'hi-IN';
+  utterance.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
   utterance.rate = 1.0;
   utterance.pitch = 1.05;
 
   const voices = window.speechSynthesis.getVoices();
-  const hindiVoice = voices.find(v => v.lang === 'hi-IN' || v.lang.startsWith('hi')) ||
-                     voices.find(v => v.name.includes('India') || v.lang.includes('IN'));
+  const matchedVoice = voices.find(v => (lang === 'en' ? v.lang.includes('en') : v.lang.includes('hi'))) ||
+                       voices.find(v => v.name.includes('India') || v.lang.includes('IN'));
 
-  if (hindiVoice) utterance.voice = hindiVoice;
+  if (matchedVoice) utterance.voice = matchedVoice;
 
   if (onEnd) {
     utterance.onend = onEnd;
@@ -118,6 +173,13 @@ function speakText(text, onEnd) {
  * Stop any current speech synthesis
  */
 function stopSpeaking() {
+  if (currentSarvamAudio) {
+    try {
+      currentSarvamAudio.pause();
+      currentSarvamAudio.currentTime = 0;
+    } catch (e) {}
+    currentSarvamAudio = null;
+  }
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
   }

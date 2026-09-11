@@ -266,6 +266,163 @@ function setupVoiceAgentRoutes(app) {
       return res.status(500).json({ error: err.message });
     }
   });
+
+  // 4. Sarvam AI Text-to-Speech (Bulbul V3) Endpoint
+  app.post('/api/voice-agent/tts', async (req, res) => {
+    try {
+      const { text, lang = 'hi', speaker = 'aditya' } = req.body;
+      const apiKey = process.env.SARVAM_API_KEY;
+      if (!apiKey) {
+        return res.status(400).json({ error: 'SARVAM_API_KEY not configured' });
+      }
+
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ error: 'Missing text parameter' });
+      }
+
+      const sarvamRes = await fetch('https://api.sarvam.ai/text-to-speech', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-subscription-key': apiKey
+        },
+        body: JSON.stringify({
+          inputs: [text.trim()],
+          target_language_code: lang === 'en' ? 'en-IN' : 'hi-IN',
+          speaker: speaker || (lang === 'en' ? 'aditya' : 'aditya'),
+          model: 'bulbul:v3'
+        })
+      });
+
+      const data = await sarvamRes.json();
+      if (data.audios && data.audios.length > 0) {
+        return res.json({
+          success: true,
+          audioBase64: data.audios[0],
+          mimeType: 'audio/wav',
+          dataUrl: 'data:audio/wav;base64,' + data.audios[0]
+        });
+      }
+
+      return res.status(500).json({ error: 'Failed to synthesize speech', details: data });
+    } catch (err) {
+      console.error('[VoiceAgent] Sarvam TTS error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 5. Sarvam AI Conversational Chat (Civic Problems & Status ONLY)
+  app.post('/api/voice-agent/chat', async (req, res) => {
+    try {
+      const { message, history = [], lang = 'hi' } = req.body;
+      const apiKey = process.env.SARVAM_API_KEY;
+      if (!apiKey) {
+        return res.status(400).json({ error: 'SARVAM_API_KEY not configured' });
+      }
+
+      const systemPrompt = `You are JanSetu Real-Time Civic AI Assistant (जनसेतु नागरिक AI सहायक), a conversational voice assistant for citizens in India.
+STRICT TOPIC SCOPE CONSTRAINTS:
+1. You ONLY talk about civic issues (roads, potholes, water supply, sewage/drainage, garbage/cleanliness, electricity, streetlights, public health) and checking grievance status.
+2. If the user asks about ANYTHING unrelated (cricket, cinema, weather, politics, jokes, generic chit-chat), POLITELY REFUSE in Hindi/English:
+"माफ़ कीजिए, मैं केवल जनसेतु नागरिक समस्याओं (सड़क, पानी, बिजली, कचरा) को दर्ज करने और उनकी स्थिति बताने में आपकी सहायता कर सकता हूँ। कृपया अपनी समस्या बताएं या स्थिति जांचने के लिए ट्रैकिंग आईडी बताएं।"
+3. Keep all responses very short, clear, and conversational (1 to 2 short sentences max) suitable for phone-call voice playback. Respond in ${lang === 'en' ? 'English' : 'Hindi'}.`;
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history.slice(-4),
+        { role: 'user', content: message }
+      ];
+
+      const sarvamRes = await fetch('https://api.sarvam.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'api-subscription-key': apiKey
+        },
+        body: JSON.stringify({
+          model: 'sarvam-105b-conversations',
+          messages,
+          temperature: 0.2,
+          max_tokens: 120
+        })
+      });
+
+      const data = await sarvamRes.json();
+      if (data.choices && data.choices[0] && data.choices[0].message) {
+        return res.json({
+          success: true,
+          reply: data.choices[0].message.content.trim()
+        });
+      }
+
+      return res.status(500).json({ error: 'LLM failed', details: data });
+    } catch (err) {
+      console.error('[VoiceAgent] Sarvam Chat error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 6. Real-Time Status Inquiry Endpoint
+  app.post('/api/voice-agent/status-inquiry', async (req, res) => {
+    try {
+      const { trackingId, citizenEmail, citizenId } = req.body;
+      let query = {};
+
+      if (trackingId) {
+        const cleanId = trackingId.toUpperCase().trim();
+        query = {
+          $or: [
+            { challengeId: cleanId },
+            { challengeId: { $regex: cleanId.replace(/[^0-9A-Z]/g, ''), $options: 'i' } }
+          ]
+        };
+      } else if (citizenId || citizenEmail) {
+        query = {
+          $or: [
+            ...(citizenId ? [{ submittedBy: citizenId }] : []),
+            ...(citizenEmail ? [{ 'submitterContact.email': citizenEmail.toLowerCase() }] : [])
+          ]
+        };
+      }
+
+      const challenge = await Challenge.findOne(query).sort({ createdAt: -1 }).lean();
+
+      if (!challenge) {
+        return res.json({
+          found: false,
+          speech: 'Aapki koi shikayat nahi mili. Kripya apna sahi Tracking ID batayein jaise JH-2026-XXXX.'
+        });
+      }
+
+      const statusMap = {
+        'submitted': 'Darj ho gayi hai aur JanSetu Taskforce dwara jaanch me hai',
+        'under_review': 'Adhikari dwara samiksha ki ja rahi hai',
+        'validated': 'Satyapit ho chuki hai aur karyawahi aage badha di gayi hai',
+        'assigned': 'Karyakari team ko assign kar diya gaya hai',
+        'in_progress': 'Karyakari dal dwara kaam pragati par hai',
+        'solved': 'Samasya ka safaltapoorvak nivaaran ho gaya hai'
+      };
+
+      const friendlyStatus = statusMap[challenge.status] || challenge.status;
+      const speech = `Aapki shikayat ${challenge.challengeId} ki vartaman sthiti hai: ${friendlyStatus}. Location: ${challenge.location?.district || 'Jharkhand'}.`;
+
+      return res.json({
+        found: true,
+        challenge: {
+          id: challenge.challengeId,
+          title: challenge.title,
+          status: challenge.status,
+          category: challenge.category,
+          location: challenge.location?.address || challenge.location?.district
+        },
+        speech
+      });
+    } catch (err) {
+      console.error('[VoiceAgent] Status inquiry error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
 }
 
 /**
