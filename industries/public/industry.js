@@ -4084,10 +4084,14 @@ function renderImpactFilteredProjects() {
 }
 
 function initImpactCharts() {
+  if (typeof showJanSetuCivicLoader === 'function') {
+    showJanSetuCivicLoader('कॉर्पोरेट सामाजिक उत्तरदायित्व (CSR) एनालिटिक्स डेटा लोड हो रहा है...', 1300);
+  }
   // 1. CSR Sector Chart (Doughnut)
   const csrCtx = document.getElementById('csrSectorChart')?.getContext('2d');
   if (csrCtx && typeof Chart !== 'undefined') {
     if (csrChartInstance) csrChartInstance.destroy();
+
 
     csrChartInstance = new Chart(csrCtx, {
       type: 'doughnut',

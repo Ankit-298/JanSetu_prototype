@@ -1736,6 +1736,9 @@ export default function BrowseProblems() {
 
   // Fetch problems from API, fallback to mock data
   useEffect(() => {
+    if (typeof window !== 'undefined' && typeof window.showJanSetuCivicLoader === 'function') {
+      window.showJanSetuCivicLoader('विश्वविद्यालय नवाचार प्रकोष्ठ: जनसमस्याएं एवं विश्लेषण डेटा लोड हो रहा है...', 1300);
+    }
     fetch('/api/problems')
       .then(res => res.json())
       .then(data => { if (Array.isArray(data) && data.length > 0) setProblems(data); })

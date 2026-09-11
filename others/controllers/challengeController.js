@@ -669,8 +669,29 @@ exports.deleteChallenge = async (req, res, next) => {
     }
 
     // Citizens can only delete unverified/submitted or draft grievances (not verified, assigned, or in-progress)
-    if (!isAdmin && !['draft', 'submitted', 'pending'].includes(challenge.status)) {
+    const unverifiedStatuses = ['draft', 'submitted', 'pending', 'under_review'];
+    if (!isAdmin && !unverifiedStatuses.includes(challenge.status)) {
       return res.status(400).json({ success: false, message: 'Cannot delete a grievance once it is verified, assigned, or in progress' });
+    }
+
+    // Safely cleanup associated cloud files if any
+    try {
+      const filePaths = [];
+      if (challenge.filePath) filePaths.push(challenge.filePath);
+      if (challenge.resolutionProof?.beforeFilePath) filePaths.push(challenge.resolutionProof.beforeFilePath);
+      if (challenge.resolutionProof?.afterFilePath) filePaths.push(challenge.resolutionProof.afterFilePath);
+      if (Array.isArray(challenge.attachments)) {
+        challenge.attachments.forEach(att => {
+          if (att && att.filePath && !filePaths.includes(att.filePath)) {
+            filePaths.push(att.filePath);
+          }
+        });
+      }
+      if (filePaths.length > 0 && typeof deleteFileFromSupabase === 'function') {
+        await deleteFileFromSupabase(filePaths);
+      }
+    } catch (cleanErr) {
+      console.warn('Storage cleanup notice on challenge delete:', cleanErr.message);
     }
 
     await challenge.deleteOne();
@@ -1137,70 +1158,7 @@ exports.assignIndustryPartner = async (req, res, next) => {
   }
 };
 
-// @desc    Delete challenge and purge associated cloud files
-// @route   DELETE /api/challenges/:id
-// @access  Private / OptionalAuth
-exports.deleteChallenge = async (req, res, next) => {
-  try {
-    const id = req.params.id;
-    let challenge = null;
 
-    if (mongoose.Types.ObjectId.isValid(id)) {
-      challenge = await Challenge.findById(id);
-    }
-    if (!challenge) {
-      challenge = await Challenge.findOne({ challengeId: id });
-    }
-    if (!challenge) {
-      return res.status(404).json({ success: false, message: 'Challenge not found' });
-    }
-
-    // Collect all file paths to delete from Supabase storage
-    const filePaths = [];
-    if (challenge.filePath) filePaths.push(challenge.filePath);
-    if (challenge.resolutionProof?.beforeFilePath) filePaths.push(challenge.resolutionProof.beforeFilePath);
-    if (challenge.resolutionProof?.afterFilePath) filePaths.push(challenge.resolutionProof.afterFilePath);
-    if (Array.isArray(challenge.attachments)) {
-      challenge.attachments.forEach(att => {
-        if (att && att.filePath && !filePaths.includes(att.filePath)) {
-          filePaths.push(att.filePath);
-        }
-      });
-    }
-
-    let deletedFiles = [];
-    if (filePaths.length > 0) {
-      const delRes = await deleteFileFromSupabase(filePaths);
-      deletedFiles = delRes.deleted || filePaths;
-    }
-
-    // Also delete or clear from University Problem if synced
-    try {
-      const Problem = mongoose.models.Problem || require('../../university/database/Problem');
-      if (Problem) {
-        await Problem.deleteMany({
-          $or: [
-            { sourceCitizenProblemId: challenge._id },
-            { _id: challenge._id },
-            { challengeId: challenge.challengeId }
-          ]
-        });
-      }
-    } catch (e) {
-      console.warn('University Problem deletion sync warning:', e.message);
-    }
-
-    await challenge.deleteOne();
-
-    res.status(200).json({
-      success: true,
-      message: 'Challenge and associated Supabase files permanently deleted',
-      data: { id: challenge._id, deletedFiles }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 // @desc    Delete only uploaded files of a challenge (e.g. when problem is done/resolved to save Supabase storage space)
 // @route   DELETE /api/challenges/:id/files
@@ -1319,16 +1277,48 @@ exports.getChallengeChat = async (req, res, next) => {
       });
     }
 
+    // Cross-link resolution: if only one record was matched, find the other
+    if (challenge && !problem && Problem) {
+      problem = await Problem.findOne({
+        $or: [
+          { sourceCitizenProblemId: challenge._id.toString() },
+          { challengeId: challenge.challengeId }
+        ]
+      });
+    }
+    if (problem && !challenge) {
+      if (problem.sourceCitizenProblemId && mongoose.Types.ObjectId.isValid(problem.sourceCitizenProblemId)) {
+        challenge = await Challenge.findById(problem.sourceCitizenProblemId).populate('assignedUniversity');
+      }
+      if (!challenge && problem.challengeId) {
+        challenge = await Challenge.findOne({ challengeId: problem.challengeId }).populate('assignedUniversity');
+      }
+    }
+
     if (!challenge && !problem) {
       return res.status(404).json({ success: false, message: 'Problem/Challenge record not found' });
     }
 
     let messages = [];
-    if (challenge && Array.isArray(challenge.chatMessages) && challenge.chatMessages.length > 0) {
-      messages = challenge.chatMessages;
-    } else if (problem && Array.isArray(problem.chatMessages) && problem.chatMessages.length > 0) {
-      messages = problem.chatMessages;
-    }
+    const pool = [];
+    if (challenge && Array.isArray(challenge.chatMessages)) pool.push(...challenge.chatMessages);
+    if (problem && Array.isArray(problem.chatMessages)) pool.push(...problem.chatMessages);
+
+    const seenSignatures = new Set();
+    pool.forEach(m => {
+      if (!m || !m.text) return;
+      const txt = m.text.trim();
+      const sdr = (m.sender || '').trim().toLowerCase();
+      const sig = `${sdr}:::${txt}`;
+      const idSig = m._id ? String(m._id) : null;
+      if (idSig && seenSignatures.has('id_' + idSig)) return;
+      if (seenSignatures.has(sig)) return;
+
+      if (idSig) seenSignatures.add('id_' + idSig);
+      seenSignatures.add(sig);
+      messages.push(m);
+    });
+    messages.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
 
     // If no messages exist yet, initialize tripartite welcome conversation
     if (messages.length === 0) {
@@ -1429,6 +1419,24 @@ exports.postChallengeChatMessage = async (req, res, next) => {
       });
     }
 
+    // Cross-link resolution: if only one record was matched, find the other
+    if (challenge && !problem && Problem) {
+      problem = await Problem.findOne({
+        $or: [
+          { sourceCitizenProblemId: challenge._id.toString() },
+          { challengeId: challenge.challengeId }
+        ]
+      });
+    }
+    if (problem && !challenge) {
+      if (problem.sourceCitizenProblemId && mongoose.Types.ObjectId.isValid(problem.sourceCitizenProblemId)) {
+        challenge = await Challenge.findById(problem.sourceCitizenProblemId).populate('assignedUniversity');
+      }
+      if (!challenge && problem.challengeId) {
+        challenge = await Challenge.findOne({ challengeId: problem.challengeId }).populate('assignedUniversity');
+      }
+    }
+
     const detectedSenderType = senderType || (senderRole?.toLowerCase().includes('university') ? 'university' : senderRole?.toLowerCase().includes('admin') ? 'admin' : 'citizen');
     const detectedSender = sender || (detectedSenderType === 'university' ? 'University Innovation Guide' : detectedSenderType === 'admin' ? 'District Admin Officer' : 'Citizen');
     const detectedRole = senderRole || (detectedSenderType === 'university' ? 'University Faculty Guide' : detectedSenderType === 'admin' ? 'JanSetu Administrative Officer' : 'Citizen Submitter');
@@ -1451,14 +1459,20 @@ exports.postChallengeChatMessage = async (req, res, next) => {
 
     if (challenge) {
       if (!Array.isArray(challenge.chatMessages)) challenge.chatMessages = [];
-      challenge.chatMessages.push(newMsg);
-      await challenge.save();
+      const isAlreadyThere = challenge.chatMessages.some(m => m && m.text && m.text.trim() === newMsg.text.trim() && m.sender === newMsg.sender && Math.abs(new Date(m.timestamp || 0) - new Date(newMsg.timestamp || 0)) < 45000);
+      if (!isAlreadyThere) {
+        challenge.chatMessages.push(newMsg);
+        await challenge.save();
+      }
     }
 
     if (problem) {
       if (!Array.isArray(problem.chatMessages)) problem.chatMessages = [];
-      problem.chatMessages.push(newMsg);
-      await problem.save();
+      const isAlreadyThere = problem.chatMessages.some(m => m && m.text && m.text.trim() === newMsg.text.trim() && m.sender === newMsg.sender && Math.abs(new Date(m.timestamp || 0) - new Date(newMsg.timestamp || 0)) < 45000);
+      if (!isAlreadyThere) {
+        problem.chatMessages.push(newMsg);
+        await problem.save();
+      }
     }
 
     res.status(201).json({

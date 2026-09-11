@@ -435,11 +435,11 @@
         maxZoom: 16
       });
 
-      // Clean OpenStreetMap tiles (free, reliable, zero watermarks)
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        subdomains: ['a', 'b', 'c'],
+      // Clean CARTO Voyager tiles (crisp, high-speed, never blocked)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
         maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+        attribution: '© OpenStreetMap contributors © CARTO'
       }).addTo(this.map);
 
       this.activeLayerGroup = L.layerGroup().addTo(this.map);

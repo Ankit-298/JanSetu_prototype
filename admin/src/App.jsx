@@ -13,6 +13,7 @@ function App() {
     };
 
     loadScript('/js/utils.js');
+    loadScript('/admin/jansetu-civic-loader.js');
     setTimeout(() => {
       loadScript('/js/pan-india-heatmap.js');
       setTimeout(() => loadScript('/admin/admin.js'), 200);

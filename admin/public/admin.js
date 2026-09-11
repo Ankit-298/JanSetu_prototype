@@ -1065,31 +1065,53 @@ window.loadAdminComments = async (challengeId) => {
   const container = document.getElementById('caComments');
   if (!container) return;
   try {
-    const res = await API.get('/challenges/' + challengeId + '/comments');
-    if (res.success && res.data.length) {
-      container.innerHTML = res.data.map(c => `
-        <div style="margin-bottom:10px;padding:10px;background:${c.authorRole==='admin'?'var(--primary-light)':'var(--gray-50)'};border-radius:8px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <span style="font-weight:700;font-size:12px">${c.authorName} <span style="font-weight:400;color:var(--gray-400)">(${c.authorRole})</span></span>
-            <span style="font-size:10px;color:var(--gray-400)">${Utils.timeAgo(c.createdAt)}</span>
+    const res = await API.get('/challenges/' + challengeId + '/chat');
+    const msgs = (res.success && (res.chatMessages || res.data)) || [];
+    if (msgs.length) {
+      container.innerHTML = msgs.map(c => {
+        const isAdm = c.senderType === 'admin' || c.senderRole?.toLowerCase().includes('admin');
+        const isUniv = c.senderType === 'university' || c.senderRole?.toLowerCase().includes('univ');
+        const bg = isAdm ? '#EFF6FF' : (isUniv ? '#F0FDF4' : '#FFFFFF');
+        const border = isAdm ? '1px solid #BFDBFE' : (isUniv ? '1px solid #BBF7D0' : '1px solid #E2E8F0');
+        const tag = isAdm ? '🛡️ Admin' : (isUniv ? '🎓 University' : '👤 Citizen');
+        const color = isAdm ? '#1E40AF' : (isUniv ? '#166534' : '#0F172A');
+        return `
+          <div style="margin-bottom:8px;padding:9px 12px;background:${bg};border:${border};border-radius:10px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px;align-items:center">
+              <span style="font-weight:750;font-size:11.5px;color:${color}">${c.sender||'Participant'} <span style="font-size:10px;padding:1px 6px;border-radius:6px;background:rgba(0,0,0,0.05)">${tag}</span></span>
+              <span style="font-size:10px;color:var(--gray-400)">${c.time || Utils.timeAgo(c.timestamp||c.createdAt)}</span>
+            </div>
+            <div style="font-size:12.5px;color:#1E293B;line-height:1.4">${c.text}</div>
           </div>
-          <div style="font-size:13px">${c.text}</div>
-        </div>`).join('');
+        `;
+      }).join('');
       container.scrollTop = container.scrollHeight;
     } else {
-      container.innerHTML = '<div style="color:var(--gray-400);padding:10px 0">No messages yet.</div>';
+      container.innerHTML = '<div style="color:var(--gray-400);padding:10px 0;font-size:12px">No messages yet. Send an official update to Citizen & University below.</div>';
     }
-  } catch(e) { container.innerHTML = '<div style="color:var(--danger)">Failed to load comments</div>'; }
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--danger);font-size:12px">Failed to load chat messages</div>';
+  }
 };
 
 window.postAdminComment = async (challengeId) => {
   const input = document.getElementById('caCommentInput');
   const text = input?.value.trim();
   if (!text) return;
+  input.value = '';
   try {
-    const res = await API.post('/challenges/' + challengeId + '/comments', { text });
-    if (res.success) { input.value = ''; loadAdminComments(challengeId); }
-  } catch(e) { showAdminToast('Error posting comment', 'error'); }
+    const res = await API.post('/challenges/' + challengeId + '/chat', {
+      text,
+      sender: (currentUser && currentUser.name) || 'Shri S. K. Verma',
+      senderRole: 'JanSetu Administrative Officer',
+      senderType: 'admin',
+      department: 'District Municipal Desk, Ranchi'
+    });
+    showAdminToast('Message dispatched to Citizen & University Taskforce!', 'success');
+    loadAdminComments(challengeId);
+  } catch(e) {
+    showAdminToast('Failed to dispatch message: ' + e.message, 'error');
+  }
 };
 
 // ── Validate / Reject ─────────────────────────────────────────────────────
@@ -1420,6 +1442,9 @@ async function loadIndustry() {
 
 // ── Analytics ─────────────────────────────────────────────────────────────
 async function loadAnalytics() {
+  if (typeof showJanSetuCivicLoader === 'function') {
+    showJanSetuCivicLoader('डेटाबेस से प्रशासनिक विश्लेषिकी एवं चार्ट लोड हो रहे हैं...', 1300);
+  }
   try {
     const res = await API.get('/admin/analytics');
     if (!res.success) return;

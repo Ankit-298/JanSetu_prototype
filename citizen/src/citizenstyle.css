@@ -43,44 +43,43 @@
    --font-hindi: 'Noto Sans Devanagari', 'Inter', sans-serif;
  }
 
- html,
- body {
-   height: 100%;
-   width: 100%;
-   font-family: var(--font-main);
-   background-color: #f2eee5;
-   color: var(--gray-800);
-   overflow: hidden;
-   -webkit-font-smoothing: antialiased;
- }
+  html,
+  body {
+    height: 100%;
+    width: 100%;
+    font-family: var(--font-main);
+    background-color: #FAFAFB;
+    color: var(--gray-800);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
 
- .app-layout {
-   display: flex;
-   height: 100vh;
-   width: 100vw;
-   overflow: hidden;
-   position: relative;
- }
+  .app-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    position: relative;
+  }
 
- /* Fixed Background Canvas (Zero Lag / GPU Smooth) */
- .fixed-canvas-background {
-   position: fixed;
-   top: 0;
-   left: 255px;
-   right: 0;
-   bottom: 0;
-   pointer-events: none;
-   z-index: 0;
-   background-color: #f2eee5;
-   background-image:
-     radial-gradient(ellipse 850px 380px at 85% 30px, rgba(255, 153, 51, 0.18) 0%, transparent 70%),
-     radial-gradient(ellipse 750px 420px at 98% 340px, rgba(19, 136, 8, 0.14) 0%, transparent 65%),
-     radial-gradient(ellipse 700px 320px at 15% 90px, rgba(255, 153, 51, 0.10) 0%, transparent 60%),
-     linear-gradient(180deg, #f7f3ec 0%, #f2eee5 320px, #ece7dc 100%);
- }
+  /* Fixed Background Canvas (Crisp Soft Light-White Aesthetic with Ultra-Subtle Ambient Tint) */
+  .fixed-canvas-background {
+    position: fixed;
+    top: 0;
+    left: 255px;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-color: #FCFCFD;
+    background-image:
+      radial-gradient(ellipse 850px 380px at 85% 25px, rgba(255, 153, 51, 0.02) 0%, transparent 70%),
+      radial-gradient(ellipse 750px 420px at 98% 320px, rgba(19, 136, 8, 0.015) 0%, transparent 65%),
+      linear-gradient(180deg, #FFFFFF 0%, #FAFAFD 350px, #F6F7FA 100%);
+  }
 
  /* ============================================================
-      TRICOLOR-THEMED SIDEBAR WITH BLURRED GATEWAY OF INDIA & PURPLE-NAVY GLASS
+      TRICOLOR-THEMED SIDEBAR - NON-SCROLLING IN Y DIRECTION
       ============================================================ */
 .sidebar {
   width: 255px;
@@ -88,14 +87,16 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   height: 100vh;
+  max-height: 100vh;
   z-index: 50;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow-y: hidden !important;
+  overflow-x: hidden !important;
   flex-shrink: 0;
-  background: linear-gradient(180deg, #091a36 0%, #061226 50%, #081730 100%);
-  border-right: 1px solid rgba(59, 130, 246, 0.22);
-  box-shadow: 4px 0 24px rgba(4, 12, 28, 0.35);
+  background: linear-gradient(180deg, #0A0F1F 0%, #0D172E 50%, #0B1120 100%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 4px 0 24px rgba(4, 12, 28, 0.4) !important;
   transition: margin-left 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: margin-left;
 }
@@ -104,30 +105,13 @@
   margin-left: -255px;
 }
 
-/* Blurred Gateway of India Monument Background in Navbar (Recognizable & Aesthetic) */
+/* Remove clashing monument background photo in navbar */
 .sidebar-monument-bg {
-  position: absolute;
-  inset: -10px;
-  background-image: url('/citizen/images/gateway-of-india.png'), url('images/gateway-of-india.png');
-  background-size: cover;
-  background-position: 25% center;
-  background-repeat: no-repeat;
-  filter: blur(1.5px) saturate(1.3) brightness(0.72);
-  transform: scale(1.05);
-  pointer-events: none;
-  z-index: 0;
+  display: none !important;
 }
 
-/* Royal Navy Blue Glass Overlay - Authentic Navy Blue Depth */
 .sidebar-navy-scrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg,
-    rgba(9, 26, 54, 0.72) 0%,
-    rgba(6, 18, 38, 0.76) 48%,
-    rgba(8, 23, 48, 0.82) 100%);
-  pointer-events: none;
-  z-index: 1;
+  display: none !important;
 }
 
 .sidebar-tricolor-ribbon {
@@ -242,27 +226,37 @@
   margin-top: 2px;
 }
 
+.sidebar-section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.38);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 12px 2px;
+}
+
 .sidebar-menu {
-  padding: 16px 14px;
+  padding: 4px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  flex: 1;
+  gap: 2px;
+  flex: 0 0 auto;
   position: relative;
   z-index: 2;
+  overflow: hidden;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
-  border-radius: 12px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #cbd5e1;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
   text-decoration: none;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   width: 100%;
   text-align: left;
@@ -273,22 +267,22 @@
 
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  color: #FFFFFF;
 }
 
 .nav-item.active {
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.28) 0%, rgba(99, 102, 241, 0.10) 100%);
-  color: #ffffff;
-  font-weight: 800;
-  border-left: 4px solid #FF9933;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.2);
+  background: rgba(255, 153, 51, 0.14);
+  border-color: rgba(255, 153, 51, 0.28);
+  color: #FF9933;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(255, 153, 51, 0.12);
 }
 
 .nav-item svg {
-  width: 19px;
-  height: 19px;
-  stroke: #94a3b8;
-  stroke-width: 2.2;
+  width: 17px;
+  height: 17px;
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 2.1;
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -297,7 +291,7 @@
 }
 
 .nav-item:hover svg {
-  stroke: #FF9933;
+  stroke: #FFFFFF;
 }
 
 .nav-item.active svg {
@@ -306,12 +300,13 @@
 
 .nav-badge-pill {
   margin-left: auto;
-  background: #FF9933;
+  background: #22C55E;
   color: var(--white);
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 800;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 20px;
+  box-shadow: 0 2px 6px rgba(34, 197, 94, 0.35);
 }
 
  .offline-draft-banner {
@@ -346,15 +341,18 @@
       SIDEBAR CONTRIBUTE CARD: VIBRANT HIGH-CONTRAST FROSTED GLASS
       ============================================================ */
 .sidebar-contribute-card {
-  margin: 10px 14px 14px;
+  margin: 4px 10px 6px;
   position: relative;
-  border-radius: 16px;
-  padding: 16px 14px 16px;
+  border-radius: 12px;
+  padding: 8px 11px;
   overflow: hidden;
-  border: 1.5px solid rgba(255, 255, 255, 0.28);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   background: #091a36;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
 }
 
 /* Dedicated Crisp Taj Mahal Background Image */
@@ -365,9 +363,9 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 20%;
-  filter: blur(1.2px) saturate(1.2) brightness(0.95);
-  transform: scale(1.08);
+  object-position: center center;
+  filter: brightness(0.95) saturate(1.1);
+  transform: scale(1.0);
   pointer-events: none;
   z-index: 1;
 }
@@ -391,21 +389,21 @@
 }
 
 .sidebar-card-title {
-  font-size: 15px;
+  font-size: 13.5px;
   font-weight: 900;
   color: #FFFFFF !important;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
-  margin-bottom: 5px;
+  margin-bottom: 3px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .sidebar-card-desc {
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: #F1F5F9 !important;
-  line-height: 1.45;
-  margin-bottom: 14px;
+  line-height: 1.35;
+  margin-bottom: 8px;
   font-weight: 600;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
@@ -417,49 +415,54 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 6px;
   width: 100%;
   background: linear-gradient(135deg, #FF9933 0%, #ea580c 100%) !important;
   color: #ffffff !important;
   border: 1px solid rgba(255, 255, 255, 0.35) !important;
-  border-radius: 12px;
-  padding: 11px 14px;
-  font-size: 13.5px;
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 12px;
   font-weight: 900;
   cursor: pointer;
-  box-shadow: 0 4px 18px rgba(255, 153, 51, 0.55), 0 0 12px rgba(255, 153, 51, 0.3) !important;
+  box-shadow: 0 3px 12px rgba(255, 153, 51, 0.45) !important;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   z-index: 3;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  min-height: 34px;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .btn-sidebar-report:hover {
   background: linear-gradient(135deg, #FFA742 0%, #F97316 100%) !important;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(255, 153, 51, 0.65), 0 0 16px rgba(255, 153, 51, 0.4) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 153, 51, 0.55) !important;
 }
 
 .btn-sidebar-report:active {
   transform: translateY(0);
-  box-shadow: 0 3px 10px rgba(255, 153, 51, 0.35) !important;
+  box-shadow: 0 2px 8px rgba(255, 153, 51, 0.35) !important;
 }
 
  .sidebar-tricolor-footer-ribbon {
-   height: 3px;
-   width: calc(100% - 28px);
-   margin: 0 auto 10px;
+   height: 2.5px;
+   width: calc(100% - 24px);
+   margin: 0 auto 5px;
    border-radius: 2px;
    background: linear-gradient(to right, #FF9933 33.33%, #ffffff 33.33%, #ffffff 66.66%, #138808 66.66%);
+   flex-shrink: 0;
  }
 
 .sidebar-copyright {
-  padding: 0 18px 14px;
-  font-size: 11px;
+  padding: 0 14px 6px;
+  font-size: 9.5px;
   color: rgba(148, 163, 184, 0.65);
-  line-height: 1.4;
+  line-height: 1.35;
   position: relative;
   z-index: 2;
+  flex-shrink: 0;
 }
 
  /* ============================================================
@@ -487,28 +490,29 @@
    border-radius: 4px;
  }
 
- .main-viewport::-webkit-scrollbar-thumb:hover {
-   background: #b0aba0;
- }
+  .main-viewport::-webkit-scrollbar-thumb:hover {
+    background: #94A3B8;
+  }
 
-/* TOP PANORAMA: FULL AESTHETIC INDIA GATE BANNER (176px) */
+/* TOP PANORAMA: FULL AESTHETIC INDIAN MONUMENTS & ABDUL KALAM BANNER (195px Full Length) */
 .top-panorama-wrapper {
   position: relative;
   width: 100%;
-  height: 176px;
-  min-height: 176px;
-  max-height: 176px;
-  background: #FAF7F0;
+  height: 195px;
+  min-height: 195px;
+  max-height: 195px;
+  background: #09172B;
   overflow: hidden;
   flex-shrink: 0;
-  padding: 16px 36px;
+  padding: 18px 36px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(0, 45, 98, 0.08);
+  border-bottom: 1.5px solid rgba(255, 153, 51, 0.25);
+  box-shadow: 0 4px 20px rgba(0, 45, 98, 0.12);
 }
 
-/* Dedicated India Gate Full Banner Backdrop Layer */
+/* Dedicated Citizen Banner Backdrop Layer - Vivid Edge to Edge */
 .panorama-monument-layer {
   position: absolute;
   inset: 0;
@@ -522,32 +526,28 @@
   top: 0;
   right: 0;
   bottom: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: right 45%;
-  filter: contrast(1.04) saturate(1.15) brightness(1.02);
-  opacity: 0.96;
+  object-position: center bottom;
+  filter: contrast(1.05) saturate(1.15) brightness(1.0);
+  opacity: 1;
 }
 
-/* Masterpiece Atmospheric Scrim: Soft creamy ivory gradient on left for crystal-clear quote text,
-   blending seamlessly into the lush green lawns and India Gate on the right without harsh cuts */
+/* Gentle atmospheric vignette: preserves 100% monument & Kalam clarity without white wash */
 .panorama-monument-scrim {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg,
-      #FAF7F0 0%,
-      rgba(250, 247, 240, 0.97) 18%,
-      rgba(250, 247, 240, 0.85) 34%,
-      rgba(250, 247, 240, 0.45) 48%,
-      rgba(250, 247, 240, 0.08) 62%,
-      transparent 75%),
     linear-gradient(180deg,
-      rgba(250, 247, 240, 0.18) 0%,
-      transparent 22%,
-      transparent 78%,
-      rgba(250, 247, 240, 0.22) 100%);
+      rgba(9, 23, 43, 0.35) 0%,
+      rgba(9, 23, 43, 0.05) 45%,
+      rgba(9, 23, 43, 0.40) 100%),
+    linear-gradient(90deg,
+      rgba(9, 23, 43, 0.45) 0%,
+      rgba(9, 23, 43, 0.15) 50%,
+      transparent 75%);
 }
 
 /* High-Contrast "View All Reports →" Link Buttons */
@@ -799,37 +799,46 @@
  .hero-quote-container {
    display: flex;
    flex-direction: column;
-   max-width: 720px;
+   max-width: 740px;
+   background: rgba(8, 18, 34, 0.14) !important;
+   -webkit-backdrop-filter: none !important;
+   backdrop-filter: none !important;
+   padding: 8px 16px 10px;
+   border-radius: 12px;
+   border: 1px solid rgba(255, 255, 255, 0.14);
+   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08) !important;
  }
 
  .hero-quote-mark-open {
-   font-size: 40px;
+   font-size: 34px;
    color: #FF9933;
    font-family: Georgia, serif;
    line-height: 0.35;
-   margin-bottom: 6px;
+   margin-bottom: 4px;
    display: inline-block;
-   opacity: 0.9;
+   opacity: 0.95;
  }
 
  .hero-quote-lines {
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--gray-900);
-    line-height: 1.35;
-    text-shadow: 0 1px 6px rgba(255, 255, 255, 0.95), 0 0 2px rgba(255, 255, 255, 0.85);
-    letter-spacing: -0.2px;
-    transition: opacity 0.3s ease;
-  }
+   font-size: 19px;
+   font-weight: 800;
+   color: #FFFFFF;
+   line-height: 1.35;
+   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+   letter-spacing: -0.2px;
+   transition: opacity 0.3s ease;
+ }
 
  .hero-quote-lines .highlight-green {
-   color: var(--india-green);
+   color: #4ADE80;
    font-weight: 900;
+   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
  }
 
  .hero-quote-lines .highlight-saffron {
-   color: #ea580c;
+   color: #FDBA74;
    font-weight: 900;
+   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
  }
 
  .btn-report-hero {
@@ -1776,6 +1785,8 @@
    color: var(--gray-400);
  }
 
+  
+
   /* RIGHT COLUMN WIDGETS */
   .right-widgets-column {
     display: flex;
@@ -2620,16 +2631,31 @@
  /* Notification Activity Timeline & Monument Modal */
  .notif-monument-modal {
    background: #FFFFFF;
-   box-shadow: 0 20px 50px rgba(0, 45, 98, 0.25);
+   box-shadow: 0 20px 50px rgba(0, 45, 98, 0.22);
+   border-radius: 18px;
+   border: 1px solid #E2E8F0;
  }
 
  .notif-item-card {
+   background: #FFFFFF;
+   border: 1px solid #E2E8F0;
+   border-radius: 12px;
+   padding: 12px 14px;
+   margin-bottom: 9px;
+   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+   position: relative;
    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+ }
+
+ .notif-item-card.unread {
+   background: #F0FDF4;
+   border-left: 3.5px solid #16A34A;
+   border-color: #BBF7D0;
  }
 
  .notif-item-card:hover {
    transform: translateY(-1.5px);
-   box-shadow: 0 4px 14px rgba(0, 45, 98, 0.08);
+   box-shadow: 0 6px 18px rgba(0, 45, 98, 0.09);
    border-color: #93C5FD !important;
  }
 
@@ -3023,11 +3049,12 @@
 }
 
 /* ============================================================
-   TRIPARTITE PROBLEM CHAT HUB - CLEAN CITIZEN STYLING
+   TRIPARTITE PROBLEM CHAT HUB - MODERN, SLEEK & AIRY UI
    ============================================================ */
 #problemChatModal .modal-card-box {
   background: #FFFFFF;
-  box-shadow: 0 24px 60px rgba(0, 45, 98, 0.28);
+  box-shadow: 0 25px 70px rgba(0, 45, 98, 0.22);
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
 }
 
 #chatProblemChannelList::-webkit-scrollbar,
@@ -3040,19 +3067,19 @@
 }
 #chatProblemChannelList::-webkit-scrollbar-thumb,
 #chatMessagesStream::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #E2E8F0;
   border-radius: 6px;
 }
 #chatProblemChannelList::-webkit-scrollbar-thumb:hover,
 #chatMessagesStream::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #CBD5E1;
 }
 
 #chatQuickChipsContainer {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
   padding: 8px 16px !important;
-  background: #FAFCFF !important;
+  background: #F8FAFC !important;
   border-top: 1px solid #E2E8F0 !important;
 }
 #chatQuickChipsContainer::-webkit-scrollbar {
@@ -3062,14 +3089,14 @@
 .chat-chip-btn {
   white-space: nowrap;
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 650;
   color: #1E3A8A;
   background: #FFFFFF;
-  border: 1.2px solid #CBD5E1;
+  border: 1px solid #E2E8F0;
   padding: 5px 12px;
   border-radius: 20px;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -3078,28 +3105,813 @@
 
 .chat-chip-btn:hover {
   background: #EFF6FF;
-  border-color: #93C5FD;
+  border-color: #BFDBFE;
   color: #1D4ED8;
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(37,99,235,0.1);
+  box-shadow: 0 3px 8px rgba(37,99,235,0.08);
 }
 
 .chat-chip-btn:active {
   transform: translateY(0);
 }
 
+#chatTextInput {
+  transition: all 0.2s ease;
+  background: #F8FAFC;
+}
+
 #chatTextInput:focus {
-  border-color: #2563EB !important;
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important;
+  background: #FFFFFF;
+  border-color: #3B82F6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12) !important;
 }
 
 #btnSendChatMessage {
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 #btnSendChatMessage:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,45,98,0.3) !important;
+  box-shadow: 0 4px 14px rgba(0, 45, 98, 0.25) !important;
 }
 #btnSendChatMessage:active {
   transform: translateY(0);
+}
+
+/* Modern chat channel item */
+.chat-channel-card {
+  padding: 10px 12px;
+  border-radius: 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1.5px solid transparent;
+  background: #FFFFFF;
+}
+.chat-channel-card:hover {
+  background: #F1F5F9;
+}
+.chat-channel-card.active {
+  border-color: #93C5FD;
+  background: #EFF6FF;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+
+/* Dedicated Nearby Challenge Support Button */
+.btn-support-nearby {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  font-weight: 800;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-top: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  box-sizing: border-box;
+}
+.btn-support-nearby.not-supported {
+  background: linear-gradient(135deg, #002D62 0%, #001A3A 100%) !important;
+  color: #FFFFFF !important;
+}
+.btn-support-nearby.not-supported:hover {
+  background: linear-gradient(135deg, #003B80 0%, #002D62 100%) !important;
+  box-shadow: 0 4px 12px rgba(0, 45, 98, 0.25) !important;
+  transform: translateY(-1px);
+}
+.btn-support-nearby.supported {
+  background: linear-gradient(135deg, #15803D 0%, #166534 100%) !important;
+  color: #FFFFFF !important;
+}
+.btn-support-nearby.supported:hover {
+  background: linear-gradient(135deg, #16A34A 0%, #15803D 100%) !important;
+  box-shadow: 0 4px 12px rgba(22, 101, 52, 0.25) !important;
+}
+
+/* ============================================================
+   LOCATION HIERARCHY PILLS & DIRECT MAP PIN BUTTON
+   ============================================================ */
+.btn-goto-map-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #002D62 0%, #1E3A8A 100%);
+  color: #FFFFFF;
+  font-size: 11.5px;
+  font-weight: 750;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 45, 98, 0.2);
+}
+.btn-goto-map-pin:hover {
+  background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+.btn-goto-map-pin:active {
+  transform: translateY(0);
+}
+
+.location-hierarchy-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #334155;
+  font-weight: 650;
+}
+.location-hierarchy-pill strong {
+  color: #0F172A;
+  font-weight: 800;
+}
+
+/* MULTI-MEDIA EVIDENCE GALLERY & VIDEO PLAYER */
+.detail-gallery-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1.5px solid #E2E8F0;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.detail-gallery-thumb:hover {
+  transform: scale(1.05);
+  border-color: #3B82F6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+}
+
+/* ============================================================
+   REVAMPED TRIPARTITE PROBLEM CHAT HUB (Exact Mockup Match)
+   ============================================================ */
+
+/* Smooth Pop-in Entrance Animation for Problem Chat Hub */
+#problemChatModal.active .chat-hub-modal-card,
+#problemChatModal.open .chat-hub-modal-card {
+  animation: chatHubPopIn 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes chatHubPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(28px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.chat-hub-modal-card {
+  max-width: 1060px !important;
+  width: 96% !important;
+  height: 87vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 20px !important;
+  box-shadow: 0 25px 70px rgba(0, 45, 98, 0.22) !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  background: #FFFFFF !important;
+}
+
+.chat-hub-header-bar {
+  padding: 13px 22px;
+  border-bottom: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chat-hub-brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: #002D62;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 10px rgba(0, 45, 98, 0.22);
+}
+
+.chat-hub-header-title {
+  font-size: 16.5px;
+  font-weight: 850;
+  color: #0F172A;
+  letter-spacing: -0.2px;
+}
+
+.chat-hub-header-sub {
+  font-size: 11.5px;
+  color: #64748B;
+  margin-top: 1px;
+}
+
+.chat-help-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
+  font-size: 12px;
+  font-weight: 750;
+  color: #0F172A;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chat-help-btn:hover {
+  background: #EFF6FF;
+  border-color: #BFDBFE;
+  color: #1D4ED8;
+  transform: translateY(-1px);
+}
+
+.chat-hub-split-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-hub-sidebar {
+  width: 350px;
+  min-width: 350px;
+  max-width: 350px;
+  border-right: 1px solid #E2E8F0;
+  background: #FAFCFF;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.chat-sidebar-search-box {
+  padding: 12px 14px;
+  border-bottom: 1px solid #F1F5F9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #FFFFFF;
+}
+
+.chat-sidebar-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px 8px 32px;
+  border-radius: 10px;
+  border: 1.5px solid #E2E8F0;
+  font-size: 12px;
+  outline: none;
+  background: #F8FAFC;
+  transition: all 0.2s ease;
+}
+.chat-sidebar-search-input:focus {
+  background: #FFFFFF;
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.chat-search-lens-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: #94A3B8;
+  pointer-events: none;
+}
+
+.chat-filter-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1.5px solid #E2E8F0;
+  background: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.chat-filter-btn:hover {
+  background: #F1F5F9;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+
+.chat-tabs-nav {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  background: #FFFFFF;
+  border-bottom: 1px solid #E2E8F0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.chat-tabs-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-tab-pill {
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: 750;
+  border: 1px solid #E2E8F0;
+  background: #F8FAFC;
+  color: #64748B;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+}
+.chat-tab-pill:hover {
+  background: #EFF6FF;
+  color: #1D4ED8;
+}
+.chat-tab-pill.active {
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+  border-color: #2563EB !important;
+  box-shadow: 0 2px 6px rgba(37,99,235,0.22);
+}
+
+.chat-channels-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.chat-channel-card {
+  padding: 10px 12px;
+  border-radius: 12px;
+  margin-bottom: 7px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1.5px solid #E2E8F0;
+  background: #FFFFFF;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.chat-channel-card:hover {
+  border-color: #CBD5E1;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+}
+.chat-channel-card.active {
+  border-color: #3B82F6 !important;
+  background: #EFF6FF !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.1) !important;
+}
+
+.channel-icon-tile {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.chat-hub-room-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #FFFFFF;
+  min-width: 0;
+}
+
+.chat-room-header-wrap {
+  padding: 12px 20px;
+  border-bottom: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  flex-shrink: 0;
+}
+
+.chat-messages-stream-box {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #FAFCFF;
+}
+
+.chat-chips-scroll-row {
+  padding: 8px 18px;
+  background: #FFFFFF;
+  border-top: 1px solid #F1F5F9;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.chat-chips-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-input-bottom-panel {
+  padding: 10px 18px 12px;
+  background: #FFFFFF;
+  border-top: 1px solid #E2E8F0;
+  flex-shrink: 0;
+}
+
+.chat-input-pill-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 30px;
+  padding: 5px 6px 5px 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.chat-input-pill-wrapper:focus-within {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.chat-attach-btn {
+  background: none;
+  border: none;
+  font-size: 17px;
+  cursor: pointer;
+  color: #64748B;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+.chat-attach-btn:hover {
+  color: #2563EB;
+  background: #EFF6FF;
+}
+
+.chat-text-input-field {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #0F172A;
+  background: transparent;
+}
+.chat-text-input-field::placeholder {
+  color: #94A3B8;
+}
+
+.chat-emoji-btn {
+  background: none;
+  border: none;
+  font-size: 17px;
+  cursor: pointer;
+  color: #64748B;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+.chat-emoji-btn:hover {
+  color: #2563EB;
+  background: #EFF6FF;
+}
+
+.chat-send-circular-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #2563EB;
+  color: #FFFFFF;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+}
+.chat-send-circular-btn:hover {
+  background: #1D4ED8;
+  transform: scale(1.05);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+}
+.chat-send-circular-btn:active {
+  transform: scale(0.96);
+}
+
+.chat-footer-encryption-note {
+  font-size: 11px;
+  color: #64748B;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding-left: 8px;
+}
+
+/* ============================================================
+   GLOBAL JANSETU CIVIC DATABASE LOADER (State-of-the-Art Animation)
+   ============================================================ */
+.jansetu-loader-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: rgba(10, 15, 31, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.jansetu-loader-backdrop.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.jansetu-loader-backdrop.fade-out {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.chat-view-details-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #F8FAFC;
+  border: 1.5px solid #CBD5E1;
+  color: #1E293B;
+  font-size: 11.5px;
+  font-weight: 750;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chat-view-details-btn:hover {
+  background: #EFF6FF;
+  border-color: #3B82F6;
+  color: #1D4ED8;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+
+.jansetu-loader-card {
+  width: 90%;
+  max-width: 440px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(10, 15, 31, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  padding: 32px 28px 24px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  animation: loaderCardEntrance 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes loaderCardEntrance {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.jansetu-loader-ribbon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(to right, #FF9933 33.33%, #FFFFFF 33.33%, #FFFFFF 66.66%, #138808 66.66%);
+}
+
+/* Insignia Stage with Multi-Ring Rotating Ashoka Chakra */
+.jansetu-insignia-stage {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+/* Outer Spinning Tricolor Ring */
+.chakra-ring-outer {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 3px;
+  background: conic-gradient(from 0deg, #FF9933 0%, #FFFFFF 35%, #138808 70%, #FF9933 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: chakraSpinClockwise 2.4s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(255, 153, 51, 0.35));
+}
+
+/* Middle Reverse Spinning Ring */
+.chakra-ring-middle {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(59, 130, 246, 0.6);
+  animation: chakraSpinCounter 4s linear infinite;
+}
+
+/* Radiant Chakra Spokes */
+.chakra-spokes-ring {
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  animation: chakraSpinClockwise 6s linear infinite;
+}
+
+/* Center JanSetu Logo Emblem with Heartbeat Pulse */
+.chakra-center-emblem {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #1E3A8A 0%, #001A3A 100%);
+  border: 1.5px solid rgba(255, 153, 51, 0.7);
+  box-shadow: 0 0 16px rgba(255, 153, 51, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  animation: emblemPulse 1.8s ease-in-out infinite;
+  z-index: 2;
+}
+
+.chakra-center-emblem img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+@keyframes chakraSpinClockwise {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes chakraSpinCounter {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes emblemPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 16px rgba(255, 153, 51, 0.4); }
+  50% { transform: scale(1.08); box-shadow: 0 0 24px rgba(255, 153, 51, 0.65); }
+}
+
+.jansetu-loader-brand {
+  margin-bottom: 12px;
+}
+
+.jansetu-loader-title {
+  font-size: 19px;
+  font-weight: 850;
+  color: #FFFFFF;
+  letter-spacing: 0.5px;
+}
+
+.jansetu-loader-subtitle {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #FFB366;
+  margin-top: 3px;
+  letter-spacing: 0.3px;
+}
+
+.jansetu-loader-status {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #CBD5E1;
+  line-height: 1.5;
+  margin-bottom: 20px;
+  min-height: 20px;
+  animation: textFlicker 2s ease-in-out infinite;
+}
+
+@keyframes textFlicker {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; text-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
+}
+
+/* High-Tech Glowing Animated Progress Bar */
+.jansetu-loader-progress-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 18px;
+}
+
+.jansetu-loader-progress-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    #FF9933 30%,
+    #FFFFFF 50%,
+    #138808 70%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerMove 1.6s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+}
+
+@keyframes shimmerMove {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.jansetu-loader-security-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #94A3B8;
+  letter-spacing: 0.2px;
+}
+
+.chat-participant-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  color: #334155;
+}
+.chat-participant-pill strong {
+  color: #0F172A;
+  font-weight: 800;
+}
+.chat-participant-pill .tag {
+  color: #64748B;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Direct Action Notifications */
+.notif-item-card {
+  cursor: pointer;
+}
+.notif-item-card:hover {
+  border-color: #3B82F6 !important;
+  background: #F8FAFC !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06) !important;
 }

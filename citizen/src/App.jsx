@@ -95,8 +95,9 @@ function App() {
         </button>
       </div>
 
-      {/* Clean Navigation List */}
+      {/* Clean Navigation List with University-Panel Inspired Sections */}
       <nav className="sidebar-menu">
+        <div className="sidebar-section-label">Citizen Services</div>
         <button className="nav-item active" onClick={() => { navTo('dashboard') }}>
           <svg viewBox="0 0 24 24">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -131,13 +132,7 @@ function App() {
           <span data-i18n="sidebar_explore">Explore Challenges</span>
         </button>
 
-        <button className="nav-item" onClick={() => { openImpactModal() }}>
-          <svg viewBox="0 0 24 24">
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-            
-          </svg>
-          <span data-i18n="sidebar_impact">My Impact</span>
-        </button>
+        <div className="sidebar-section-label" style={{"marginTop":"10px"}}>Account &amp; Settings</div>
 
         <button className="nav-item" onClick={() => { openProfileModal() }}>
           <svg viewBox="0 0 24 24">
@@ -154,16 +149,6 @@ function App() {
           </svg>
           <span data-i18n="sidebar_settings">Settings &amp; Preferences</span>
         </button>
-
-        <button className="nav-item"
-          onClick={() => { alert(currentLanguage === 'hi' ? 'जनसेतु नागरिक सहायता केंद्र: 1800-JAN-SETU' : 'JanSetu Citizen Support Desk: 1800-JAN-SETU'); }}>
-          <svg viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-          <span data-i18n="sidebar_help">Help &amp; Support</span>
-        </button>
       </nav>
 
       {/* Offline Draft Banner (Item 4) */}
@@ -178,12 +163,12 @@ function App() {
 
       {/* Contribute Card: High-Contrast Heritage Card with Taj Mahal Background */}
       <div className="sidebar-contribute-card">
-        <img src="/citizen/images/taj-mahal-bg.jpg" className="taj-mahal-card-bg" alt="Taj Mahal" onError={(e) => { this.src='images/taj-mahal-bg.jpg' }} />
+        <img src="/citizen/images/taj-mahal-bg.jpg" className="taj-mahal-card-bg" alt="Taj Mahal" onError={(e) => { e.currentTarget.src='images/taj-mahal-bg.jpg' }} />
         <div className="taj-mahal-card-scrim"></div>
         <div className="sidebar-card-content">
           <div className="sidebar-flag-badge"
             style={{"display":"inline-flex","alignItems":"center","gap":"6px","background":"rgba(255,153,51,0.28)","border":"1px solid rgba(255,153,51,0.6)","borderRadius":"12px","padding":"3px 10px","fontSize":"10.5px","fontWeight":"800","color":"#FFB066","marginBottom":"8px","backdropFilter":"blur(4px)"}}>
-            <span style={{"fontSize":"12px"}}>🇮🇳</span><span data-i18n="sidebar_flag_badge">जन भागीदारी पोर्टल</span>
+            <span style={{"fontSize":"12px"}}>🇮🇳</span><span data-i18n="sidebar_flag_badge">Citizen Participation Portal</span>
           </div>
           <div className="sidebar-card-title" data-i18n="contribute_title">Make a Difference</div>
           <div className="sidebar-card-desc" data-i18n="contribute_desc">
@@ -197,18 +182,27 @@ function App() {
 
       <div className="sidebar-tricolor-footer-ribbon"></div>
       <div className="sidebar-copyright">
-        <div>Government of Jharkhand</div>
-        <div style={{"fontSize":"10px","color":"var(--gray-400)","marginTop":"2px"}}>Smart India Hackathon · PS2643</div>
+        <div style={{"fontWeight":"700","color":"#E2E8F0","fontSize":"11.5px"}}>Government of Jharkhand</div>
+        <div style={{"fontSize":"10px","color":"#94A3B8","marginTop":"2px"}}>Smart India Hackathon · PS2643</div>
+        <div style={{"marginTop":"8px","paddingTop":"6px","borderTop":"1px solid rgba(255,255,255,0.1)","fontSize":"10.5px","color":"#CBD5E1","display":"flex","flexDirection":"column","gap":"2px"}}>
+          <div style={{"display":"flex","alignItems":"center","gap":"5px","fontWeight":"700","color":"#E2E8F0","fontSize":"10px","textTransform":"uppercase","letterSpacing":"0.4px"}}>
+            <span>✉️</span>
+            <span>Contact Support:</span>
+          </div>
+          <a href="mailto:connectjansetu@gmail.com" style={{"color":"#FDBA74","textDecoration":"none","wordBreak":"break-all","fontWeight":"700","fontSize":"10.5px","transition":"color 0.2s ease"}} onMouseOver={(e) => e.currentTarget.style.color = '#FFFFFF'} onMouseOut={(e) => e.currentTarget.style.color = '#FDBA74'}>
+            connectjansetu@gmail.com
+          </a>
+        </div>
       </div>
     </aside>
 
     <main className="main-viewport">
 
-      {/* Top Panorama Banner with Full India Gate Twilight Sunset (176px) */}
+      {/* Top Panorama Banner with Full Aesthetic Indian Monuments & Abdul Kalam (Full Length) */}
       <header className="top-panorama-wrapper">
         <div className="panorama-monument-layer">
-          <img src="/citizen/images/india-gate-greenery.jpg" className="panorama-monument-photo" alt="India Gate with Greenery"
-            onError={(e) => { this.src='images/india-gate-greenery.jpg' }} />
+          <img src="/citizen/images/header.png" className="panorama-monument-photo" alt="Indian Monuments & APJ Abdul Kalam Banner"
+            onError={(e) => { e.target.src = '/citizen/images/citizen-header-banner.png'; }} />
           <div className="panorama-monument-scrim"></div>
         </div>
 
@@ -427,6 +421,15 @@ function App() {
                 <span>Namkum, Block Namkum, District Ranchi, Jharkhand</span>
               </div>
 
+              {/* Detailed Grievance Description Card */}
+              <div className="tracker-desc-box" id="activeReportDescBox"
+                style={{"margin":"8px 0 12px 0","padding":"9px 13px","background":"#F8FAFC","border":"1.2px solid #E2E8F0","borderRadius":"10px","fontSize":"12.5px","color":"#334155","lineHeight":"1.5","display":"none"}}>
+                <div style={{"fontWeight":"800","color":"#0F172A","fontSize":"10.5px","textTransform":"uppercase","letterSpacing":"0.5px","display":"flex","alignItems":"center","gap":"5px","marginBottom":"3px"}}>
+                  <span>📝</span> <span>Grievance Description</span>
+                </div>
+                <div id="activeReportDesc" style={{"color":"#475569","fontWeight":"500","wordBreak":"break-word"}}>--</div>
+              </div>
+
               {/* Official Admin Directive / Urgent Alert Container */}
               <div id="activeTrackerAdminMsg" style={{"display":"none"}}></div>
 
@@ -557,7 +560,7 @@ function App() {
                 </div>
                 <div style={{"display":"flex","alignItems":"center","gap":"3px","flexShrink":"0","background":"#EFF6FF","border":"1.5px solid #93C5FD","borderRadius":"7px","padding":"2px 5px"}}>
                   <span style={{"fontSize":"10px","lineHeight":"1"}}>📍</span>
-                  <select id="activeDistrictSelect" onChange={(e) => { setUserDistrict(this.value) }}
+                  <select id="activeDistrictSelect" onChange={(e) => { setUserDistrict(e.target.value) }}
                     style={{"fontSize":"11px","fontWeight":"800","color":"#1E3A8A","background":"transparent","border":"none","padding":"1px 2px","cursor":"pointer","outline":"none","maxWidth":"100px"}}>
                     <option value="Ranchi">Ranchi</option>
                     <option value="Dhanbad">Dhanbad</option>
@@ -656,14 +659,14 @@ function App() {
                   problem naturally</div>
               </div>
             </div>
-            <span style={{"fontSize":"11px","fontWeight":"800","color":"#FF9933"}}>Voice AI Active</span>
+            <span style={{"fontSize":"11px","fontWeight":"800","color":"#FF9933"}} data-i18n="voice_ai_active">Voice AI Active</span>
           </div>
 
           <div className="voice-sample-chips" style={{"display":"flex","gap":"6px","flexWrap":"wrap","marginTop":"6px"}}>
-            <span style={{"fontSize":"10.5px","fontWeight":"700","color":"var(--gray-500)","alignSelf":"center"}}>💡 Examples:</span>
-            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('सड़क पर गहरा गड्ढा है और आवागमन बाधित है', 'सड़क व पुलिया मरम्मत', 'Urban Infrastructure') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}}>🛣️ सड़क गड्ढा</button>
-            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('पीने के पानी का मुख्य पाइप टूट गया है और गंदा पानी आ रहा है', 'पेयजल पाइपलाइन लीकेज', 'Water Management') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}}>🚰 पानी पाइप लीकेज</button>
-            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('गांव में बिजली का ट्रांसफॉर्मर खराब है और 3 दिन से बिजली नहीं है', 'ट्रांसफॉर्मर खराब / बिजली आपूर्ति', 'Energy & Technology') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}}>⚡ बिजली ट्रांसफॉर्मर</button>
+            <span style={{"fontSize":"10.5px","fontWeight":"700","color":"var(--gray-500)","alignSelf":"center"}} data-i18n="voice_examples_label">💡 Examples:</span>
+            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('सड़क पर गहरा गड्ढा है और आवागमन बाधित है', 'सड़क व पुलिया मरम्मत', 'Urban Infrastructure') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_1">🛣️ सड़क गड्ढा</button>
+            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('पीने के पानी का मुख्य पाइप टूट गया है और गंदा पानी आ रहा है', 'पेयजल पाइपलाइन लीकेज', 'Water Management') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_2">🚰 पानी पाइप लीकेज</button>
+            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('गांव में बिजली का ट्रांसफॉर्मर खराब है और 3 दिन से बिजली नहीं है', 'ट्रांसफॉर्मर खराब / बिजली आपूर्ति', 'Energy & Technology') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_3">⚡ बिजली ट्रांसफॉर्मर</button>
           </div>
 
           <div className="form-group-field" style={{"marginTop":"12px"}}>
@@ -1098,9 +1101,9 @@ function App() {
               <div className="detail-section-title"
                 style={{"marginBottom":"2px","fontSize":"15px","color":"var(--navy)","display":"flex","alignItems":"center","gap":"7px"}}>
                 <span>📊</span>
-                <span data-i18n="tracker_stakeholder_title">LIVE PROGRESS &amp; AUDIT TRAIL</span>
+                <span data-i18n="tracker_stakeholder_title" id="detailTimelineSectionTitle">LIVE PROGRESS &amp; AUDIT TRAIL</span>
               </div>
-              <div style={{"fontSize":"11.5px","color":"var(--gray-500)"}}>
+              <div style={{"fontSize":"11.5px","color":"var(--gray-500)"}} id="detailTimelineSectionSub">
                 Real-time audit track: Admin verification, Industry supplies &amp; University field action
               </div>
             </div>
@@ -1123,12 +1126,23 @@ function App() {
         </div>
 
         <div className="detail-section-block">
-          <div className="detail-section-title" data-i18n="detail_loc_title">📍 Location &amp; Ground Authority</div>
-          <div style={{"fontSize":"13.5px","color":"var(--gray-900)","marginBottom":"6px"}} id="detailLocationText">
-            Village Namkum, Namkum, Ranchi, Jharkhand
+          <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"8px","flexWrap":"wrap","gap":"8px"}}>
+            <div className="detail-section-title" style={{"marginBottom":"0"}} data-i18n="detail_loc_title">📍 Location &amp; Ground Authority</div>
+            <button type="button" id="btnGotoLocationMap" className="btn-goto-map" onClick={() => { if (typeof window !== 'undefined' && window.gotoCurrentReportMap) window.gotoCurrentReportMap(); }}
+              style={{"background":"linear-gradient(135deg, #0284C7, #0369A1)","color":"#FFFFFF","border":"none","padding":"6px 14px","borderRadius":"8px","fontSize":"11.5px","fontWeight":"800","cursor":"pointer","display":"inline-flex","alignItems":"center","gap":"6px","boxShadow":"0 2px 6px rgba(2,132,199,0.25)","transition":"all 0.2s ease"}}>
+              <span>🗺️</span> <span data-i18n="btn_goto_map">मानचित्र पर देखें (Map View) →</span>
+            </button>
           </div>
-          <div style={{"fontSize":"13px","fontWeight":"700","color":"var(--navy)"}} id="detailAssignmentText">
-            Assigned Taskforce: BIT Mesra Civil &amp; Environmental Engineering Lab
+          <div id="detailLocationDetailedBox" style={{"background":"#F8FAFC","border":"1px solid #E2E8F0","borderRadius":"10px","padding":"12px 14px","marginBottom":"8px"}}>
+            <div style={{"fontSize":"13.5px","color":"var(--gray-900)","lineHeight":"1.5","fontWeight":"600"}} id="detailLocationText">
+              Village Namkum, Namkum, Ranchi, Jharkhand
+            </div>
+            <div id="detailHierarchyRow" style={{"display":"flex","gap":"6px","flexWrap":"wrap","marginTop":"8px"}}>
+              {/* Dynamic Hierarchy Pills: Village, Tehsil, District, State, Coordinates */}
+            </div>
+          </div>
+          <div style={{"fontSize":"12.5px","fontWeight":"700","color":"var(--navy)","display":"flex","alignItems":"center","gap":"6px"}} id="detailAssignmentText">
+            <span>🛡️</span> Assigned Taskforce: BIT Mesra Civil &amp; Environmental Engineering Lab
           </div>
         </div>
 
@@ -1154,6 +1168,25 @@ function App() {
                 <span style={{"fontSize":"10px","color":"var(--gray-400)"}}>After-proof will be verified &amp; uploaded upon
                   resolution</span>
               </div>
+            </div>
+          </div>
+
+          {/* Citizen Video Evidence Player */}
+          <div id="detailVideoContainer" style={{"display":"none","marginTop":"14px","background":"#0F172A","borderRadius":"12px","padding":"12px","boxShadow":"0 4px 16px rgba(0,0,0,0.2)"}}>
+            <div style={{"fontSize":"12px","fontWeight":"800","color":"#F8FAFC","marginBottom":"8px","display":"flex","alignItems":"center","justifyContent":"space-between"}}>
+              <span style={{"display":"inline-flex","alignItems":"center","gap":"6px"}}>🎬 <span>Citizen Video Ground Evidence (नागरिक वीडियो साक्ष्य)</span></span>
+              <span style={{"fontSize":"10.5px","background":"#EF4444","color":"#FFF","padding":"2px 8px","borderRadius":"10px","fontWeight":"700"}}>LIVE EVIDENCE</span>
+            </div>
+            <video id="detailVideoPlayer" controls style={{"width":"100%","maxHeight":"280px","borderRadius":"8px","background":"#000","outline":"none"}} src=""></video>
+          </div>
+
+          {/* All Citizen Uploaded Photographic Proofs Gallery */}
+          <div id="detailMultiPhotoGallery" style={{"display":"none","marginTop":"14px"}}>
+            <div style={{"fontSize":"12px","fontWeight":"800","color":"#334155","marginBottom":"8px","display":"flex","alignItems":"center","gap":"6px"}}>
+              <span>📷</span> <span>All Uploaded Photographic Proofs (सभी फोटो साक्ष्य)</span>
+            </div>
+            <div id="detailGalleryPhotosGrid" style={{"display":"grid","gridTemplateColumns":"repeat(auto-fill, minmax(105px, 1fr))","gap":"8px"}}>
+              {/* Dynamic Photo Thumbnails */}
             </div>
           </div>
         </div>
@@ -1646,24 +1679,34 @@ function App() {
         </div>
 
         <div style={{"marginBottom":"16px"}}>
-          <label htmlFor="deleteSecurityInput"
-            style={{"display":"block","fontSize":"12px","fontWeight":"800","color":"#991B1B","marginBottom":"6px"}}
-            data-i18n="delete_security_label">
-            To confirm deletion, please type DELETE below:
-          </label>
+          <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"6px"}}>
+            <label htmlFor="deleteSecurityInput"
+              style={{"fontSize":"12px","fontWeight":"800","color":"#991B1B"}}
+              data-i18n="delete_security_label">
+              To confirm deletion, please type DELETE below:
+            </label>
+            <button type="button"
+              onClick={() => { const inp = document.getElementById('deleteSecurityInput'); if (inp) { inp.value = 'DELETE'; if (typeof window !== 'undefined' && window.onDeleteSecurityInputChange) window.onDeleteSecurityInputChange(); } }}
+              style={{"background":"#FEE2E2","border":"1px solid #FCA5A5","color":"#991B1B","borderRadius":"6px","padding":"2px 8px","fontSize":"11px","fontWeight":"800","cursor":"pointer"}}>
+              Click to Auto-Fill DELETE ⚡
+            </button>
+          </div>
           <input type="text" className="form-input-control" id="deleteSecurityInput" placeholder="DELETE"
-            oninput="onDeleteSecurityInputChange()" autocomplete="off"
-            style={{"fontFamily":"monospace","fontWeight":"800","fontSize":"14px","textTransform":"uppercase","textAlign":"center","letterSpacing":"2px","border":"1.5px solid #FCA5A5","background":"#FFF","color":"#991B1B","padding":"9px 12px","width":"100%","boxSizing":"border-box","borderRadius":"8px"}} />
+            onInput={() => { if (typeof window !== 'undefined' && window.onDeleteSecurityInputChange) window.onDeleteSecurityInputChange(); }}
+            onChange={() => { if (typeof window !== 'undefined' && window.onDeleteSecurityInputChange) window.onDeleteSecurityInputChange(); }}
+            onKeyUp={() => { if (typeof window !== 'undefined' && window.onDeleteSecurityInputChange) window.onDeleteSecurityInputChange(); }}
+            autoComplete="off"
+            style={{"fontFamily":"monospace","fontWeight":"900","fontSize":"15px","textTransform":"uppercase","textAlign":"center","letterSpacing":"2px","border":"2px solid #FCA5A5","background":"#FFFFFF","color":"#991B1B","padding":"10px 12px","width":"100%","boxSizing":"border-box","borderRadius":"10px"}} />
         </div>
 
         <div className="modal-footer-nav" style={{"display":"flex","gap":"10px","justifyContent":"flex-end"}}>
-          <button type="button" className="btn-modal-secondary" onClick={() => { closeModal('deleteConfirmModal') }}
+          <button type="button" className="btn-modal-secondary" onClick={() => { if (typeof window !== 'undefined' && window.closeModal) window.closeModal('deleteConfirmModal'); else if (typeof closeModal === 'function') closeModal('deleteConfirmModal'); }}
             style={{"padding":"9px 18px","borderRadius":"10px","fontWeight":"700"}}>
             ✕ <span data-i18n="btn_cancel">Cancel</span>
           </button>
           <button type="button" id="btnExecuteDeleteReport" className="btn-modal-primary"
-            style={{"background":"#DC2626","borderColor":"#B91C1C","opacity":"0.45","cursor":"not-allowed","padding":"9px 20px","borderRadius":"10px","fontWeight":"800","boxShadow":"0 3px 10px rgba(220,38,38,0.25)"}}
-            disabled onClick={() => { executeReportDeletion() }}>
+            style={{"background":"#DC2626","borderColor":"#B91C1C","opacity":"0.45","cursor":"not-allowed","pointerEvents":"none","padding":"10px 22px","borderRadius":"10px","fontWeight":"800","boxShadow":"0 3px 10px rgba(220,38,38,0.25)"}}
+            onClick={() => { if (typeof window !== 'undefined' && window.executeReportDeletion) window.executeReportDeletion(); }}>
             🗑️ <span data-i18n="btn_confirm_delete">Permanently Delete Grievance</span>
           </button>
         </div>
@@ -2329,78 +2372,126 @@ function App() {
 
   {/* ============================================================
      MODAL: TRIPARTITE PROBLEM CHAT HUB (Citizen, University Guide & Admin)
+     Matching the Exact Official JanSetu Tripartite Mockup Design
      ============================================================ */}
   <div className="modal-overlay" id="problemChatModal">
-    <div className="modal-card-box" style={{"maxWidth":"980px","width":"96%","height":"86vh","display":"flex","flexDirection":"column","padding":"0","overflow":"hidden","borderRadius":"20px","boxShadow":"0 24px 60px rgba(0, 45, 98, 0.35)","border":"1.5px solid rgba(255,255,255,0.7)"}}>
-      {/* Header Bar */}
-      <div className="modal-header-bar" style={{"padding":"14px 20px","borderBottom":"1px solid #E2E8F0","background":"linear-gradient(90deg, #FFFFFF 0%, #F8FAFC 100%)","flexShrink":"0","display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+    <div className="modal-card-box chat-hub-modal-card">
+      {/* Sub-Header Bar */}
+      <div className="chat-hub-header-bar">
         <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
-          <div style={{"width":"42px","height":"42px","borderRadius":"12px","background":"linear-gradient(135deg, #002D62 0%, #1E3A8A 100%)","color":"#FFFFFF","display":"flex","alignItems":"center","justifyContent":"center","fontSize":"22px","boxShadow":"0 4px 12px rgba(0,45,98,0.25)"}}>
-            💬
+          <div className="chat-hub-brand-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="#FFFFFF">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z" />
+            </svg>
           </div>
           <div>
-            <div className="modal-header-title" style={{"fontSize":"16.5px","fontWeight":"900","color":"#0F172A","display":"flex","alignItems":"center","gap":"8px"}}>
-              <span>Problem Grievance Chat Hub</span>
-              <span style={{"fontSize":"10.5px","fontWeight":"800","color":"#166534","background":"#DCFCE7","border":"1px solid #86EFAC","padding":"2px 8px","borderRadius":"12px"}}>
-                🟢 Live Tripartite
-              </span>
-            </div>
-            <div style={{"fontSize":"11.5px","color":"#64748B","marginTop":"2px"}}>
-              Direct communication between Citizen, University Guide &amp; Admin Authority
-            </div>
+            <div className="chat-hub-header-title">Problem Grievance Chat Hub</div>
+            <div className="chat-hub-header-sub">Direct communication between Citizen, University Guide &amp; Admin Authority</div>
           </div>
         </div>
-        <button className="modal-close-btn" onClick={() => { if (typeof window !== 'undefined' && window.closeModal) window.closeModal('problemChatModal'); else if (typeof closeModal === 'function') closeModal('problemChatModal'); }}>✕</button>
+        <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
+          <button type="button" className="chat-help-btn" onClick={() => { alert('JanSetu Tripartite Support Desk:\n\nDirect support line for citizens, university taskforces, and administrative officers.\n\nEmail: connectjansetu@gmail.com\nToll-Free Civic Desk: 1800-JAN-SETU (9 AM - 6 PM)'); }}>
+            <span style={{"fontSize":"14px","fontWeight":"800","color":"#2563EB"}}>?</span>
+            <span>Need Help?</span>
+          </button>
+          <button type="button" className="modal-close-btn" onClick={() => { if (typeof window !== 'undefined' && window.closeModal) window.closeModal('problemChatModal'); else if (typeof closeModal === 'function') closeModal('problemChatModal'); }}>✕</button>
+        </div>
       </div>
 
       {/* Split View Container */}
-      <div style={{"display":"flex","flex":"1","minHeight":"0","overflow":"hidden"}}>
-        {/* Left Column: Problem Channels */}
-        <div id="chatProblemListSidebar" style={{"width":"340px","borderRight":"1px solid #E2E8F0","background":"#F8FAFC","display":"flex","flexDirection":"column","flexShrink":"0"}}>
-          <div style={{"padding":"12px 14px","borderBottom":"1px solid #E2E8F0","background":"#FFFFFF"}}>
-            <div style={{"position":"relative"}}>
-              <input type="text" id="chatSearchInput" placeholder="Filter problems by ID / title..."
-                style={{"width":"100%","boxSizing":"border-box","padding":"8px 12px 8px 30px","borderRadius":"10px","border":"1.5px solid #CBD5E1","fontSize":"12px","outline":"none"}} />
-              <span style={{"position":"absolute","left":"10px","top":"50%","transform":"translateY(-50%)","fontSize":"13px","color":"#94A3B8"}}>🔍</span>
+      <div className="chat-hub-split-body">
+        {/* Left Column: Search, Status Tabs & Problem Channels */}
+        <div id="chatProblemListSidebar" className="chat-hub-sidebar">
+          {/* Search Row */}
+          <div className="chat-sidebar-search-box">
+            <div style={{"position":"relative","flex":"1"}}>
+              <input type="text" id="chatSearchInput" placeholder="Search by ID, title, or keyword..."
+                className="chat-sidebar-search-input" />
+              <span className="chat-search-lens-icon">🔍</span>
             </div>
+            <button type="button" className="chat-filter-btn" title="Filter problems" onClick={() => { const inp = document.getElementById('chatSearchInput'); if (inp) { inp.focus(); } }}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <line x1="1" y1="14" x2="7" y2="14" />
+                <line x1="9" y1="8" x2="15" y2="8" />
+                <line x1="17" y1="16" x2="23" y2="16" />
+              </svg>
+            </button>
           </div>
 
-          <div id="chatProblemChannelList" style={{"flex":"1","overflowY":"auto","padding":"8px"}}>
+          {/* Status Tabs Navigation */}
+          <div className="chat-tabs-nav" id="chatStatusTabsContainer">
+            <button type="button" className="chat-tab-pill active" id="chatTab_all" onClick={() => { window.setChatStatusFilter && window.setChatStatusFilter('all'); }}>
+              All (<span id="chatCountAll">0</span>)
+            </button>
+            <button type="button" className="chat-tab-pill" id="chatTab_Submitted" onClick={() => { window.setChatStatusFilter && window.setChatStatusFilter('Submitted'); }}>
+              Submitted (<span id="chatCountSubmitted">0</span>)
+            </button>
+            <button type="button" className="chat-tab-pill" id="chatTab_Review" onClick={() => { window.setChatStatusFilter && window.setChatStatusFilter('Being Worked On'); }}>
+              Under Review (<span id="chatCountReview">0</span>)
+            </button>
+            <button type="button" className="chat-tab-pill" id="chatTab_Solved" onClick={() => { window.setChatStatusFilter && window.setChatStatusFilter('Solved'); }}>
+              Resolved (<span id="chatCountResolved">0</span>)
+            </button>
+          </div>
+
+          {/* Problem Channel Cards List */}
+          <div id="chatProblemChannelList" className="chat-channels-scroll">
             {/* Populated dynamically via renderChatProblemChannels() */}
           </div>
         </div>
 
         {/* Right Column: Active Problem Chat Room */}
-        <div id="chatRoomArea" style={{"flex":"1","display":"flex","flexDirection":"column","background":"#FFFFFF","minWidth":"0"}}>
-          {/* Room Top Header with Participant Badges */}
-          <div id="chatRoomHeader" style={{"padding":"12px 18px","borderBottom":"1px solid #E2E8F0","background":"#FFFFFF","display":"flex","justifyContent":"space-between","alignItems":"center","flexShrink":"0","flexWrap":"wrap","gap":"8px"}}>
+        <div id="chatRoomArea" className="chat-hub-room-area">
+          {/* Room Top Header with Metadata, Title, and Participant Badges */}
+          <div id="chatRoomHeader" className="chat-room-header-wrap">
             {/* Populated dynamically */}
           </div>
 
           {/* Messages Stream Container */}
-          <div id="chatMessagesStream" style={{"flex":"1","overflowY":"auto","padding":"16px 20px","display":"flex","flexDirection":"column","gap":"14px","background":"#FAFCFF"}}>
+          <div id="chatMessagesStream" className="chat-messages-stream-box">
             {/* Populated dynamically */}
           </div>
 
           {/* Quick Chip Suggestions */}
-          <div id="chatQuickChipsContainer" style={{"padding":"6px 16px","background":"#FFFFFF","borderTop":"1px solid #F1F5F9","display":"flex","gap":"8px","overflowX":"auto","flexShrink":"0"}}>
+          <div id="chatQuickChipsContainer" className="chat-chips-scroll-row">
             {/* Suggestion buttons */}
           </div>
 
           {/* Message Input Form */}
-          <form id="chatMessageForm" onSubmit={(e) => { e.preventDefault(); if (typeof window !== 'undefined' && window.sendProblemChatMessage) window.sendProblemChatMessage(); else if (typeof sendProblemChatMessage === 'function') sendProblemChatMessage(); }}
-            style={{"padding":"10px 16px","background":"#FFFFFF","borderTop":"1px solid #E2E8F0","display":"flex","gap":"10px","alignItems":"center","flexShrink":"0"}}>
-            <input type="text" id="chatTextInput" placeholder="Type a message to University Taskforce &amp; Admin Authority..."
-              style={{"flex":"1","padding":"10px 14px","borderRadius":"12px","border":"1.5px solid #CBD5E1","fontSize":"12.5px","outline":"none"}} />
-            <button type="submit" id="btnSendChatMessage"
-              style={{"padding":"10px 18px","borderRadius":"12px","background":"linear-gradient(135deg, #002D62 0%, #FF9933 100%)","color":"#FFFFFF","border":"none","fontWeight":"800","fontSize":"12.5px","cursor":"pointer","display":"flex","alignItems":"center","gap":"6px","boxShadow":"0 2px 8px rgba(0,45,98,0.2)"}}>
-              <span>Send</span> <span>➤</span>
-            </button>
-          </form>
+          <div className="chat-input-bottom-panel">
+            <form id="chatMessageForm" onSubmit={(e) => { e.preventDefault(); if (typeof window !== 'undefined' && window.sendProblemChatMessage) window.sendProblemChatMessage(); else if (typeof sendProblemChatMessage === 'function') sendProblemChatMessage(); }}
+              className="chat-input-pill-wrapper">
+              <button type="button" className="chat-attach-btn" title="Attach evidence photo/document" onClick={() => { document.getElementById('chatFileInput')?.click(); }}>
+                📎
+              </button>
+              <input type="file" id="chatFileInput" style={{"display":"none"}} accept="image/*,.pdf" onChange={(e) => { window.handleChatFileUpload && window.handleChatFileUpload(e); }} />
+              <input type="text" id="chatTextInput" placeholder="Type a message to University Taskforce &amp; Admin Authority..."
+                className="chat-text-input-field" autoComplete="off" />
+              <button type="button" className="chat-emoji-btn" title="Insert emoji" onClick={() => { const inp = document.getElementById('chatTextInput'); if (inp) { inp.value += ' 👍 '; inp.focus(); } }}>
+                🙂
+              </button>
+              <button type="submit" id="btnSendChatMessage" className="chat-send-circular-btn" title="Send message">
+                <span>➤</span>
+              </button>
+            </form>
+            <div className="chat-footer-encryption-note">
+              <span>🔒</span> <span>This chat is linked to the problem ID and will be saved for future reference.</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
+  {/* Global JanSetu Civic Database Loader disabled on citizen page per user request */}
+  <div id="jansetuGlobalLoader" className="jansetu-loader-backdrop" style={{ display: 'none' }}></div>
+
 
   {/* Global JanSetu Toast Notification (Smooth Popover) */}
   <div id="jansetuToast"></div>

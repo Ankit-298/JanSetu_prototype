@@ -537,95 +537,12 @@ router.post('/problems/:id/fork', async (req, res) => {
    UNIVERSITY <-> CITIZEN CHAT & INQUIRIES
    ══════════════════════════════════════════ */
 
-// 1. Get Problem Chat History
-router.get('/problems/:id/chat', async (req, res) => {
-  try {
-    const problem = await Problem.findById(req.params.id);
-    if (!problem) return res.status(404).json({ error: 'Problem not found' });
-    res.json({
-      success: true,
-      chatMessages: problem.chatMessages || [],
-      messages: problem.chatMessages || [],
-      submitterContact: problem.submitterContact || { name: 'Verified Citizen Submitter' }
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Unified Tripartite Problem Chat Routes (Citizen, University Guide, Admin)
+const { getChallengeChat, postChallengeChatMessage, markChallengeChatRead } = require('../others/controllers/challengeController');
+router.get('/problems/:id/chat', getChallengeChat);
+router.post('/problems/:id/chat', postChallengeChatMessage);
+router.post('/problems/:id/chat/mark-read', markChallengeChatRead);
 
-// 2. University Sends Message to Citizen Submitter
-router.post('/problems/:id/chat', async (req, res) => {
-  try {
-    const problem = await Problem.findById(req.params.id);
-    if (!problem) return res.status(404).json({ error: 'Problem not found' });
-
-    const text = (req.body.text || '').trim();
-    if (!text) return res.status(400).json({ error: 'Message text is required' });
-
-    const sender = req.body.sender || 'Prof. Rajesh Singh';
-    const senderRole = req.body.senderRole || 'University Faculty Guide';
-    const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-    const newMsg = {
-      sender,
-      senderRole,
-      senderAvatar: 'UG',
-      text,
-      time: timeStr,
-      timestamp: new Date(),
-      isUniversity: true
-    };
-
-    if (!problem.chatMessages) problem.chatMessages = [];
-    problem.chatMessages.push(newMsg);
-    await problem.save();
-
-    // Find citizen user to notify
-    let citizenRecipientId = null;
-    if (problem.sourceCitizenProblemId) {
-      const challenge = await Challenge.findById(problem.sourceCitizenProblemId);
-      if (challenge && challenge.submittedBy) {
-        citizenRecipientId = challenge.submittedBy;
-      }
-    }
-    if (!citizenRecipientId) {
-      const citizenUser = await User.findOne({
-        $or: [
-          { email: problem.submitterContact?.email },
-          { email: 'rajesh@gmail.com' },
-          { role: 'citizen' }
-        ]
-      });
-      if (citizenUser) citizenRecipientId = citizenUser._id;
-    }
-
-    // Create notification in CentralNotification for Citizen
-    if (citizenRecipientId) {
-      try {
-        const citizenNotif = new CentralNotification({
-          recipient: citizenRecipientId,
-          type: 'message',
-          title: `💬 Message from University Guide: ${problem.title}`,
-          message: `${sender}: "${text.length > 180 ? text.slice(0, 180) + '...' : text}"`,
-          data: {
-            challengeId: problem.sourceCitizenProblemId,
-            challengeRefId: problem.challengeId || problem.reportId,
-            problemId: problem._id,
-            url: `/dashboard/citizen?problemChat=${problem._id}`
-          },
-          priority: 'high'
-        });
-        await citizenNotif.save();
-      } catch (e) {
-        console.error('Error saving citizen central notification:', e);
-      }
-    }
-
-    res.json({ success: true, message: 'Message sent to citizen', chatMessages: problem.chatMessages, newMsg });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // 3. Citizen Replies to University
 router.post('/problems/:id/citizen-reply', async (req, res) => {
@@ -2406,10 +2323,5 @@ router.get('/dashboard/stats', async (req, res) => {
   }
 });
 
-// Problem Chat Routes (Tripartite: Citizen, University, Admin)
-const { getChallengeChat, postChallengeChatMessage, markChallengeChatRead } = require('../others/controllers/challengeController');
-router.get('/problems/:id/chat', getChallengeChat);
-router.post('/problems/:id/chat', postChallengeChatMessage);
-router.post('/problems/:id/chat/mark-read', markChallengeChatRead);
-
 module.exports = router;
+

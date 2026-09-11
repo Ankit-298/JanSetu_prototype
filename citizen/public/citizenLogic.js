@@ -1,6 +1,33 @@
 
     // Translations, Categories, Quotes & Seed data modularized into /citizen/translations.js
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+    window.escapeHtml = escapeHtml;
+
+    function formatProperAddress(rep) {
+      if (!rep) return 'Jharkhand';
+      const parts = [];
+      if (rep.village && rep.village !== 'Not Specified' && String(rep.village).trim()) parts.push(String(rep.village).trim());
+      if (rep.landmark && String(rep.landmark).trim()) parts.push(String(rep.landmark).trim());
+      if (rep.block && rep.block !== 'Not Specified' && String(rep.block).trim()) parts.push('Block ' + String(rep.block).trim());
+      if (rep.district && rep.district !== 'Not Specified' && String(rep.district).trim()) parts.push('Dist. ' + String(rep.district).trim());
+      if (rep.pincode && String(rep.pincode).trim()) parts.push(String(rep.pincode).trim());
+      if (parts.length > 0) {
+        if (!parts.some(p => p.toLowerCase().includes('jharkhand'))) parts.push('Jharkhand');
+        return parts.join(', ');
+      }
+      return rep.location || rep.address || 'Jharkhand';
+    }
+    window.formatProperAddress = formatProperAddress;
+
     let currentLanguage = localStorage.getItem('jansetu_language') || 'hi';
     let quoteIndex = 0;
     let quoteTimer = null;
@@ -20,29 +47,72 @@
     const chatMessagesCache = {}; // { [problemId]: [] }
     const chatUnreadState = {};   // { [problemId]: boolean }
 
+    // Bullet-proof Chat Deduplication: server-side authority + optimistic text signature merging
+    function mergeAndDeduplicateChat(serverMsgs = [], localMsgs = []) {
+      const result = [];
+      const seenIds = new Set();
+      const seenSignatures = new Map(); // signature -> timestamp
+
+      // 1. Authoritative server messages first
+      (serverMsgs || []).forEach(m => {
+        if (!m || !m.text) return;
+        const normText = (m.text || '').trim();
+        if (!normText) return;
+
+        if (m._id) {
+          const idStr = String(m._id);
+          if (seenIds.has(idStr)) return;
+          seenIds.add(idStr);
+        }
+
+        const senderRole = (m.senderType || (m.isCitizen ? 'citizen' : (m.isUniversity ? 'university' : 'admin'))).toLowerCase();
+        const timeVal = new Date(m.timestamp || m.createdAt || 0).getTime();
+        const sig = `${senderRole}:::${normText}`;
+
+        const prevTime = seenSignatures.get(sig);
+        if (prevTime !== undefined && Math.abs(timeVal - prevTime) < 45000) {
+          return; // Duplicate server echo within 45s
+        }
+        seenSignatures.set(sig, timeVal);
+        result.push(m);
+      });
+
+      // 2. Local optimistic messages (only keep if not already in server messages)
+      (localMsgs || []).forEach(m => {
+        if (!m || !m.text) return;
+        const normText = (m.text || '').trim();
+        if (!normText) return;
+
+        if (m._id && seenIds.has(String(m._id))) return;
+
+        const senderRole = (m.senderType || (m.isCitizen ? 'citizen' : (m.isUniversity ? 'university' : 'admin'))).toLowerCase();
+        const timeVal = new Date(m.timestamp || 0).getTime();
+        const sig = `${senderRole}:::${normText}`;
+
+        const prevTime = seenSignatures.get(sig);
+        if (prevTime !== undefined && (Math.abs(timeVal - prevTime) < 60000 || timeVal === 0 || prevTime === 0)) {
+          return; // Server already has this message! Discard optimistic copy.
+        }
+
+        seenSignatures.set(sig, timeVal);
+        result.push(m);
+      });
+
+      result.sort((a, b) => new Date(a.timestamp || a.createdAt || 0).getTime() - new Date(b.timestamp || b.createdAt || 0).getTime());
+      return result;
+    }
+    window.mergeAndDeduplicateChat = mergeAndDeduplicateChat;
+
     function appendChatMessageToStore(pId, rep, msg) {
       if (!pId || !msg) return;
       if (!chatMessagesCache[pId]) chatMessagesCache[pId] = [];
 
-      // Deduplication check: verify against object reference, _id, or content + sender + timestamp
-      const isDup = chatMessagesCache[pId].some(existing => {
-        if (existing === msg) return true;
-        if (existing._id && msg._id && String(existing._id) === String(msg._id)) return true;
-        if (existing.text && msg.text && existing.text.trim() === msg.text.trim() && existing.sender === msg.sender &&
-            Math.abs(new Date(existing.timestamp || 0).getTime() - new Date(msg.timestamp || 0).getTime()) < 5000) {
-          return true;
-        }
-        return false;
-      });
-
-      if (!isDup) {
-        chatMessagesCache[pId].push(msg);
-      }
-
+      chatMessagesCache[pId] = mergeAndDeduplicateChat(chatMessagesCache[pId], [msg]);
       if (rep) {
         rep.chatMessages = chatMessagesCache[pId];
       }
     }
+
 
     if (jansetuSyncChannel) {
       jansetuSyncChannel.addEventListener('message', function (ev) {
@@ -271,6 +341,21 @@
         .replace(/'/g, '&#039;');
     }
 
+    /* ============================================================
+       LOADER SCREEN DISABLED ON CITIZEN PORTAL (INSTANT LOAD)
+       ============================================================ */
+    function showJanSetuLoader(message, minDuration = 0) {
+      // Disabled on citizen portal per user request - Instant UI
+      return;
+    }
+    window.showJanSetuLoader = showJanSetuLoader;
+
+    function hideJanSetuLoader(callback, forcedDelay) {
+      // Immediate execution of callback with zero delay
+      if (typeof callback === 'function') callback();
+    }
+    window.hideJanSetuLoader = hideJanSetuLoader;
+
     setTimeout(async () => {
       applyUserProfile();
       loadPersistentState();
@@ -285,6 +370,7 @@
       renderAllViews();
       await fetchLiveChallenges(true);
       applyUserProfile();
+
 
       // Setup realtime sync listener across browser tabs/windows
       if (jansetuSyncChannel) {
@@ -645,6 +731,33 @@
       renderAllViews();
     }
 
+    function getDeletedChallengesSet() {
+      try {
+        const u = getCurrentUser();
+        const userKey = u ? (u.id || u._id || u.email || 'guest') : 'guest';
+        const userRaw = localStorage.getItem('jansetu_deleted_challenges_' + userKey);
+        const globalRaw = localStorage.getItem('jansetu_deleted_challenges_global');
+        const userSet = userRaw ? JSON.parse(userRaw) : [];
+        const globalSet = globalRaw ? JSON.parse(globalRaw) : [];
+        return new Set([...userSet, ...globalSet]);
+      } catch (e) {
+        return new Set();
+      }
+    }
+
+    function addDeletedChallenge(id, mongoId) {
+      try {
+        const u = getCurrentUser();
+        const userKey = u ? (u.id || u._id || u.email || 'guest') : 'guest';
+        const set = getDeletedChallengesSet();
+        if (id) set.add(String(id));
+        if (mongoId) set.add(String(mongoId));
+        const arr = Array.from(set);
+        localStorage.setItem('jansetu_deleted_challenges_' + userKey, JSON.stringify(arr));
+        localStorage.setItem('jansetu_deleted_challenges_global', JSON.stringify(arr));
+      } catch (e) { }
+    }
+
     let lastChallengesSyncSignature = '';
 
     async function fetchLiveChallenges(force = false) {
@@ -670,16 +783,20 @@
 
           const apiList = data.data;
           const apiMongoIds = new Set(apiList.map(c => (c._id ? c._id.toString() : '')));
+          const deletedChallengeSet = getDeletedChallengesSet();
           
-          // Prune locally cached reports that had a mongoId but were deleted from MongoDB
-          allReportsList = allReportsList.filter(r => !r.mongoId || apiMongoIds.has(r.mongoId.toString()));
-          exploreList = exploreList.filter(e => !e.mongoId || apiMongoIds.has(e.mongoId.toString()));
+          // Prune locally cached reports that had a mongoId but were deleted from MongoDB or are in deletedChallengeSet
+          allReportsList = allReportsList.filter(r => (!r.mongoId || apiMongoIds.has(r.mongoId.toString())) && !deletedChallengeSet.has(String(r.id)) && (!r.mongoId || !deletedChallengeSet.has(String(r.mongoId))));
+          exploreList = exploreList.filter(e => (!e.mongoId || apiMongoIds.has(e.mongoId.toString())) && !deletedChallengeSet.has(String(e.id)) && (!e.mongoId || !deletedChallengeSet.has(String(e.mongoId))));
 
           const myApiChallenges = [];
           const communityApiChallenges = [];
 
           apiList.forEach(c => {
             const cid = c.challengeId || ('JH-2026-' + (c._id ? c._id.slice(-4).toUpperCase() : Math.floor(1000 + Math.random() * 9000)));
+            if (deletedChallengeSet.has(String(cid)) || (c._id && deletedChallengeSet.has(String(c._id)))) {
+              return; // Skip deleted challenge
+            }
             const subId = c.submittedBy ? (c.submittedBy._id || c.submittedBy.id || c.submittedBy).toString() : '';
             const subEmail = (c.submittedBy && c.submittedBy.email)
               ? c.submittedBy.email.toLowerCase().trim()
@@ -1070,7 +1187,7 @@
       ];
     }
 
-    function renderDetailProgressTracker(item) {
+    function renderDetailProgressTracker(item, isMyOwnReport = false) {
       const cont = document.getElementById('detailModalTimelineContainer');
       const cardsGrid = document.getElementById('detailStakeholderCardsGrid');
       const badge = document.getElementById('detailReportedTimestampBadge');
@@ -1083,7 +1200,7 @@
         badge.textContent = `${currentLanguage === 'hi' ? '📅 दर्ज:' : '📅 Reported:'} ${data.baseDate}`;
       }
 
-      // 1. Horizontal Stepper (5 Multi-Stakeholder Stages)
+      // 1. Horizontal Stepper (Clean Line Progress Bar)
       if (cont) {
         const milestones = generateReportMilestones(item);
         let stepperHtml = '';
@@ -1095,8 +1212,10 @@
           <div class="detail-timeline-step">
             <div class="${bubbleClass}" title="${s.name}">${bubbleContent}</div>
             <div class="detail-step-title">${s.name}</div>
-            <div class="detail-step-date">${s.date}</div>
-            <div class="detail-step-desc">${s.note}</div>
+            ${isMyOwnReport ? `
+              <div class="detail-step-date">${s.date}</div>
+              <div class="detail-step-desc">${s.note}</div>
+            ` : ''}
           </div>
         `;
 
@@ -1108,10 +1227,15 @@
         cont.innerHTML = stepperHtml;
       }
 
-      // 2. Comprehensive Stakeholder Action Cards
+      // 2. Stakeholder Action Cards: Only show for author; viewers get a clean focused view
       if (cardsGrid) {
-        cardsGrid.style.display = 'flex';
-        cardsGrid.innerHTML = buildStakeholderCardsHtml(item);
+        if (!isMyOwnReport) {
+          cardsGrid.style.display = 'none';
+          cardsGrid.innerHTML = '';
+        } else {
+          cardsGrid.style.display = 'flex';
+          cardsGrid.innerHTML = buildStakeholderCardsHtml(item);
+        }
       }
     }
 
@@ -1472,11 +1596,42 @@
 
       if (document.getElementById('activeReportId')) document.getElementById('activeReportId').textContent = 'Report ID: ' + active.id;
       if (document.getElementById('activeReportTitle')) document.getElementById('activeReportTitle').textContent = active.title;
+
+      // Format complete proper address for active report
+      const formatProperAddress = (rep) => {
+        if (!rep) return 'Jharkhand';
+        const parts = [];
+        if (rep.village && rep.village !== 'Not Specified' && rep.village.trim()) parts.push(rep.village.trim());
+        if (rep.landmark && rep.landmark.trim()) parts.push(rep.landmark.trim());
+        if (rep.block && rep.block !== 'Not Specified' && rep.block.trim()) parts.push('Block ' + rep.block.trim());
+        if (rep.district && rep.district !== 'Not Specified' && rep.district.trim()) parts.push('Dist. ' + rep.district.trim());
+        if (rep.pincode && rep.pincode.trim()) parts.push(rep.pincode.trim());
+        if (parts.length > 0) {
+          if (!parts.some(p => p.toLowerCase().includes('jharkhand'))) parts.push('Jharkhand');
+          return parts.join(', ');
+        }
+        return rep.location || rep.address || 'Jharkhand';
+      };
+
       if (document.getElementById('activeReportLoc')) {
+        const fullAddr = formatProperAddress(active);
         document.getElementById('activeReportLoc').innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-        <span>${active.location || 'Jharkhand'}</span>
+        <span style="font-weight:600; color:#334155;">${escapeHtml(fullAddr)}</span>
       `;
+      }
+
+      // Populate detailed grievance description in active tracker card
+      const descBox = document.getElementById('activeReportDescBox');
+      const descEl = document.getElementById('activeReportDesc');
+      const activeDesc = (active.desc || active.description || active.details || '').trim();
+      if (descBox && descEl) {
+        if (activeDesc) {
+          descBox.style.display = 'block';
+          descEl.textContent = activeDesc;
+        } else {
+          descBox.style.display = 'none';
+        }
       }
 
       const badge = document.getElementById('activeReportStatus');
@@ -1592,124 +1747,147 @@
       }
 
       // Render Active Problem Tracker
-      renderActiveProblem();
-
-      // Render Recent Reports Horizontal Scroll Track
-      const recentCont = document.getElementById('recentReportsContainerList');
-      if (recentCont) {
-        if (allReportsList.length === 0) {
-          recentCont.innerHTML = `
-          <div style="width:100%; padding:28px 16px; text-align:center; background:#F8FAFC; border:1.5px dashed #CBD5E1; border-radius:16px; color:#64748B;">
-            <div style="font-size:24px; margin-bottom:6px;">📋</div>
-            <div style="font-size:14px; font-weight:700; color:#1E293B; margin-bottom:4px;">
-              ${currentLanguage === 'hi' ? 'आपकी कोई दर्ज समस्या नहीं है' : 'You have not reported any issues yet'}
-            </div>
-            <div style="font-size:12px; margin-bottom:12px;">
-              ${currentLanguage === 'hi' ? 'अपने क्षेत्र की सड़क, पानी, या बिजली की समस्या दर्ज करें' : 'Submit an issue regarding roads, water, or electricity in your area'}
-            </div>
-            <button type="button" class="btn-sol-yes" style="padding:6px 16px; font-size:12px;" onclick="openReportModal()">
-              + ${currentLanguage === 'hi' ? 'समस्या दर्ज करें' : 'Report an Issue'}
-            </button>
-          </div>
-        `;
-        } else {
-          const getStatusClass = (status) => {
-            if (status === 'Solved') return 'status-solved';
-            if (status === 'Action Required') return 'status-action';
-            if (status === 'Being Worked On' || status === 'In Progress' || status === 'University Assigned') return 'status-progress';
-            return 'status-assigned';
-          };
-
-          recentCont.innerHTML = allReportsList.map(r => `
-          <div class="report-square-card" onclick="openDetailModal('${r.id}')" title="${r.title}">
-            <div class="square-thumb-wrapper">
-              <img src="${r.image || getCategoryFallbackImage(r.category)}" class="square-thumb-img" alt="${r.title}" onerror="this.src='/images/water-tap.jpg'" />
-              <span class="square-status-badge ${getStatusClass(r.status)}">${r.status}</span>
-            </div>
-            <div class="square-card-body">
-              <div class="square-card-title">${r.title}</div>
-              <div class="square-card-loc">📍 ${r.location || 'Jharkhand'}</div>
-              <div class="square-card-footer">
-                <span class="square-card-id">${r.id}</span>
-                <span class="square-card-time">${r.timeAgo || 'Recently'}</span>
-              </div>
-            </div>
-          </div>
-        `).join('');
-        }
+      try {
+        renderActiveProblem();
+      } catch (e) {
+        console.warn('Error in renderActiveProblem:', e);
       }
 
-      const nearbyCont = document.getElementById('nearbyMiniContainer');
-      if (nearbyCont) {
-        const userDist = getUserDistrict();
-        updateDistrictBadges();
-
-        const user = getCurrentUser();
-        const userEmail = user && user.email ? user.email.toLowerCase().trim() : '';
-        const userId = user ? (user.id || user._id || '').toString() : '';
-
-        // STRICT SAME-DISTRICT FILTERING FOR NEARBY CHALLENGES
-        const sameDistrictList = exploreList.filter(c => {
-          // Exclude own reports
-          const itemSubEmail = c.submitterEmail ? c.submitterEmail.toLowerCase().trim() : '';
-          const itemSubId = c.submittedById ? c.submittedById.toString() : '';
-          const isMine = (userEmail && itemSubEmail === userEmail) || (userId && itemSubId === userId) || allReportsList.some(r => r.id === c.id || (c.mongoId && r.mongoId === c.mongoId));
-          if (isMine) return false;
-
-          const cDist = getChallengeDistrict(c);
-          return isSameDistrict(cDist, userDist);
-        });
-
-        if (sameDistrictList.length === 0) {
-          nearbyCont.innerHTML = `
-          <div style="padding: 18px 12px; text-align: center; background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 12px;">
-            <div style="font-size: 22px; margin-bottom: 4px;">📍</div>
-            <div style="font-weight: 800; color: #1E293B; font-size: 13px;">${currentLanguage === 'hi' ? userDist + ' में साथी नागरिकों की कोई नई समस्या नहीं' : 'No other citizen reports in ' + userDist}</div>
-            <div style="color: #64748B; font-size: 11px; margin-top: 4px; line-height: 1.4;">
-              ${currentLanguage === 'hi' ? 'जैसे ही कोई नागरिक ' + userDist + ' में समस्या दर्ज करेगा, वह तुरंत रियल-टाइम यहाँ दिखेगी।' : 'When any citizen reports an issue in ' + userDist + ', it will instantly appear here in real-time.'}
-            </div>
-          </div>
-        `;
-        } else {
-          nearbyCont.innerHTML = sameDistrictList.slice(0, 2).map(c => {
-            const isSupported = supportedIds.has(c.id);
-            const cDist = getChallengeDistrict(c) || userDist;
-            const maskedCitizenId = c.citizenId || c.submitterCitizenId || ('C' + (c.id ? c.id.replace(/[^0-9]/g, '').slice(-4) : '9604'));
-            const displayCitizenBadge = (currentLanguage === 'hi' ? 'नागरिक #' : 'Citizen #') + maskedCitizenId;
-            return `
-            <div class="nearby-mini-item" onclick="openDetailModal('${c.id}')">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-                <span style="font-size:10px;font-weight:800;color:var(--navy);background:#EFF6FF;padding:2px 6px;border-radius:8px;">${c.category}</span>
-                <span style="font-size:10px;font-weight:700;color:#0284C7;background:#E0F2FE;border:1px solid #BAE6FD;padding:2px 7px;border-radius:8px;">📍 ${cDist}</span>
+      // Render Recent Reports Horizontal Scroll Track
+      try {
+        const recentCont = document.getElementById('recentReportsContainerList');
+        if (recentCont) {
+          if (!allReportsList || allReportsList.length === 0) {
+            recentCont.innerHTML = `
+            <div style="width:100%; padding:28px 16px; text-align:center; background:#F8FAFC; border:1.5px dashed #CBD5E1; border-radius:16px; color:#64748B;">
+              <div style="font-size:24px; margin-bottom:6px;">📋</div>
+              <div style="font-size:14px; font-weight:700; color:#1E293B; margin-bottom:4px;">
+                ${currentLanguage === 'hi' ? 'आपकी कोई दर्ज समस्या नहीं है' : 'You have not reported any issues yet'}
               </div>
-              <div class="nearby-mini-title">${c.title}</div>
-              <div class="nearby-mini-loc" style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
-                <span style="font-weight:700; color:#334155;">🛡️ ${displayCitizenBadge}</span>
-                <strong style="color:#C2410C;">${c.supports || 1} ${currentLanguage === 'hi' ? 'प्रभावित' : 'affected'}</strong>
+              <div style="font-size:12px; margin-bottom:12px;">
+                ${currentLanguage === 'hi' ? 'अपने क्षेत्र की सड़क, पानी, या बिजली की समस्या दर्ज करें' : 'Submit an issue regarding roads, water, or electricity in your area'}
               </div>
-              <div style="font-size:10px;color:#64748B;margin-top:1px;margin-bottom:5px;">📍 ${c.location || userDist} · 🕒 ${c.timeAgo || (currentLanguage === 'hi' ? 'हाल ही में' : 'Recently')}</div>
-              <button class="btn-sol-yes" style="width:100%;padding: 5px 8px; font-size: 11px; font-weight:800; border-radius:7px; background:${isSupported ? 'var(--india-green)' : 'var(--navy)'};" onclick="event.stopPropagation(); toggleSupport('${c.id}')">
-                ${isSupported ? (currentLanguage === 'hi' ? '✓ समर्थित' : '✓ Supported') : (currentLanguage === 'hi' ? '👍 मैं भी प्रभावित हूँ' : (currentLanguage === 'hinglish' ? '👍 Main bhi prabhavit hoon' : '👍 I am also affected'))}
+              <button type="button" class="btn-sol-yes" style="padding:6px 16px; font-size:12px;" onclick="openReportModal()">
+                + ${currentLanguage === 'hi' ? 'समस्या दर्ज करें' : 'Report an Issue'}
               </button>
             </div>
           `;
-          }).join('');
+          } else {
+            const getStatusClass = (status) => {
+              if (status === 'Solved') return 'status-solved';
+              if (status === 'Action Required') return 'status-action';
+              if (status === 'Being Worked On' || status === 'In Progress' || status === 'University Assigned') return 'status-progress';
+              return 'status-assigned';
+            };
 
-          const btnExplore = document.querySelector('.btn-explore-nearby');
-          if (btnExplore) {
-            const isHi = currentLanguage === 'hi';
-            const isHinglish = currentLanguage === 'hinglish';
-            if (sameDistrictList.length > 2) {
-              btnExplore.innerHTML = isHi
-                ? `सभी ${sameDistrictList.length} निकटवर्ती समस्याएं देखें →`
-                : (isHinglish ? `Sabhi ${sameDistrictList.length} Nearby Problems Dekhein →` : `Explore All ${sameDistrictList.length} Nearby Issues →`);
-            } else {
-              btnExplore.innerHTML = isHi
-                ? `सभी निकटवर्ती समस्याएं देखें →`
-                : (isHinglish ? `Sabhi Nearby Problems Dekhein →` : `Explore All Nearby Issues →`);
+            recentCont.innerHTML = allReportsList.map(r => {
+              const descSnippet = (r.desc || r.description || r.details || '').trim();
+              const fullAddr = (typeof formatProperAddress === 'function') ? formatProperAddress(r) : (r.location || 'Jharkhand');
+              const safeTitle = (typeof escapeHtml === 'function') ? escapeHtml(r.title) : (r.title || '');
+              return `
+              <div class="report-square-card" onclick="openDetailModal('${r.id}')" title="${safeTitle}">
+                <div class="square-thumb-wrapper">
+                  <img src="${r.image || getCategoryFallbackImage(r.category)}" class="square-thumb-img" alt="${safeTitle}" onerror="this.src='/images/water-tap.jpg'" />
+                  <span class="square-status-badge ${getStatusClass(r.status)}">${r.status}</span>
+                </div>
+                <div class="square-card-body">
+                  <div class="square-card-title">${safeTitle}</div>
+                  <div class="square-card-loc" title="${escapeHtml(fullAddr)}">📍 ${escapeHtml(fullAddr)}</div>
+                  ${descSnippet ? `<div style="font-size:10.5px; color:#475569; line-height:1.35; margin:3px 0 2px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;">${escapeHtml(descSnippet)}</div>` : ''}
+                  <div class="square-card-footer">
+                    <span class="square-card-id">${r.id}</span>
+                    <span class="square-card-time">${r.timeAgo || 'Recently'}</span>
+                  </div>
+                </div>
+              </div>
+            `;
+            }).join('');
+          }
+        }
+      } catch (errRecent) {
+        console.error('Error rendering recentReportsContainerList:', errRecent);
+      }
+
+      // Render Nearby Challenges
+      try {
+        const nearbyCont = document.getElementById('nearbyMiniContainer');
+        if (nearbyCont) {
+          const userDist = getUserDistrict();
+          updateDistrictBadges();
+
+          const user = getCurrentUser();
+          const userEmail = user && user.email ? user.email.toLowerCase().trim() : '';
+          const userId = user ? (user.id || user._id || '').toString() : '';
+
+          // STRICT SAME-DISTRICT FILTERING FOR NEARBY CHALLENGES
+          const sameDistrictList = exploreList.filter(c => {
+            // Exclude own reports
+            const itemSubEmail = c.submitterEmail ? c.submitterEmail.toLowerCase().trim() : '';
+            const itemSubId = c.submittedById ? c.submittedById.toString() : '';
+            const isMine = (userEmail && itemSubEmail === userEmail) || (userId && itemSubId === userId) || allReportsList.some(r => r.id === c.id || (c.mongoId && r.mongoId === c.mongoId));
+            if (isMine) return false;
+
+            const cDist = getChallengeDistrict(c);
+            return isSameDistrict(cDist, userDist);
+          });
+
+          if (sameDistrictList.length === 0) {
+            nearbyCont.innerHTML = `
+            <div style="padding: 18px 12px; text-align: center; background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 12px;">
+              <div style="font-size: 22px; margin-bottom: 4px;">📍</div>
+              <div style="font-weight: 800; color: #1E293B; font-size: 13px;">${currentLanguage === 'hi' ? userDist + ' में साथी नागरिकों की कोई नई समस्या नहीं' : 'No other citizen reports in ' + userDist}</div>
+              <div style="color: #64748B; font-size: 11px; margin-top: 4px; line-height: 1.4;">
+                ${currentLanguage === 'hi' ? 'जैसे ही कोई नागरिक ' + userDist + ' में समस्या दर्ज करेगा, वह तुरंत रियल-टाइम यहाँ दिखेगी।' : 'When any citizen reports an issue in ' + userDist + ', it will instantly appear here in real-time.'}
+              </div>
+            </div>
+          `;
+          } else {
+            nearbyCont.innerHTML = sameDistrictList.slice(0, 2).map(c => {
+              const isSupported = supportedIds.has(c.id);
+              const cDist = getChallengeDistrict(c) || userDist;
+              const fullAddr = (typeof formatProperAddress === 'function') ? formatProperAddress(c) : (c.location || 'Jharkhand');
+              const descSnippet = (c.desc || c.description || c.details || '').trim();
+              const maskedCitizenId = c.citizenId || c.submitterCitizenId || ('C' + (c.id ? c.id.replace(/[^0-9]/g, '').slice(-4) : '9604'));
+              const displayCitizenBadge = (currentLanguage === 'hi' ? 'नागरिक #' : 'Citizen #') + maskedCitizenId;
+              const supCount = c.supports || 1;
+              return `
+              <div class="nearby-mini-item" onclick="openDetailModal('${c.id}')">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:10px;font-weight:800;color:var(--navy);background:#EFF6FF;padding:2px 6px;border-radius:8px;">${c.category}</span>
+                  <span style="font-size:10px;font-weight:700;color:#0284C7;background:#E0F2FE;border:1px solid #BAE6FD;padding:2px 7px;border-radius:8px;">📍 ${cDist}</span>
+                </div>
+                <div class="nearby-mini-title">${escapeHtml(c.title)}</div>
+                ${descSnippet ? `<div style="font-size:11px; color:#475569; line-height:1.35; margin:3px 0 4px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(descSnippet)}</div>` : ''}
+                <div class="nearby-mini-loc" style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
+                  <span style="font-weight:700; color:#334155;">🛡️ ${displayCitizenBadge}</span>
+                  <strong style="color:#C2410C;">${supCount} ${currentLanguage === 'hi' ? 'प्रभावित' : 'affected'}</strong>
+                </div>
+                <div style="font-size:10.5px;color:#64748B;margin-top:2px;margin-bottom:6px;">📍 ${escapeHtml(fullAddr)} · 🕒 ${c.timeAgo || (currentLanguage === 'hi' ? 'हाल ही में' : 'Recently')}</div>
+                <button type="button" class="btn-support-nearby ${isSupported ? 'supported' : 'not-supported'}" onclick="event.stopPropagation(); toggleSupport('${c.id}')">
+                  ${isSupported ? (currentLanguage === 'hi' ? '✓ समर्थित (' + supCount + ')' : '✓ Supported (' + supCount + ')') : (currentLanguage === 'hi' ? '👍 मैं भी प्रभावित हूँ (' + supCount + ')' : (currentLanguage === 'hinglish' ? '👍 Main bhi prabhavit hoon (' + supCount + ')' : '👍 I am also affected (' + supCount + ')'))}
+                </button>
+              </div>
+            `;
+            }).join('');
+
+            const btnExplore = document.querySelector('.btn-explore-nearby');
+            if (btnExplore) {
+              const isHi = currentLanguage === 'hi';
+              const isHinglish = currentLanguage === 'hinglish';
+              if (sameDistrictList.length > 2) {
+                btnExplore.innerHTML = isHi
+                  ? `सभी ${sameDistrictList.length} निकटवर्ती समस्याएं देखें →`
+                  : (isHinglish ? `Sabhi ${sameDistrictList.length} Nearby Problems Dekhein →` : `Explore All ${sameDistrictList.length} Nearby Issues →`);
+              } else {
+                btnExplore.innerHTML = isHi
+                  ? `सभी निकटवर्ती समस्याएं देखें →`
+                  : (isHinglish ? `Sabhi Nearby Problems Dekhein →` : `Explore All Nearby Issues →`);
+              }
             }
           }
         }
+      } catch (errNearby) {
+        console.error('Error rendering nearbyMiniContainer:', errNearby);
       }
     }
 
@@ -1745,9 +1923,10 @@
 
       try {
         reportMiniMapInstance = L.map('reportMiniMap').setView([currentReportCoords.lat, currentReportCoords.lng], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          subdomains: 'abcd',
           maxZoom: 19,
-          attribution: '© OpenStreetMap contributors'
+          attribution: '© OpenStreetMap contributors © CARTO'
         }).addTo(reportMiniMapInstance);
 
         reportMiniMapMarker = L.marker([currentReportCoords.lat, currentReportCoords.lng], { draggable: true }).addTo(reportMiniMapInstance);
@@ -1876,6 +2055,13 @@
       const cardEl = document.getElementById('detailModalSupportCard');
       const inlineBtnSlot = document.getElementById('detailModalInlineSupportBtnSlot');
 
+      // For author mode, hide cardEl so it does not clutter with a redundant second card
+      if (isMyOwn) {
+        if (cardEl) cardEl.style.display = 'none';
+      } else {
+        if (cardEl) cardEl.style.display = 'flex';
+      }
+
       if (countEl) {
         if (isMyOwn) {
           countEl.textContent = `${supCount} ${currentLanguage === 'hi' ? 'नागरिकों ने आपकी समस्या का समर्थन किया है' : 'citizens supported your grievance'}`;
@@ -1961,6 +2147,10 @@
     }
 
     function openDetailModal(reportId) {
+      showJanSetuLoader((typeof currentLanguage !== 'undefined' && currentLanguage === 'hi')
+        ? 'समस्या का पूर्ण ऑडिट ट्रेल और आधिकारिक विवरण लोड हो रहा है...'
+        : 'Loading Grievance Audit Trail & Official Dispatch Records...', 1100);
+
       currentlyInspectedId = reportId;
       let item = allReportsList.find(r => r.id === reportId);
       if (!item) item = exploreList.find(r => r.id === reportId);
@@ -1994,19 +2184,23 @@
         document.getElementById('detailTitle').innerHTML = `<span style="color:#FF9933;">👑</span> ${item.title}`;
       } else {
         modalEl.classList.add('viewer-mode-active');
-        if (heroEl) heroEl.style.display = 'none'; // The Red Fort blurred background wraps the modal
+        if (heroEl) heroEl.style.display = 'none';
         if (authorBannerEl) authorBannerEl.style.display = 'none';
         if (accentLine) accentLine.style.display = 'block';
         document.getElementById('detailTitle').innerHTML = `<span>🏛️</span> ${item.title}`;
       }
 
-      // Dynamic Author Header Texts based on active language
+      // Dynamic Author Header Texts - Clean single unified card without clutter
       const authTitleEl = document.getElementById('detailAuthorHeaderTitle');
       const authSubEl = document.getElementById('detailAuthorHeaderSub');
       const authBadgeEl = document.getElementById('detailAuthorHeaderBadge');
+      const supCount = item.supports || 1;
       if (authTitleEl) authTitleEl.textContent = isHi ? 'आपकी दर्ज शिकायत' : (isHinglish ? 'Aapki Darj Shikayat' : 'Your Submitted Grievance');
-      if (authSubEl) authSubEl.textContent = isHi ? 'आप इस शिकायत के मुख्य लेखक हैं। आधिकारिक पावती पर्ची और नियंत्रण नीचे उपलब्ध हैं।' : (isHinglish ? 'Aap is grievance ke main author hain. Official slip aur controls neeche available hain.' : 'You are the primary author of this grievance. Official acknowledgment slip and controls are available below.');
-      if (authBadgeEl) authBadgeEl.textContent = isHi ? '👤 मुख्य शिकायतकर्ता' : (isHinglish ? '👤 Main Submitter' : '👤 Primary Submitter');
+      if (authSubEl) {
+        authSubEl.innerHTML = (isHi ? 'आप इस शिकायत के मुख्य लेखक हैं। ' : (isHinglish ? 'Aap is grievance ke main author hain. ' : 'You are the primary author of this grievance. ')) +
+          `<span style="display:inline-flex; align-items:center; gap:4px; margin-left:6px; background:#DCFCE7; color:#166534; font-weight:800; font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid #86EFAC;">👥 ${supCount} ${isHi ? 'नागरिक समर्थन' : 'Citizen Support'}</span>`;
+      }
+      if (authBadgeEl) authBadgeEl.textContent = isHi ? '👑 मुख्य शिकायतकर्ता' : (isHinglish ? '👑 Main Submitter' : '👑 Primary Submitter');
 
       // Dynamic Community Viewer Header Texts based on active language
       const vrRevTitle = document.getElementById('detailViewerReviewTitle');
@@ -2133,14 +2327,151 @@
       document.getElementById('detailTimeAgo').textContent = (isHi ? 'दर्ज: ' : 'Reported ') + (item.timeAgo || (isHi ? 'हाल ही में' : 'Recently'));
       document.getElementById('detailDescription').textContent = item.desc || item.title;
       document.getElementById('detailLocationText').textContent = '📍 ' + (item.location || (isHi ? 'झारखंड' : 'Jharkhand'));
-      document.getElementById('detailAssignmentText').textContent = (isHi ? 'आवंटित कार्यबल: ' : 'Assigned Taskforce: ') + (item.assign || (isHi ? 'जनसेतु नगर निगम कार्यबल' : 'JanSetu Municipal Taskforce'));
 
-      renderDetailProgressTracker(item);
+      // Location coordinates & Detailed Hierarchy Breakdown
+      const distCoordsMap = {
+        'Ranchi': { lat: 23.3441, lng: 85.3096 },
+        'Dhanbad': { lat: 23.7957, lng: 86.4304 },
+        'Bokaro': { lat: 23.6693, lng: 86.1511 },
+        'East Singhbhum': { lat: 22.8046, lng: 86.2029 },
+        'Jamshedpur': { lat: 22.8046, lng: 86.2029 },
+        'Deoghar': { lat: 24.4826, lng: 86.7001 },
+        'Hazaribagh': { lat: 23.9925, lng: 85.3637 },
+        'Giridih': { lat: 24.1843, lng: 86.3023 },
+        'Ramgarh': { lat: 23.6332, lng: 85.5147 },
+        'Dumka': { lat: 24.2677, lng: 87.2484 },
+        'Palamu': { lat: 24.0384, lng: 84.0722 }
+      };
+
+      let targetLat = null;
+      let targetLng = null;
+      if (item.coords && item.coords.lat && item.coords.lng) {
+        targetLat = Number(item.coords.lat);
+        targetLng = Number(item.coords.lng);
+      } else if (item.coordinates && item.coordinates.coordinates && Array.isArray(item.coordinates.coordinates)) {
+        targetLng = Number(item.coordinates.coordinates[0]);
+        targetLat = Number(item.coordinates.coordinates[1]);
+      } else if (item.lat && item.lng) {
+        targetLat = Number(item.lat);
+        targetLng = Number(item.lng);
+      }
+
+      const extractedDist = (typeof getChallengeDistrict === 'function' ? getChallengeDistrict(item) : '') || item.district || 'Ranchi';
+      if (!targetLat || !targetLng || isNaN(targetLat) || isNaN(targetLng)) {
+        const dCoord = distCoordsMap[extractedDist] || distCoordsMap['Ranchi'];
+        targetLat = dCoord.lat;
+        targetLng = dCoord.lng;
+      }
+
+      // Bind global handler for direct map navigation button
+      window.gotoCurrentReportMap = function() {
+        const mapUrl = `https://www.google.com/maps?q=${targetLat},${targetLng}`;
+        window.open(mapUrl, '_blank');
+      };
+
+      const locStr = item.location || 'Ranchi, Jharkhand';
+      const tehsilStr = item.tehsil || item.block || 'Sadar Block';
+      const villageStr = item.village || item.panchayat || item.landmark || (locStr.includes(',') ? locStr.split(',')[0].trim() : 'Namkum');
+
+      const hierEl = document.getElementById('detailHierarchyRow');
+      if (hierEl) {
+        hierEl.innerHTML = `
+          <span class="location-hierarchy-pill">🏛️ <span>${isHi ? 'राज्य:' : 'State:'}</span> <strong>${isHi ? 'झारखण्ड' : 'Jharkhand'}</strong></span>
+          <span class="location-hierarchy-pill">🏢 <span>${isHi ? 'ज़िला:' : 'District:'}</span> <strong>${escapeHtml(extractedDist)}</strong></span>
+          <span class="location-hierarchy-pill">📍 <span>${isHi ? 'तहसील/प्रखंड:' : 'Tehsil/Block:'}</span> <strong>${escapeHtml(tehsilStr)}</strong></span>
+          <span class="location-hierarchy-pill">🏘️ <span>${isHi ? 'गाँव/मोहल्ला:' : 'Area/Village:'}</span> <strong>${escapeHtml(villageStr)}</strong></span>
+          <span class="location-hierarchy-pill">🌐 <span>${isHi ? 'जीपीएस:' : 'GPS:'}</span> <strong>${targetLat.toFixed(4)}°N, ${targetLng.toFixed(4)}°E</strong></span>
+        `;
+      }
+
+      // Multi-Media Evidence (Photos & Videos)
+      const allEvidenceMedia = [];
+      if (Array.isArray(item.attachments)) {
+        item.attachments.forEach(a => {
+          if (typeof a === 'string') allEvidenceMedia.push({ url: a, type: a.includes('.mp4') || a.includes('video') ? 'video' : 'image' });
+          else if (a && a.url) allEvidenceMedia.push({ url: a.url, type: (a.type || a.mimetype || '').includes('video') || a.url.includes('.mp4') ? 'video' : 'image' });
+        });
+      }
+      if (Array.isArray(item.media)) {
+        item.media.forEach(m => {
+          if (typeof m === 'string') allEvidenceMedia.push({ url: m, type: m.includes('.mp4') || m.includes('video') ? 'video' : 'image' });
+          else if (m && m.url) allEvidenceMedia.push({ url: m.url, type: (m.type || '').includes('video') || m.url.includes('.mp4') ? 'video' : 'image' });
+        });
+      }
+      if (Array.isArray(item.photos)) {
+        item.photos.forEach(p => {
+          if (typeof p === 'string') allEvidenceMedia.push({ url: p, type: 'image' });
+          else if (p && p.url) allEvidenceMedia.push({ url: p.url, type: 'image' });
+        });
+      }
+      if (item.image && !allEvidenceMedia.some(m => m.url === item.image)) {
+        allEvidenceMedia.push({ url: item.image, type: 'image' });
+      }
+      if (item.beforeImg && !allEvidenceMedia.some(m => m.url === item.beforeImg)) {
+        allEvidenceMedia.push({ url: item.beforeImg, type: 'image' });
+      }
+      if (item.afterImg && !allEvidenceMedia.some(m => m.url === item.afterImg)) {
+        allEvidenceMedia.push({ url: item.afterImg, type: 'image' });
+      }
+      if (item.video) allEvidenceMedia.push({ url: item.video, type: 'video' });
+      if (item.videoUrl) allEvidenceMedia.push({ url: item.videoUrl, type: 'video' });
+
+      const videoList = allEvidenceMedia.filter(m => m.type === 'video' || (typeof m.url === 'string' && (m.url.endsWith('.mp4') || m.url.includes('video/'))));
+      const photoList = allEvidenceMedia.filter(m => m.type === 'image' && !videoList.some(v => v.url === m.url));
+
+      const vidContainer = document.getElementById('detailVideoContainer');
+      const vidPlayer = document.getElementById('detailVideoPlayer');
+      if (vidContainer && vidPlayer) {
+        if (videoList.length > 0) {
+          vidContainer.style.display = 'block';
+          vidPlayer.src = videoList[0].url;
+        } else {
+          vidContainer.style.display = 'none';
+          vidPlayer.src = '';
+        }
+      }
+
+      const galleryCont = document.getElementById('detailMultiPhotoGallery');
+      const galleryGrid = document.getElementById('detailGalleryPhotosGrid');
+      if (galleryCont && galleryGrid) {
+        if (photoList.length > 0) {
+          galleryCont.style.display = 'block';
+          galleryGrid.innerHTML = photoList.map(p => `
+            <img src="${p.url}" alt="Evidence Photo" class="detail-gallery-thumb" onclick="zoomImage('${p.url}', 'Grievance Evidence Photo')" onerror="this.style.display='none'" />
+          `).join('');
+        } else {
+          galleryCont.style.display = 'none';
+          galleryGrid.innerHTML = '';
+        }
+      }
+
+      const locAssign = document.getElementById('detailAssignmentText');
+      if (locAssign) {
+        locAssign.style.display = isMyOwnReport ? 'block' : 'none';
+        locAssign.textContent = (isHi ? 'आवंटित कार्यबल: ' : 'Assigned Taskforce: ') + (item.assign || (isHi ? 'जनसेतु नगर निगम कार्यबल' : 'JanSetu Municipal Taskforce'));
+      }
+
+      const timeSecTitle = document.getElementById('detailTimelineSectionTitle');
+      const timeSecSub = document.getElementById('detailTimelineSectionSub');
+      if (timeSecTitle) {
+        timeSecTitle.textContent = isMyOwnReport
+          ? (isHi ? 'प्रगति एवं ऑडिट ट्रेल' : 'LIVE PROGRESS & AUDIT TRAIL')
+          : (isHi ? 'समाधान प्रगति रेखा' : 'LIVE PROGRESS TRACKER');
+      }
+      if (timeSecSub) {
+        timeSecSub.textContent = isMyOwnReport
+          ? (isHi ? 'प्रशासनिक सत्यापन, सामग्री आपूर्ति व फील्ड कार्रवाई' : 'Real-time audit track: Admin verification, Industry supplies & University field action')
+          : (isHi ? 'समस्या की वर्तमान स्थिति एवं प्रगति' : 'Current issue resolution status & ground progress');
+      }
+
+      renderDetailProgressTracker(item, isMyOwnReport);
 
       // Update in-modal support card and persona footer
       updateDetailModalSupportUI(item, isMyOwnReport);
 
-      openModal('detailModal');
+      hideJanSetuLoader(() => {
+        openModal('detailModal');
+      }, 1100);
     }
 
     function zoomBeforeImage() {
@@ -3360,8 +3691,8 @@
             <div style="font-size:14px;font-weight:800;color:var(--gray-900);margin:4px 0 2px;">${c.title}</div>
             <div style="font-size:12px;color:var(--gray-500);">📍 ${c.location} · <strong>${c.supports} ${isHi ? 'नागरिक प्रभावित' : 'citizens affected'}</strong></div>
           </div>
-          <button class="btn-sol-yes" style="white-space:nowrap;padding:8px 14px;background:${isSupported ? 'var(--india-green)' : 'var(--navy)'};" onclick="event.stopPropagation(); toggleSupport('${c.id}')">
-            ${isSupported ? (isHi ? '✓ समर्थित' : '✓ Supported') + ' (' + c.supports + ')' : (isHi ? '👍 मैं भी प्रभावित हूँ' : (isHinglish ? '👍 Main bhi prabhavit hoon' : '👍 I am also affected'))}
+          <button type="button" class="btn-support-nearby ${isSupported ? 'supported' : 'not-supported'}" style="width:auto;white-space:nowrap;padding:8px 16px;margin:0;" onclick="event.stopPropagation(); toggleSupport('${c.id}')">
+            ${isSupported ? (isHi ? '✓ समर्थित (' + c.supports + ')' : '✓ Supported (' + c.supports + ')') : (isHi ? '👍 मैं भी प्रभावित हूँ (' + c.supports + ')' : (isHinglish ? '👍 Main bhi prabhavit hoon (' + c.supports + ')' : '👍 I am also affected (' + c.supports + ')'))}
           </button>
         </div>
       `;
@@ -3673,6 +4004,68 @@
     /* ============================================================
        TRIPARTITE PROBLEM CHAT HUB (Citizen, University Guide & Admin)
        ============================================================ */
+    let chatPollingTimer = null;
+    let chatStatusFilter = 'all';
+
+    function getProblemThumbnail(r) {
+      if (!r) return '/images/water-tap.jpg';
+      if (r.image && typeof r.image === 'string' && r.image.trim()) return r.image.trim();
+      if (r.beforeImg && typeof r.beforeImg === 'string' && r.beforeImg.trim()) return r.beforeImg.trim();
+      if (r.coverImage && typeof r.coverImage === 'string' && r.coverImage.trim()) return r.coverImage.trim();
+      if (Array.isArray(r.photos) && r.photos.length > 0 && typeof r.photos[0] === 'string' && r.photos[0].trim()) return r.photos[0].trim();
+      if (Array.isArray(r.attachments) && r.attachments.length > 0) {
+        const att = r.attachments[0];
+        if (typeof att === 'string' && att.trim()) return att.trim();
+        if (att && att.url && typeof att.url === 'string' && att.url.trim()) return att.url.trim();
+      }
+      if (Array.isArray(r.media) && r.media.length > 0) {
+        const m = r.media[0];
+        if (typeof m === 'string' && m.trim()) return m.trim();
+        if (m && m.url && typeof m.url === 'string' && m.url.trim()) return m.url.trim();
+      }
+      return getCategoryFallbackImage(r.category);
+    }
+    window.getProblemThumbnail = getProblemThumbnail;
+
+    function getCategoryTile(cat) {
+      const c = (cat || '').toLowerCase();
+      if (c.includes('water') || c.includes('जल') || c.includes('drain') || c.includes('sewer') || c.includes('pipe')) {
+        return { icon: '💧', bg: '#EFF6FF', color: '#2563EB', border: '#DBEAFE' };
+      }
+      if (c.includes('health') || c.includes('स्वास्थ्य') || c.includes('hospital') || c.includes('sanitat') || c.includes('safai')) {
+        return { icon: '🏥', bg: '#FEE2E2', color: '#DC2626', border: '#FECACA' };
+      }
+      if (c.includes('road') || c.includes('सड़क') || c.includes('street') || c.includes('bridge') || c.includes('infra') || c.includes('pothole')) {
+        return { icon: '🛣️', bg: '#F1F5F9', color: '#334155', border: '#E2E8F0' };
+      }
+      if (c.includes('electric') || c.includes('बिजली') || c.includes('light') || c.includes('power') || c.includes('energy')) {
+        return { icon: '⚡', bg: '#FEF3C7', color: '#D97706', border: '#FDE68A' };
+      }
+      if (c.includes('environ') || c.includes('पर्यावरण') || c.includes('garbage') || c.includes('waste') || c.includes('tree') || c.includes('pollution')) {
+        return { icon: '🍃', bg: '#DCFCE7', color: '#16A34A', border: '#BBF7D0' };
+      }
+      return { icon: '📋', bg: '#F3E8FF', color: '#7C3AED', border: '#E9D5FF' };
+    }
+
+    function setChatStatusFilter(statusKey) {
+      chatStatusFilter = statusKey || 'all';
+      const tabIds = {
+        'all': 'chatTab_all',
+        'Submitted': 'chatTab_Submitted',
+        'Being Worked On': 'chatTab_Review',
+        'Solved': 'chatTab_Solved'
+      };
+      Object.keys(tabIds).forEach(k => {
+        const btn = document.getElementById(tabIds[k]);
+        if (btn) {
+          if (k === chatStatusFilter) btn.classList.add('active');
+          else btn.classList.remove('active');
+        }
+      });
+      renderChatProblemChannels();
+    }
+    window.setChatStatusFilter = setChatStatusFilter;
+
     async function openChatModal(targetProblemId) {
       if (allReportsList.length === 0 && exploreList.length === 0) {
         try {
@@ -3705,7 +4098,12 @@
       if (activeChatProblemId) {
         selectChatProblem(activeChatProblemId);
       }
+
       openModal('problemChatModal');
+
+      // Start real-time chat polling every 3.5s for instant University/Admin incoming messages
+      if (chatPollingTimer) clearInterval(chatPollingTimer);
+      chatPollingTimer = setInterval(pollActiveChatRoom, 3500);
 
       // Bind search input
       const sInp = document.getElementById('chatSearchInput');
@@ -3718,9 +4116,40 @@
       setTimeout(() => {
         const inp = document.getElementById('chatTextInput');
         if (inp) inp.focus();
-      }, 250);
+      }, 100);
     }
     window.openChatModal = openChatModal;
+
+    async function pollActiveChatRoom() {
+      const modal = document.getElementById('problemChatModal');
+      const isOpen = modal && (modal.classList.contains('active') || modal.classList.contains('open'));
+      if (!isOpen || !activeChatProblemId) {
+        if (!isOpen && chatPollingTimer) {
+          clearInterval(chatPollingTimer);
+          chatPollingTimer = null;
+        }
+        return;
+      }
+
+      const targetRep = allReportsList.find(r => r.id === activeChatProblemId) || exploreList.find(r => r.id === activeChatProblemId);
+      const targetMongoId = targetRep?.mongoId || activeChatProblemId;
+
+      try {
+        const res = await fetch(`/api/challenges/${targetMongoId}/chat`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.success && Array.isArray(json.chatMessages)) {
+          const currentMsgs = chatMessagesCache[activeChatProblemId] || [];
+          const merged = mergeAndDeduplicateChat(json.chatMessages, currentMsgs);
+          if (merged.length !== currentMsgs.length || JSON.stringify(merged) !== JSON.stringify(currentMsgs)) {
+            chatMessagesCache[activeChatProblemId] = merged;
+            if (targetRep) targetRep.chatMessages = merged;
+            renderChatMessagesStream(targetRep);
+            renderChatProblemChannels();
+          }
+        }
+      } catch (e) {}
+    }
 
     function filterChatProblems(query) {
       chatSearchQuery = (query || '').toLowerCase().trim();
@@ -3732,48 +4161,111 @@
       const cont = document.getElementById('chatProblemChannelList');
       if (!cont) return;
 
-      let list = allReportsList.slice();
-      if (list.length === 0) list = exploreList.slice(0, 10);
+      let baseList = allReportsList.slice();
+      if (baseList.length === 0) baseList = exploreList.slice(0, 10);
 
+      // Compute dynamic badge counts
+      let countAll = baseList.length;
+      let countSubmitted = 0;
+      let countReview = 0;
+      let countResolved = 0;
+
+      baseList.forEach(r => {
+        const st = (r.status || '').toLowerCase();
+        if (st.includes('solv') || r.isResolved) {
+          countResolved++;
+        } else if (st.includes('work') || st.includes('prog') || st.includes('verif') || st.includes('review') || st.includes('assign') || r.isVerified) {
+          countReview++;
+        } else {
+          countSubmitted++;
+        }
+      });
+
+      const countAllEl = document.getElementById('chatCountAll');
+      const countSubEl = document.getElementById('chatCountSubmitted');
+      const countRevEl = document.getElementById('chatCountReview');
+      const countSolEl = document.getElementById('chatCountSolved');
+      if (countAllEl) countAllEl.textContent = countAll;
+      if (countSubEl) countSubEl.textContent = countSubmitted;
+      if (countRevEl) countRevEl.textContent = countReview;
+      if (countSolEl) countSolEl.textContent = countResolved;
+
+      let list = baseList.slice();
+
+      // Filter by Status Tab
+      if (chatStatusFilter !== 'all') {
+        list = list.filter(r => {
+          const st = (r.status || '').toLowerCase();
+          const isSol = st.includes('solv') || r.isResolved;
+          const isRev = (st.includes('work') || st.includes('prog') || st.includes('verif') || st.includes('review') || st.includes('assign') || r.isVerified) && !isSol;
+          if (chatStatusFilter === 'Solved') return isSol;
+          if (chatStatusFilter === 'Being Worked On') return isRev;
+          if (chatStatusFilter === 'Submitted') return !isSol && !isRev;
+          return true;
+        });
+      }
+
+      // Filter by Search Query
       if (chatSearchQuery) {
-        list = list.filter(r => (r.title || '').toLowerCase().includes(chatSearchQuery) || (r.id || '').toLowerCase().includes(chatSearchQuery));
+        list = list.filter(r => (r.title || '').toLowerCase().includes(chatSearchQuery) || (r.id || '').toLowerCase().includes(chatSearchQuery) || (r.location || '').toLowerCase().includes(chatSearchQuery));
       }
 
       if (list.length === 0) {
-        cont.innerHTML = `<div style="text-align:center; padding:24px 10px; color:#94A3B8; font-size:12px;">No matching problems found.</div>`;
+        cont.innerHTML = `<div style="text-align:center; padding:36px 14px; color:#94A3B8; font-size:12.5px;">
+          <div style="font-size:24px; margin-bottom:6px;">🔍</div>
+          <div>No matching problems found.</div>
+        </div>`;
         return;
       }
 
       cont.innerHTML = list.map(r => {
         const isActive = r.id === activeChatProblemId;
         const msgs = chatMessagesCache[r.id] || r.chatMessages || [];
-        // Green dot if unread message from University or Admin
         const hasUnread = Boolean(chatUnreadState[r.id] || msgs.some(m => !m.isCitizen && m.senderType !== 'citizen' && !m.readByCitizen));
         const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
-        const lastMsgSnippet = lastMsg ? (lastMsg.text.length > 38 ? lastMsg.text.slice(0, 36) + '...' : lastMsg.text) : (r.assign || 'JanSetu Taskforce');
+        const lastMsgSnippet = lastMsg ? (lastMsg.text.length > 34 ? lastMsg.text.slice(0, 32) + '...' : lastMsg.text) : (r.assign || 'JanSetu Taskforce');
+
+        const thumbImg = getProblemThumbnail(r);
+        const fallbackImg = getCategoryFallbackImage(r.category);
+
+        const isSol = (r.status || '').toLowerCase().includes('solv') || r.isResolved;
+        const isRev = ((r.status || '').toLowerCase().includes('work') || (r.status || '').toLowerCase().includes('prog') || (r.status || '').toLowerCase().includes('verif') || r.isVerified) && !isSol;
+
+        const statusLabel = isSol ? 'Resolved' : (isRev ? 'Under Review' : 'Submitted');
+        const statusColor = isSol ? '#166534' : (isRev ? '#B45309' : '#1D4ED8');
+        const statusBg = isSol ? '#DCFCE7' : (isRev ? '#FEF3C7' : '#DBEAFE');
+
+        const timeTag = lastMsg ? (lastMsg.time || 'Today') : (r.timeAgo ? (r.timeAgo.length > 8 ? r.timeAgo.slice(0, 7) : r.timeAgo) : 'Recent');
 
         return `
-        <div onclick="selectChatProblem('${r.id}')"
-          style="padding: 10px 12px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s ease; border: 1.5px solid ${isActive ? '#002D62' : '#E2E8F0'}; background: ${isActive ? '#EFF6FF' : '#FFFFFF'}; box-shadow: ${isActive ? '0 4px 12px rgba(0,45,98,0.12)' : 'none'};">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 4px;">
-            <span style="font-size: 10.5px; font-weight: 800; color: #1E3A8A; background: #DBEAFE; padding: 2px 6px; border-radius: 6px;">${r.id}</span>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              ${hasUnread ? `
-                <span class="chat-pulse-green-dot" title="New message from University Guide or Admin"
-                  style="display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; font-weight: 900; color: #166534; background: #DCFCE7; border: 1px solid #86EFAC; padding: 1px 6px; border-radius: 10px; animation: pulseDot 1.8s infinite;">
-                  <span style="width: 7px; height: 7px; background: #22C55E; border-radius: 50%; box-shadow: 0 0 6px #22C55E; display: inline-block;"></span>
-                  NEW
-                </span>
-              ` : ''}
-              <span style="font-size: 10px; font-weight: 700; color: ${r.status === 'Solved' ? '#166534' : '#C2410C'}; background: ${r.status === 'Solved' ? '#F0FDF4' : '#FFF7ED'}; padding: 2px 6px; border-radius: 6px;">${r.status || 'Active'}</span>
+        <div onclick="selectChatProblem('${r.id}')" class="chat-channel-card ${isActive ? 'active' : ''}"
+          style="padding: 10px 11px; border-radius: 14px; margin-bottom: 7px; cursor: pointer; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); border: 1.5px solid ${isActive ? '#2563EB' : '#E2E8F0'}; background: ${isActive ? '#EFF6FF' : '#FFFFFF'}; box-shadow: ${isActive ? '0 4px 14px rgba(37,99,235,0.12)' : '0 1px 3px rgba(0,0,0,0.02)'}; display: flex; align-items: flex-start; gap: 11px;">
+          
+          <!-- Real Grievance Thumbnail Photo (User Explicit Requirement: Images not Icons) -->
+          <div class="channel-thumb-box" style="width: 44px; height: 44px; border-radius: 10px; overflow: hidden; flex-shrink: 0; border: 1.5px solid ${isActive ? '#2563EB' : '#E2E8F0'}; background: #F1F5F9; box-shadow: 0 2px 5px rgba(0,0,0,0.06); position: relative;">
+            <img src="${thumbImg}" alt="${escapeHtml(r.title || 'Thumbnail')}" style="width: 100%; height: 100%; object-fit: cover; display: block;" onerror="this.src='${fallbackImg}'; this.onerror=function(){this.src='/images/water-tap.jpg';};" />
+          </div>
+
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 3px;">
+              <span style="font-size: 11px; font-weight: 800; color: #1E3A8A; background: #DBEAFE; padding: 2px 7px; border-radius: 5px; letter-spacing: 0.2px;">${r.id}</span>
+              <div style="display: flex; align-items: center; gap: 5px;">
+                <span style="font-size: 10px; color: #94A3B8; font-weight: 600;">${timeTag}</span>
+                <span style="font-size: 10px; font-weight: 750; color: ${statusColor}; background: ${statusBg}; padding: 2px 7px; border-radius: 6px;">${statusLabel}</span>
+              </div>
+            </div>
+
+            <div style="font-size: 12.5px; font-weight: 750; color: #0F172A; margin: 2px 0 3px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${escapeHtml(r.title)}
+            </div>
+
+            <div style="font-size: 11px; color: ${hasUnread ? '#0F172A' : '#64748B'}; font-weight: ${hasUnread ? '750' : 'normal'}; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${hasUnread ? '<span style="width: 6px; height: 6px; border-radius: 50%; background: #22C55E; display: inline-block; flex-shrink: 0;"></span>' : ''}
+              <span style="opacity: 0.75;">💬</span> <span>${escapeHtml(lastMsgSnippet)}</span>
             </div>
           </div>
-          <div style="font-size: 12.5px; font-weight: 800; color: #0F172A; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.title}</div>
-          <div style="font-size: 11px; color: ${hasUnread ? '#0F172A' : '#64748B'}; font-weight: ${hasUnread ? '700' : 'normal'}; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            <span>💬</span> <span>${lastMsgSnippet}</span>
-          </div>
         </div>
-      `;
+        `;
       }).join('');
 
       updateNavChatUnreadIndicator();
@@ -3804,29 +4296,14 @@
       renderChatMessagesStream(targetRep);
       renderChatQuickChips();
 
-      // Fetch latest messages from API with deduplication
+      // Fetch latest messages from API with clean deduplication
       const targetMongoId = targetRep?.mongoId || activeChatProblemId;
       try {
         const res = await fetch(`/api/challenges/${targetMongoId}/chat`);
         const json = await res.json();
         if (json.success && Array.isArray(json.chatMessages)) {
           const existingList = chatMessagesCache[activeChatProblemId] || [];
-          const merged = [];
-          const seen = new Set();
-
-          // Combine and deduplicate
-          [...json.chatMessages, ...existingList].forEach(m => {
-            if (!m || !m.text) return;
-            const key = m._id ? String(m._id) : `${m.sender || ''}_${m.text.trim()}_${m.time || ''}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              merged.push(m);
-            }
-          });
-
-          // Sort by timestamp
-          merged.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
-
+          const merged = mergeAndDeduplicateChat(json.chatMessages, existingList);
           chatMessagesCache[activeChatProblemId] = merged;
           if (targetRep) targetRep.chatMessages = merged;
           renderChatMessagesStream(targetRep);
@@ -3840,49 +4317,72 @@
     }
     window.selectChatProblem = selectChatProblem;
 
+
     function renderChatRoomHeader(rep) {
       const header = document.getElementById('chatRoomHeader');
       if (!header) return;
       if (!rep) {
-        header.innerHTML = `<div style="font-size:13px; color:#64748B; padding: 6px 0;">Select a problem channel on the left to start conversation.</div>`;
+        header.innerHTML = `<div style="font-size:13px; color:#64748B; padding: 10px 0;">Select a problem channel on the left to start conversation.</div>`;
         return;
       }
 
-      const univName = rep.assign && rep.assign !== 'Under validation by JanSetu Authority' && rep.assign !== 'Verification in progress by JanSetu Authority'
-        ? rep.assign
-        : 'IIT Delhi / BIT Mesra Lab';
+      const isSol = (rep.status || '').toLowerCase().includes('solv') || rep.isResolved;
+      const isRev = ((rep.status || '').toLowerCase().includes('work') || (rep.status || '').toLowerCase().includes('prog') || (rep.status || '').toLowerCase().includes('verif') || rep.isVerified) && !isSol;
+      const statusLabel = isSol ? 'Resolved' : (isRev ? 'Under Review' : 'Submitted');
+      const statusColor = isSol ? '#166534' : (isRev ? '#B45309' : '#1D4ED8');
+      const statusBg = isSol ? '#DCFCE7' : (isRev ? '#FEF3C7' : '#DBEAFE');
+      const statusBorder = isSol ? '#BBF7D0' : (isRev ? '#FDE68A' : '#BFDBFE');
 
       header.innerHTML = `
-        <div style="flex: 1; min-width: 250px; max-width: 100%;">
-          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px;">
-            <span style="font-size: 11px; font-weight: 800; color: #1E3A8A; background: #DBEAFE; border: 1px solid #BFDBFE; padding: 2px 7px; border-radius: 6px;">${rep.id}</span>
-            <span style="font-size: 10.5px; font-weight: 700; color: #0369A1; background: #E0F2FE; border: 1px solid #BAE6FD; padding: 2px 7px; border-radius: 6px;">📂 ${rep.category || 'General'}</span>
-            <span style="font-size: 10.5px; font-weight: 800; color: ${rep.status === 'Solved' ? '#166534' : '#C2410C'}; background: ${rep.status === 'Solved' ? '#DCFCE7' : '#FFEDD5'}; border: 1px solid ${rep.status === 'Solved' ? '#86EFAC' : '#FED7AA'}; padding: 2px 7px; border-radius: 6px;">● ${rep.status || 'Active'}</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap;">
+            <span style="font-size: 11.5px; font-weight: 800; color: #1E3A8A; background: #DBEAFE; border: 1px solid #BFDBFE; padding: 2.5px 9px; border-radius: 6px;">${rep.id}</span>
+            <span style="font-size: 11px; font-weight: 700; color: #0369A1; background: #F0F9FF; border: 1px solid #BAE6FD; padding: 2.5px 9px; border-radius: 6px;">📂 ${escapeHtml(rep.category || 'General')}</span>
+            <span style="font-size: 11px; font-weight: 800; color: ${statusColor}; background: ${statusBg}; border: 1px solid ${statusBorder}; padding: 2.5px 9px; border-radius: 6px;">◆ ${statusLabel}</span>
           </div>
-          <div style="font-size: 14.5px; font-weight: 850; color: #0F172A; line-height: 1.35; margin: 2px 0 3px; word-break: break-word;">${rep.title}</div>
-          <div style="font-size: 11.5px; color: #64748B; display: flex; align-items: center; gap: 4px;">
-            <span>📍</span> <span>${rep.location || 'Jharkhand'}</span>
-          </div>
+          
+          <button type="button" class="chat-view-details-btn" onclick="openReportFromChat('${rep.id}')" title="Inspect full audit trail and report details">
+            <span>View Details</span> <span style="font-size: 10px; font-weight: 900;">⌵</span>
+          </button>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto;">
-          <div style="display: flex; align-items: center; gap: 7px; background: #EFF6FF; border: 1.5px solid #BFDBFE; padding: 5px 11px; border-radius: 10px; box-shadow: 0 1px 3px rgba(37,99,235,0.06);">
-            <span style="font-size: 17px;">🏛️</span>
-            <div>
-              <div style="font-size: 11px; font-weight: 800; color: #1E3A8A;">Prof. R. K. Sharma</div>
-              <div style="font-size: 9.5px; color: #2563EB; font-weight: 700;">University Guide (${univName.length > 22 ? univName.slice(0, 20) + '...' : univName})</div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 260px;">
+            <div style="font-size: 15px; font-weight: 850; color: #0F172A; line-height: 1.35; margin-bottom: 3px;">
+              ${escapeHtml(rep.title)}
+            </div>
+            <div style="font-size: 12px; color: #64748B; display: flex; align-items: center; gap: 5px;">
+              <span>📍</span> <span>${escapeHtml(rep.location || 'Jharkhand')}</span>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 7px; background: #FFFDF0; border: 1.5px solid #FDE68A; padding: 5px 11px; border-radius: 10px; box-shadow: 0 1px 3px rgba(217,119,6,0.06);">
-            <span style="font-size: 17px;">🛡️</span>
-            <div>
-              <div style="font-size: 11px; font-weight: 800; color: #92400E;">Shri S. K. Verma</div>
-              <div style="font-size: 9.5px; color: #D97706; font-weight: 700;">JanSetu Admin Officer (District Desk)</div>
+
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div class="chat-participant-pill" style="background: #F0FDF4; border: 1px solid #BBF7D0;">
+              <span style="font-size: 12.5px;">🎓</span>
+              <strong style="color: #166534; font-size: 11.5px;">Prof. R. K. Sharma</strong>
+              <span class="tag" style="color: #15803D;">· University Guide</span>
+            </div>
+            <div class="chat-participant-pill" style="background: #EFF6FF; border: 1px solid #BFDBFE;">
+              <span style="font-size: 12.5px;">🛡️</span>
+              <strong style="color: #1E40AF; font-size: 11.5px;">Shri S. K. Verma</strong>
+              <span class="tag" style="color: #2563EB;">· JanSetu Admin</span>
+            </div>
+            <div class="chat-participant-pill" style="background: #F8FAFC; border: 1px solid #E2E8F0; cursor: default;" title="Active Civic Observers">
+              <span style="font-size: 12px;">👥</span>
+              <span style="font-weight: 700; color: #475569; font-size: 11px;">+2 Members &gt;</span>
             </div>
           </div>
         </div>
       `;
     }
+
+    function openReportFromChat(reportId) {
+      if (typeof closeModal === 'function') closeModal('problemChatModal');
+      setTimeout(() => {
+        openDetailModal(reportId);
+      }, 150);
+    }
+    window.openReportFromChat = openReportFromChat;
 
     function renderChatMessagesStream(rep) {
       const stream = document.getElementById('chatMessagesStream');
@@ -3890,25 +4390,17 @@
 
       const rawMsgs = (rep && chatMessagesCache[rep.id]) || (rep && rep.chatMessages) || [];
 
-      // Deduplicate messages by _id or (sender + text + timestamp)
-      const msgs = [];
-      const seen = new Set();
-      rawMsgs.forEach(m => {
-        if (!m || !m.text) return;
-        const key = m._id ? String(m._id) : `${m.sender || ''}_${m.text.trim()}_${m.time || ''}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          msgs.push(m);
-        }
-      });
+      // Authoritative deduplication using mergeAndDeduplicateChat (prevents duplicate messages)
+      const msgs = mergeAndDeduplicateChat(rawMsgs, []);
 
       if (msgs.length === 0) {
+
         stream.innerHTML = `
-          <div style="text-align: center; padding: 40px 20px; color: #64748B; margin: auto;">
-            <div style="font-size: 34px; margin-bottom: 10px;">🤝</div>
-            <div style="font-weight: 800; font-size: 14.5px; color: #0F172A;">Tripartite Problem Discussion Channel</div>
-            <div style="font-size: 12px; margin-top: 5px; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.5;">
-              Direct communication between you (Citizen), your assigned University Engineering Guide, and Municipal Administrative Officers. Send a message below to start.
+          <div style="text-align: center; padding: 48px 20px; color: #64748B; margin: auto;">
+            <div style="font-size: 42px; margin-bottom: 12px;">🤝</div>
+            <div style="font-weight: 850; font-size: 16px; color: #0F172A;">JanSetu Tripartite Coordination Channel</div>
+            <div style="font-size: 12.5px; margin-top: 6px; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.6; color: #64748B;">
+              Direct communication between you (Citizen Submitter), assigned University Engineering Guide, and Municipal Administrative Officers. Send an inquiry or update below.
             </div>
           </div>
         `;
@@ -3920,38 +4412,66 @@
         const isUniv = m.senderType === 'university' || m.isUniversity || m.senderRole?.toLowerCase().includes('university');
         const isAdmin = m.senderType === 'admin' || m.senderRole?.toLowerCase().includes('admin');
 
+        // Initials and Avatars
+        const avatarInitials = isCitizen ? 'C' : (isUniv ? 'RK' : 'SK');
+        const avatarBg = isCitizen ? '#002D62' : (isUniv ? '#059669' : '#2563EB');
+
         const senderTitle = isCitizen
           ? 'You (Citizen Submitter)'
-          : (isUniv ? (m.sender || 'Prof. R. K. Sharma (University Guide)') : (m.sender || 'Shri S. K. Verma (JanSetu Admin)'));
+          : (isUniv ? (m.sender || 'Prof. R. K. Sharma (University Guide / IIT Delhi)') : (m.sender || 'Shri S. K. Verma (JanSetu Admin / Executive Officer)'));
 
         const roleBadge = isCitizen
           ? '👤 Citizen'
-          : (isUniv ? `🏛️ ${m.senderRole || 'University Faculty Guide'}` : `🛡️ ${m.senderRole || 'JanSetu Admin Officer'}`);
+          : (isUniv ? `🏛️ ${m.senderRole || 'University Guide'}` : `🛡️ ${m.senderRole || 'JanSetu Admin'}`);
 
         const bubbleBg = isCitizen
           ? 'linear-gradient(135deg, #002D62 0%, #1E3A8A 100%)'
-          : (isUniv ? '#FFFFFF' : '#FFFDF2');
+          : '#FFFFFF';
 
-        const bubbleColor = isCitizen ? '#FFFFFF' : '#0F172A';
-        const bubbleBorder = isCitizen ? 'none' : (isUniv ? '1.5px solid #BFDBFE' : '1.5px solid #FDE68A');
+        const bubbleColor = isCitizen ? '#FFFFFF' : '#1E293B';
+        const bubbleBorder = isCitizen ? 'none' : '1px solid #E2E8F0';
+        const bubbleBorderLeft = isCitizen ? 'none' : (isUniv ? '3.5px solid #2563EB' : '3.5px solid #D97706');
         const alignSelf = isCitizen ? 'flex-end' : 'flex-start';
+        const alignDirection = isCitizen ? 'row-reverse' : 'row';
+
+        // Check if there is an attached image
+        const imgUrl = m.attachmentUrl || (m.imageProof) || null;
 
         return `
-        <div style="display: flex; flex-direction: column; align-items: ${alignSelf}; max-width: 82%; gap: 3px;">
-          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; margin-bottom: 2px;">
-            <span style="font-weight: 800; color: ${isCitizen ? '#1E3A8A' : (isUniv ? '#1D4ED8' : '#B45309')};">${senderTitle}</span>
-            <span style="font-size: 9.5px; font-weight: 700; color: ${isCitizen ? '#059669' : (isUniv ? '#2563EB' : '#D97706')}; background: ${isCitizen ? '#ECFDF5' : (isUniv ? '#DBEAFE' : '#FEF3C7')}; padding: 1px 6px; border-radius: 8px;">${roleBadge}</span>
-            <span style="color: #94A3B8; font-size: 10px;">${m.time || 'Just now'}</span>
+        <div style="display: flex; flex-direction: ${alignDirection}; align-items: flex-start; gap: 10px; max-width: 82%; align-self: ${alignSelf}; margin-bottom: 8px;">
+          <!-- Initials Circular Avatar -->
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: ${avatarBg}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 850; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.12); margin-top: 2px;">
+            ${avatarInitials}
           </div>
-          <div style="background: ${bubbleBg}; color: ${bubbleColor}; border: ${bubbleBorder}; padding: 9px 14px; border-radius: ${isCitizen ? '14px 14px 3px 14px' : '14px 14px 14px 3px'}; font-size: 13px; line-height: 1.5; box-shadow: 0 1.5px 6px rgba(0,0,0,0.06); word-break: break-word;">
-            ${m.text}
+
+          <div style="display: flex; flex-direction: column; align-items: ${isCitizen ? 'flex-end' : 'flex-start'};">
+            <!-- Header Row with Name, Role, and Time -->
+            <div style="display: flex; align-items: center; gap: 7px; font-size: 11px; margin-bottom: 4px; flex-wrap: wrap;">
+              <span style="font-weight: 750; color: ${isCitizen ? '#1E3A8A' : (isUniv ? '#15803D' : '#D97706')};">${escapeHtml(senderTitle)}</span>
+              <span style="font-size: 9.5px; font-weight: 700; color: ${isCitizen ? '#059669' : (isUniv ? '#2563EB' : '#D97706')}; background: ${isCitizen ? '#ECFDF5' : (isUniv ? '#EFF6FF' : '#FFFBEB')}; padding: 1.5px 7px; border-radius: 8px;">${roleBadge}</span>
+              <span style="color: #94A3B8; font-size: 10px;">${m.time || 'Just now'}</span>
+            </div>
+
+            <!-- Bubble Content -->
+            <div style="background: ${bubbleBg}; color: ${bubbleColor}; border: ${bubbleBorder}; border-left: ${bubbleBorderLeft}; padding: 12px 16px; border-radius: ${isCitizen ? '18px 4px 18px 18px' : '4px 18px 18px 18px'}; font-size: 13px; line-height: 1.55; box-shadow: ${isCitizen ? '0 3px 10px rgba(0, 45, 98, 0.18)' : '0 2px 8px rgba(0,0,0,0.04)'}; word-break: break-word;">
+              ${escapeHtml(m.text)}
+
+              ${imgUrl ? `
+                <div style="margin-top: 8px;">
+                  <img src="${imgUrl}" alt="Evidence Photo" onclick="zoomImage('${imgUrl}', 'Chat Evidence Photo')"
+                    style="max-width: 220px; max-height: 160px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); cursor: pointer; object-fit: cover; display: block;" />
+                </div>
+              ` : ''}
+            </div>
           </div>
         </div>
-      `;
+        `;
       }).join('');
 
       // Auto-scroll to bottom
-      stream.scrollTop = stream.scrollHeight;
+      setTimeout(() => {
+        stream.scrollTop = stream.scrollHeight;
+      }, 50);
     }
 
     function renderChatQuickChips() {
@@ -3959,26 +4479,96 @@
       if (!cont) return;
 
       const chips = [
-        '📌 When will ground team visit site?',
-        '📸 Uploaded fresh photo evidence',
-        '✅ Issue has been temporarily resolved',
-        '❓ Need work order authorization slip',
-        '⚠️ Problem severity increased due to rain'
+        { label: '✨ When will ground team visit site?', text: 'When is the university technical ground team scheduled to visit the site?' },
+        { label: '📷 Upload fresh photo evidence', action: 'upload' },
+        { label: '✅ Issue resolved?', text: 'The reported problem appears to be temporarily resolved on site.' },
+        { label: '••• More', text: 'Requesting updated progress estimate and official milestone validation note.' }
       ];
 
-      cont.innerHTML = chips.map(c => `
-        <button type="button" class="chat-chip-btn" onclick="sendProblemChatMessage('${c.replace(/'/g, "\\'")}')">
-          ${c}
-        </button>
-      `).join('');
+      cont.innerHTML = chips.map(c => {
+        if (c.action === 'upload') {
+          return `
+            <button type="button" class="chat-chip-btn" onclick="document.getElementById('chatFileInput')?.click()"
+              style="white-space: nowrap; padding: 6px 13px; border-radius: 20px; background: #EFF6FF; border: 1.5px solid #BFDBFE; font-size: 11.5px; font-weight: 750; color: #1D4ED8; cursor: pointer; transition: all 0.15s ease;">
+              ${c.label}
+            </button>
+          `;
+        }
+        return `
+          <button type="button" class="chat-chip-btn" onclick="sendProblemChatMessage('${c.text.replace(/'/g, "\\'")}')"
+            style="white-space: nowrap; padding: 6px 13px; border-radius: 20px; background: #F8FAFC; border: 1.5px solid #E2E8F0; font-size: 11.5px; font-weight: 700; color: #334155; cursor: pointer; transition: all 0.15s ease;">
+            ${c.label}
+          </button>
+        `;
+      }).join('');
     }
 
+    function handleChatFileUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file || !activeChatProblemId) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const dataUrl = e.target.result;
+        const textMsg = `📷 [Attached Evidence Photo: ${file.name}]`;
+        const user = getCurrentUser();
+        const userName = user?.name || 'Citizen Submitter';
+        const timeStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+        const targetRep = allReportsList.find(r => r.id === activeChatProblemId) || exploreList.find(r => r.id === activeChatProblemId);
+        const targetMongoId = targetRep?.mongoId || activeChatProblemId;
+
+        const newMsg = {
+          sender: userName,
+          senderRole: 'Citizen Submitter',
+          senderType: 'citizen',
+          department: 'Citizen Ground Reporter',
+          text: textMsg,
+          attachmentUrl: dataUrl,
+          time: timeStr,
+          timestamp: new Date(),
+          isCitizen: true,
+          readByCitizen: true
+        };
+
+        appendChatMessageToStore(activeChatProblemId, targetRep, newMsg);
+        renderChatMessagesStream(targetRep);
+        renderChatProblemChannels();
+
+        // Send to backend
+        fetch(`/api/challenges/${targetMongoId}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: textMsg,
+            sender: userName,
+            senderRole: 'Citizen Submitter',
+            senderType: 'citizen',
+            attachmentUrl: dataUrl
+          })
+        }).catch(() => {});
+      };
+      reader.readAsDataURL(file);
+      event.target.value = '';
+    }
+    window.handleChatFileUpload = handleChatFileUpload;
+
+    let isSendingProblemChat = false;
     async function sendProblemChatMessage(overrideText) {
       if (!activeChatProblemId) return;
+      if (isSendingProblemChat) return; // Prevent double/triple clicks
 
       const inputEl = document.getElementById('chatTextInput');
-      const text = overrideText || (inputEl ? inputEl.value.trim() : '');
+      const text = (overrideText !== undefined ? overrideText : (inputEl ? inputEl.value : '')).trim();
       if (!text) return;
+
+      isSendingProblemChat = true;
+      const sendBtn = document.getElementById('btnSendChatMessage');
+      if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.style.opacity = '0.5';
+        sendBtn.style.pointerEvents = 'none';
+      }
 
       if (inputEl) inputEl.value = '';
 
@@ -4005,7 +4595,7 @@
         readByAdmin: false
       };
 
-      // Append once using deduplicating store helper (prevents 2x duplicate message bug)
+      // Append once using deduplicating store helper (prevents duplicate message bug)
       appendChatMessageToStore(activeChatProblemId, targetRep, newMsg);
 
       renderChatMessagesStream(targetRep);
@@ -4040,9 +4630,20 @@
         }
       } catch (err) {
         console.warn('Chat send error:', err);
+      } finally {
+        setTimeout(() => {
+          isSendingProblemChat = false;
+          const sendBtn = document.getElementById('btnSendChatMessage');
+          if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.style.opacity = '1';
+            sendBtn.style.pointerEvents = 'auto';
+          }
+        }, 600);
       }
     }
     window.sendProblemChatMessage = sendProblemChatMessage;
+
 
     function updateNavChatUnreadIndicator() {
       let totalUnread = 0;
@@ -4087,34 +4688,50 @@
       if (input) {
         input.value = '';
         input.placeholder = 'DELETE';
+        input.oninput = onDeleteSecurityInputChange;
+        input.onkeyup = onDeleteSecurityInputChange;
+        input.onchange = onDeleteSecurityInputChange;
+        input.onpaste = () => setTimeout(onDeleteSecurityInputChange, 50);
+        setTimeout(() => input.focus(), 150);
       }
 
       const btn = document.getElementById('btnExecuteDeleteReport');
       if (btn) {
         btn.disabled = true;
+        btn.setAttribute('disabled', 'true');
         btn.style.opacity = '0.45';
         btn.style.cursor = 'not-allowed';
+        btn.style.pointerEvents = 'none';
+        btn.onclick = executeReportDeletion;
       }
 
       openModal('deleteConfirmModal');
     }
+    window.promptDeleteReport = promptDeleteReport;
 
     function onDeleteSecurityInputChange() {
       const input = document.getElementById('deleteSecurityInput');
       const btn = document.getElementById('btnExecuteDeleteReport');
       if (!input || !btn) return;
-      const val = input.value.trim();
-      const isValid = val.toUpperCase() === 'DELETE' || (pendingDeleteReportId && val.toUpperCase() === pendingDeleteReportId.toUpperCase());
+      const cleanVal = (input.value || '').trim().toUpperCase().replace(/[\s\-_]/g, '');
+      const cleanTarget = (pendingDeleteReportId || '').trim().toUpperCase().replace(/[\s\-_]/g, '');
+      const isValid = cleanVal === 'DELETE' || (cleanTarget && cleanVal === cleanTarget);
       if (isValid) {
         btn.disabled = false;
+        btn.removeAttribute('disabled');
         btn.style.opacity = '1';
         btn.style.cursor = 'pointer';
+        btn.style.pointerEvents = 'auto';
+        btn.style.background = '#DC2626';
       } else {
         btn.disabled = true;
+        btn.setAttribute('disabled', 'true');
         btn.style.opacity = '0.45';
         btn.style.cursor = 'not-allowed';
+        btn.style.pointerEvents = 'none';
       }
     }
+    window.onDeleteSecurityInputChange = onDeleteSecurityInputChange;
 
     async function executeReportDeletion() {
       if (!pendingDeleteReportId) {
@@ -4123,8 +4740,9 @@
       }
 
       const input = document.getElementById('deleteSecurityInput');
-      const val = input ? input.value.trim() : '';
-      const isValid = val.toUpperCase() === 'DELETE' || (pendingDeleteReportId && val.toUpperCase() === pendingDeleteReportId.toUpperCase());
+      const cleanVal = input ? input.value.trim().toUpperCase().replace(/\s+/g, '') : '';
+      const cleanTarget = (pendingDeleteReportId || '').trim().toUpperCase().replace(/\s+/g, '');
+      const isValid = cleanVal === 'DELETE' || (cleanTarget && cleanVal === cleanTarget);
       if (!isValid) {
         alert(currentLanguage === 'hi'
           ? 'हटाने की पुष्टि के लिए कृपया बॉक्स में DELETE टाइप करें।'
@@ -4162,6 +4780,9 @@
 
       // Save updated reports to user's localStorage
       saveReportsState();
+
+      // Add to persistent deleted challenges set so it NEVER reappears on refresh
+      addDeletedChallenge(deletedId, mongoIdToDelete);
 
       if (activeTrackerIndex >= allReportsList.length) {
         activeTrackerIndex = Math.max(0, allReportsList.length - 1);
@@ -4228,6 +4849,7 @@
       // Force refresh live challenges after deletion to keep DB sync clean
       setTimeout(() => fetchLiveChallenges(true), 300);
     }
+    window.executeReportDeletion = executeReportDeletion;
 
     function simulateAdminVerify(reportId) {
       const r = allReportsList.find(x => x.id === reportId);
@@ -4283,8 +4905,11 @@
     function getDismissedNotifs() {
       try {
         const k = getUserStorageKey('jansetu_dismissed_notifs');
-        const raw = localStorage.getItem(k);
-        return new Set(raw ? JSON.parse(raw) : []);
+        const rawUser = localStorage.getItem(k);
+        const rawGlobal = localStorage.getItem('jansetu_dismissed_notifs_global');
+        const userSet = rawUser ? JSON.parse(rawUser) : [];
+        const globalSet = rawGlobal ? JSON.parse(rawGlobal) : [];
+        return new Set([...userSet, ...globalSet]);
       } catch (e) {
         return new Set();
       }
@@ -4296,7 +4921,9 @@
         const k = getUserStorageKey('jansetu_dismissed_notifs');
         const s = getDismissedNotifs();
         s.add(String(id));
-        localStorage.setItem(k, JSON.stringify(Array.from(s)));
+        const arr = Array.from(s);
+        localStorage.setItem(k, JSON.stringify(arr));
+        localStorage.setItem('jansetu_dismissed_notifs_global', JSON.stringify(arr));
       } catch (e) { }
     }
 
@@ -4969,50 +5596,58 @@
             catBadgeLabel = '🗑️ Deleted';
           }
 
+          const isMsg = item.type === 'message' || item.category === 'messages' || item.problemId;
+          const isSolved = item.type === 'RESOLUTION_CONFIRMED';
+          const isAction = item.category === 'actions';
+
+          // Color indicators
+          const dotColor = isMsg ? '#2563EB' : (isSolved ? '#16A34A' : (isAction ? '#D97706' : '#64748B'));
+          const dotBg = isMsg ? '#EFF6FF' : (isSolved ? '#F0FDF4' : (isAction ? '#FFFBEB' : '#F1F5F9'));
+
+          // Concise message text: keep long chat text inside Problem Chat Hub
+          let displayMsg = item.message;
+          let displayTitle = item.title;
+          if (isMsg) {
+            displayTitle = isHi ? 'विश्वविद्यालय / प्रशासनिक कार्यबल संदेश' : 'Message from University / Admin Taskforce';
+            displayMsg = isHi
+              ? `आपकी शिकायत #${item.reportId || ''} के संबंध में कार्यबल से नया संदेश प्राप्त हुआ है। चैट देखने के लिए क्लिक करें।`
+              : `You have received a new update regarding grievance #${item.reportId || ''}. Click to open chat room.`;
+          }
+
+          // Direct execution target
+          const clickAction = isMsg
+            ? `window.openCitizenChatReplyModal('${item.problemId || ''}', '${(item.title || '').replace(/'/g, "\\'")}', '${item.reportId || ''}')`
+            : (item.reportId ? `closeModal('notificationsModal'); openDetailModal('${item.reportId}')` : `markAllNotificationsRead()`);
+
           return `
-          <div class="notif-item-card" style="background: ${item.read ? '#FFFFFF' : '#F0FDF4'}; border: 1.2px solid ${item.read ? '#E2E8F0' : '#86EFAC'}; border-radius: 11px; padding: 10px 12px; margin-bottom: 9px; box-shadow: 0 1.5px 5px rgba(0,0,0,0.03); position: relative; transition: all 0.15s ease;">
-            <div style="display: flex; align-items: flex-start; gap: 9px;">
-              <div style="width: 30px; height: 30px; border-radius: 9px; background: ${item.iconBg}; color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.12);">
-                ${item.icon || '🔔'}
-              </div>
+          <div class="notif-item-card" onclick="${clickAction}"
+            style="background: ${item.read ? '#FFFFFF' : '#F8FAFC'}; border: 1.5px solid ${item.read ? '#E2E8F0' : '#93C5FD'}; border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; box-shadow: 0 2px 6px rgba(15,23,42,0.03); position: relative; transition: all 0.18s ease; cursor: pointer;">
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+              <div style="width: 10px; height: 10px; border-radius: 50%; background: ${dotColor}; margin-top: 5px; flex-shrink: 0; box-shadow: 0 0 0 3px ${dotBg};"></div>
               <div style="flex: 1; min-width: 0;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                  <div style="font-size: 12px; font-weight: 750; color: #0F172A; line-height: 1.3;">
-                    ${item.title}
+                  <div style="font-size: 13px; font-weight: 750; color: #0F172A; line-height: 1.35;">
+                    ${displayTitle}
                   </div>
                   <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                    ${!item.read ? `<span style="font-size: 9px; font-weight: 800; color: #15803D; background: #DCFCE7; border: 1px solid #86EFAC; padding: 1px 5px; border-radius: 6px;">NEW</span>` : ''}
-                    <button type="button" onclick="event.stopPropagation(); deleteSingleCitizenNotification('${item.id}');" title="${isHi ? 'यह सूचना हटाएं' : 'Delete notification'}" style="background: none; border: none; color: #94A3B8; font-size: 13px; font-weight: 800; cursor: pointer; padding: 0 4px; border-radius: 4px; line-height: 1;" onmouseover="this.style.color='#DC2626'" onmouseout="this.style.color='#94A3B8'">✕</button>
+                    ${!item.read ? `<span style="font-size: 9.5px; font-weight: 800; color: #1D4ED8; background: #DBEAFE; border: 1px solid #BFDBFE; padding: 1px 6px; border-radius: 6px;">NEW</span>` : ''}
+                    <button type="button" onclick="event.stopPropagation(); deleteSingleCitizenNotification('${item.id}');" title="${isHi ? 'यह सूचना हटाएं' : 'Delete notification'}" style="background: none; border: none; color: #94A3B8; font-size: 14px; font-weight: 700; cursor: pointer; padding: 2px 6px; border-radius: 6px; line-height: 1; transition: all 0.15s ease;" onmouseover="this.style.color='#DC2626'; this.style.background='#FEE2E2';" onmouseout="this.style.color='#94A3B8'; this.style.background='none';">✕</button>
                   </div>
                 </div>
-                <div style="font-size: 11px; color: #475569; margin-top: 2.5px; line-height: 1.4; white-space: pre-line;">
-                  ${item.message}
+                <div style="font-size: 12px; color: #475569; margin-top: 4px; line-height: 1.5;">
+                  ${displayMsg}
                 </div>
                 
-                <!-- Bottom Multi-Color Date & Time Strip (No View Details Button) -->
-                <div style="display: flex; align-items: center; justify-content: flex-start; margin-top: 7px; padding-top: 6px; border-top: 1px dashed #E2E8F0; flex-wrap: wrap; gap: 4.5px;">
-                  <!-- Saffron Date Tag -->
-                  <span style="background: #FFF7ED; color: #C2410C; border: 1px solid #FDBA74; padding: 1.5px 6.5px; border-radius: 5px; font-size: 10px; font-weight: 750; display: inline-flex; align-items: center; gap: 3px;">
-                    📅 ${item.date}
-                  </span>
-                  <!-- Royal Blue Time Tag -->
-                  <span style="background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; padding: 1.5px 6.5px; border-radius: 5px; font-size: 10px; font-weight: 750; display: inline-flex; align-items: center; gap: 3px;">
-                    🕒 ${item.time}
-                  </span>
-                  <!-- Emerald Relative Badge -->
-                  <span style="background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; padding: 1.5px 6.5px; border-radius: 5px; font-size: 10px; font-weight: 800; display: inline-flex; align-items: center; gap: 3px;">
-                    ⚡ ${timeAgoStr}
-                  </span>
-                  <!-- Category Badge -->
-                  <span style="background: ${catBadgeBg}; color: ${catBadgeColor}; border: 1px solid ${catBadgeBorder}; padding: 1.5px 5.5px; border-radius: 5px; font-size: 9.5px; font-weight: 750;">
-                    ${catBadgeLabel}
-                  </span>
-
-                  ${(item.type === 'message' || item.category === 'messages' || item.problemId) ? `
-                    <button type="button" onclick="event.stopPropagation(); window.openCitizenChatReplyModal('${item.problemId || ''}', '${(item.title || '').replace(/'/g, "\\'")}', '${item.reportId || ''}')" style="background: linear-gradient(135deg, #2563EB, #1D4ED8); color: #FFF; border: none; padding: 3px 10px; border-radius: 6px; font-size: 10.5px; font-weight: 750; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-left: auto; box-shadow: 0 1px 3px rgba(37,99,235,0.25);">
-                      💬 Reply to University
-                    </button>
-                  ` : ''}
+                <!-- Sleek Minimal Meta Strip with Direct Execution Cue -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px solid #F1F5F9; flex-wrap: wrap; gap: 6px;">
+                  <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: #64748B;">
+                    <span>${item.time || ''} · ${item.date || ''}</span>
+                    <span style="display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: #CBD5E1;"></span>
+                    <span style="font-weight: 700; color: ${catBadgeColor};">${catBadgeLabel}</span>
+                  </div>
+                  <div style="font-size: 11px; font-weight: 750; color: ${dotColor}; display: inline-flex; align-items: center; gap: 4px;">
+                    <span>${isMsg ? (isHi ? 'चैट खोलें →' : 'Open Chat →') : (isHi ? 'विवरण देखें →' : 'View Details →')}</span>
+                  </div>
                 </div>
 
               </div>
@@ -5609,6 +6244,10 @@
     window.openModal = openModal;
 
     function closeModal(id) {
+      if (id === 'problemChatModal' && chatPollingTimer) {
+        clearInterval(chatPollingTimer);
+        chatPollingTimer = null;
+      }
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('active');

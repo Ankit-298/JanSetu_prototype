@@ -15,6 +15,7 @@ function App() {
     loadScript('https://checkout.razorpay.com/v1/checkout.js');
     setTimeout(() => {
       loadScript('/js/utils.js');
+      loadScript('/js/jansetu-civic-loader.js');
       setTimeout(() => {
         loadScript('/js/pan-india-heatmap.js');
         setTimeout(() => loadScript('/js/dashboard/industry.js'), 200);
