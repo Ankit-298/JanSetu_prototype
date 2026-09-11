@@ -205,6 +205,20 @@ const challengeSchema = new mongoose.Schema({
     readByUniversity: { type: Boolean, default: false },
     readByAdmin: { type: Boolean, default: false }
   }],
+  // Co-reporting & Voice AI Metadata
+  reportedBy: [{
+    citizenId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    citizenName: String,
+    reportedAt: { type: Date, default: Date.now },
+    viaVoiceAgent: { type: Boolean, default: true }
+  }],
+  duplicateCount: { type: Number, default: 0 },
+  submittedViaVoice: { type: Boolean, default: false },
+  twinnedChallenges: [{
+    challengeId: String,
+    similarityScore: Number,
+    linkedAt: { type: Date, default: Date.now }
+  }],
   // Meta
   viewCount: { type: Number, default: 0 },
   isPublic: { type: Boolean, default: true },

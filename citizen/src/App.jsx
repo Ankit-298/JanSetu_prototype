@@ -1,9 +1,14 @@
-
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import './citizenstyle.css';
+import AIReportAgent from '../ai/AIReportAgent';
+import AIFloatingTrigger from '../ai/AIFloatingTrigger';
+import '../ai/voiceAgent.css';
 
 function App() {
+  const [isVoiceAgentOpen, setIsVoiceAgentOpen] = useState(false);
+
   useEffect(() => {
+    window.openAIVoiceReport = () => setIsVoiceAgentOpen(true);
     const loadScript = (src) => {
       const script = document.createElement('script');
       script.src = src;
@@ -274,13 +279,42 @@ function App() {
             </div>
           </div>
 
-          <button className="btn-report-hero" onClick={() => { openReportModal() }}>
-            <svg viewBox="0 0 24 24">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span data-i18n="btn_report_hero">समस्या दर्ज करें</span>
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn-report-hero" onClick={() => { openReportModal() }}>
+              <svg viewBox="0 0 24 24">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span data-i18n="btn_report_hero">समस्या दर्ज करें</span>
+            </button>
+
+            <button 
+              type="button"
+              className="btn-report-ai-hero"
+              onClick={() => setIsVoiceAgentOpen(true)}
+              style={{
+                background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 50%, #4f46e5 100%)',
+                color: '#ffffff',
+                border: '1px solid rgba(255,255,255,0.35)',
+                borderRadius: '12px',
+                padding: '11px 20px',
+                fontSize: '14.5px',
+                fontWeight: '700',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(37,99,235,0.35), 0 0 16px rgba(56,189,248,0.25)',
+                transition: 'all 0.25s ease'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)'}
+              onMouseOut={(e) => e.currentTarget.style.transform = 'none'}
+              title="JanSetu Voice AI से बोलकर समस्या दर्ज करें"
+            >
+              <span style={{ fontSize: '18px' }}>🎙️</span>
+              <span>AI Se Report Karein</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -2495,6 +2529,20 @@ function App() {
 
   {/* Global JanSetu Toast Notification (Smooth Popover) */}
   <div id="jansetuToast"></div>
+
+  {/* JanSetu Voice AI Floating Trigger (Lower Right Corner) */}
+  <AIFloatingTrigger onOpen={() => setIsVoiceAgentOpen(true)} />
+
+  {/* JanSetu Real-Time Voice AI Agent Overlay & Phone Call UI */}
+  <AIReportAgent
+    isOpen={isVoiceAgentOpen}
+    onClose={() => setIsVoiceAgentOpen(false)}
+    onReportSubmitted={() => {
+      if (typeof window.fetchCitizenProblems === 'function') {
+        window.fetchCitizenProblems();
+      }
+    }}
+  />
 
   {/* ============================================================
      I18N TRANSLATION SYSTEM & DYNAMIC QUOTE ROTATOR

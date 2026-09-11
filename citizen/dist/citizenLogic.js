@@ -1784,11 +1784,13 @@
               const descSnippet = (r.desc || r.description || r.details || '').trim();
               const fullAddr = (typeof formatProperAddress === 'function') ? formatProperAddress(r) : (r.location || 'Jharkhand');
               const safeTitle = (typeof escapeHtml === 'function') ? escapeHtml(r.title) : (r.title || '');
+              const isTwin = Boolean(r.isTwinned || r.isTwin || r.twinnedProblem);
               return `
               <div class="report-square-card" onclick="openDetailModal('${r.id}')" title="${safeTitle}">
                 <div class="square-thumb-wrapper">
                   <img src="${r.image || getCategoryFallbackImage(r.category)}" class="square-thumb-img" alt="${safeTitle}" onerror="this.src='/images/water-tap.jpg'" />
                   <span class="square-status-badge ${getStatusClass(r.status)}">${r.status}</span>
+                  ${isTwin ? `<span style="position:absolute; bottom:6px; left:6px; background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-size:9.5px; font-weight:800; border-radius:10px; padding:2px 7px; display:inline-flex; align-items:center; gap:3px; box-shadow:0 2px 5px rgba(0,0,0,0.12);">🔗 Twinned Problem</span>` : ''}
                 </div>
                 <div class="square-card-body">
                   <div class="square-card-title">${safeTitle}</div>
@@ -3239,11 +3241,31 @@
     }
 
     function supportExistingDetectedReport() {
-      if (detectedDuplicateChallenge) {
-        toggleSupport(detectedDuplicateChallenge.id);
+      const dupId = (detectedDuplicateChallenge && (detectedDuplicateChallenge.challengeId || detectedDuplicateChallenge.id)) || ('JH-2026-TWIN-' + Math.floor(1000 + Math.random() * 9000));
+      const dupTitle = (detectedDuplicateChallenge && detectedDuplicateChallenge.title) || (document.getElementById('reportTitle')?.value) || 'Twinned Community Grievance';
+      const dupCat = (detectedDuplicateChallenge && detectedDuplicateChallenge.category) || (document.getElementById('reportCategory')?.value) || 'Urban Infrastructure';
+      const dupLoc = (detectedDuplicateChallenge && ((detectedDuplicateChallenge.location && detectedDuplicateChallenge.location.address) || detectedDuplicateChallenge.location)) || 'Jharkhand';
+
+      if (detectedDuplicateChallenge && detectedDuplicateChallenge.id) {
+        try { toggleSupport(detectedDuplicateChallenge.id); } catch(e) {}
       }
+
+      const dupItem = {
+        id: dupId,
+        title: dupTitle,
+        category: dupCat,
+        location: dupLoc,
+        status: 'Submitted',
+        date: new Date().toLocaleDateString('en-GB'),
+        isTwinned: true,
+        twinnedProblem: true,
+        assign: 'Twinned with Authority Case'
+      };
+      allReportsList.unshift(dupItem);
+      window.allReportsList = allReportsList;
+      saveReportsState();
+      renderAllViews();
       closeModal('reportModal');
-      alert(currentLanguage === 'hi' ? '👍 धन्यवाद! आपका समर्थन जोड़ दिया गया है।' : '👍 Thank you! Your support has been added.');
     }
 
     function dismissDuplicateAndProceed() {
@@ -3521,6 +3543,7 @@
         </div>
         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0;">
           <span class="${r.status === 'Solved' ? 'status-pill-resolved' : 'status-pill-assigned'}">${r.status}</span>
+          ${(r.isTwinned || r.isTwin || r.twinnedProblem) ? `<span style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-size:10.5px; font-weight:800; border-radius:12px; padding:2px 8px; display:inline-flex; align-items:center; gap:4px;">🔗 Twinned Problem</span>` : ''}
           <div style="display: flex; gap: 6px;">
             <button type="button" style="background:#002D62; color:#fff; font-size:10px; font-weight:800; border-radius:6px; padding:4px 8px; cursor:pointer; border:none;" onclick="event.stopPropagation(); openReportSlip('${r.id}');" title="View & Download Official Slip">
               📄 Slip
@@ -6282,6 +6305,9 @@
       }, 2400);
     }
     window.showToast = showToast;
+    window.allReportsList = allReportsList;
+    window.getAllReportsList = function() { return allReportsList; };
+    window.supportExistingDetectedReport = supportExistingDetectedReport;
 
     // Trap Back navigation while authenticated: keep user on dashboard
     if (window.history && window.history.pushState) {

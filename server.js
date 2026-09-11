@@ -122,6 +122,9 @@ app.get('/dashboard/admin.html', (req, res) => res.redirect('/admin'));
 app.get('/dashboard/industry.html', (req, res) => res.redirect('/industries'));
 
 // Mount API Routes
+const { setupVoiceAgentRoutes, setupVoiceAgentWebSocket } = require('./citizen/ai/voiceRelayNode.cjs');
+setupVoiceAgentRoutes(app);
+
 app.use('/api/auth', require('./others/routes/auth'));
 app.use('/api/challenges', require('./others/routes/challenges'));
 app.use('/api/notifications', require('./others/routes/notifications'));
@@ -414,6 +417,22 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`   Citizen:    rajesh@gmail.com / citizen123`);
   console.log(`   University: rajesh@iitjharkhand.ac.in / univ123`);
   console.log(`   Industry:   tata@steel.com / industry123\n`);
+});
+
+// Voice Agent WebSocket Upgrade Handler
+const voiceWss = setupVoiceAgentWebSocket(server);
+server.on('upgrade', (request, socket, head) => {
+  try {
+    const host = request.headers.host || 'localhost';
+    const { pathname } = new URL(request.url, `http://${host}`);
+    if (pathname === '/ws/voice-agent') {
+      voiceWss.handleUpgrade(request, socket, head, (ws) => {
+        voiceWss.emit('connection', ws, request);
+      });
+    }
+  } catch (e) {
+    socket.destroy();
+  }
 });
 
 // Handle unhandled rejections
