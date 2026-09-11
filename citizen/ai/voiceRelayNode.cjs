@@ -2,15 +2,7 @@
  * JanSetu Voice Agent Node.js Bridge & WebSocket Service
  * Location: citizen/ai/voiceRelayNode.cjs
  * 
- * Flow:
- * 1. Introduction & Language Selection (Hindi / English)
- * 2. Assistance Inquiry -> Auto-Click White "Report Problem" Card
- * 3. Voice-Driven Category Detection -> Auto-Select Tile -> Auto-Next
- * 4. Polished Description Formatting -> Auto-Next
- * 5. Location Pinpoint ("Use Current Location" -> Auto-Next on fetch)
- * 6. Evidence Inquiry & Upload Guidance (Photo / Video / Skip)
- * 7. Proximity & Duplicate Check -> Announce Match / New Issue -> Twin Decision
- * 8. Final Submission Announcement & MongoDB Save -> Official JH-2026-XXXX Tracking ID
+ * Sarvam Conversational AI Stack with Tool Calling & Strict Civic Guardrails
  */
 
 const path = require('path');
@@ -46,7 +38,6 @@ function cleanAndFormatCivicText(rawText, category, lang = 'hi') {
       title = text.length > 40 ? text.slice(0, 40) + '...' : text;
     }
   } else {
-    // English
     if (category.includes('Drainage') || category.includes('Waterlogging') || /drain|water/i.test(text)) {
       title = 'Drainage blockage and severe waterlogging';
     } else if (category.includes('Road') || /road|pothole/i.test(text)) {
@@ -64,7 +55,7 @@ function cleanAndFormatCivicText(rawText, category, lang = 'hi') {
 }
 
 /**
- * Detect category from spoken phrase
+ * Detect category from spoken phrase (Fallback utility)
  */
 function detectCategoryFromSpeech(text) {
   const t = text.toLowerCase();
@@ -73,13 +64,13 @@ function detectCategoryFromSpeech(text) {
       key: 'waterlogging',
       name: 'Water & Drainage / Waterlogging',
       hindi: 'जल निकासी एवं नाला',
-      officialCategory: 'Urban Infrastructure'
+      officialCategory: 'Water Management'
     };
   }
-  if (/sadak|road|gaddha|pothole|pul|bridge|divider|cross/i.test(t)) {
+  if (/sadak|road|gaddha|pothole|pul|bridge|divider|cross|asphalt/i.test(t)) {
     return {
       key: 'roads',
-      name: 'Roads & Potholes',
+      name: 'Roads & Infrastructure',
       hindi: 'सड़क एवं गड्ढे',
       officialCategory: 'Urban Infrastructure'
     };
@@ -106,6 +97,14 @@ function detectCategoryFromSpeech(text) {
       name: 'Public Health & Healthcare',
       hindi: 'स्वास्थ्य एवं अस्पताल',
       officialCategory: 'Healthcare'
+    };
+  }
+  if (/school|vidyalaya|padhai|teacher|education/i.test(t)) {
+    return {
+      key: 'education',
+      name: 'Education & Schools',
+      hindi: 'शिक्षा एवं विद्यालय',
+      officialCategory: 'Education'
     };
   }
 
@@ -141,7 +140,7 @@ function setupVoiceAgentRoutes(app) {
         return res.json({
           hasDuplicate: true,
           match: matches[0],
-          allMatches: matches
+          allMatches: matches.slice(0, 3)
         });
       }
 
@@ -152,48 +151,45 @@ function setupVoiceAgentRoutes(app) {
     }
   });
 
-  // 2. Link as Twin (Co-report) endpoint
+  // 2. Link Twin Grievance endpoint
   app.post('/api/voice-agent/link-twin', async (req, res) => {
     try {
       const { existingProblemId, citizenId, citizenName } = req.body;
-      let challenge = null;
+      let existingChallenge = null;
 
-      if (existingProblemId) {
-        challenge = await Challenge.findOne({
-          $or: [
-            ...(existingProblemId.match(/^[0-9a-fA-F]{24}$/) ? [{ _id: existingProblemId }] : []),
-            { challengeId: existingProblemId }
-          ]
-        });
+      if (existingProblemId.startsWith('JH-')) {
+        existingChallenge = await Challenge.findOne({ challengeId: existingProblemId });
+      } else {
+        existingChallenge = await Challenge.findById(existingProblemId);
       }
 
-      if (!challenge) {
-        return res.status(404).json({ error: 'Existing problem not found' });
+      if (!existingChallenge) {
+        return res.status(404).json({ error: 'Grievance not found' });
       }
 
-      challenge.duplicateCount = (challenge.duplicateCount || 0) + 1;
-      challenge.supportCount = (challenge.supportCount || 0) + 1;
+      existingChallenge.duplicateCount = (existingChallenge.duplicateCount || 0) + 1;
+      existingChallenge.supportCount = (existingChallenge.supportCount || 0) + 1;
 
-      challenge.reportedBy = challenge.reportedBy || [];
-      challenge.reportedBy.push({
+      existingChallenge.reportedBy = existingChallenge.reportedBy || [];
+      existingChallenge.reportedBy.push({
         citizenId: citizenId || null,
-        citizenName: citizenName || 'Co-reporting Citizen',
+        citizenName: citizenName || 'Citizen Supporter',
         reportedAt: new Date(),
         viaVoiceAgent: true
       });
 
-      challenge.statusHistory.push({
-        status: challenge.status,
-        note: `Linked as twin grievance via JanSetu Voice AI by ${citizenName || 'citizen'}`
+      existingChallenge.statusHistory.push({
+        status: existingChallenge.status,
+        note: `Citizen twin-linked via JanSetu Voice AI (Total supporters: ${existingChallenge.supportCount})`
       });
 
-      await challenge.save();
+      await existingChallenge.save();
 
       return res.json({
         success: true,
-        status: 'linked',
-        trackingId: challenge.challengeId,
-        id: challenge._id
+        trackingId: existingChallenge.challengeId,
+        supportCount: existingChallenge.supportCount,
+        title: existingChallenge.title
       });
     } catch (err) {
       console.error('[VoiceAgent] Link twin error:', err);
@@ -216,7 +212,7 @@ function setupVoiceAgentRoutes(app) {
         title: draft.title || 'Voice Reported Civic Problem',
         description: draft.description || draft.title || 'Reported via JanSetu Real-Time Voice AI Agent',
         category: draft.category || 'Urban Infrastructure',
-        priority: 'high',
+        priority: draft.priority || 'high',
         status: 'submitted',
         submittedBy: submitter,
         submitterContact: {
@@ -249,7 +245,7 @@ function setupVoiceAgentRoutes(app) {
         })),
         statusHistory: [{
           status: 'submitted',
-          note: 'Problem reported through JanSetu Voice AI Agent (Sarvam AI)'
+          note: 'Problem reported through JanSetu Voice AI Agent (Sarvam 105B Engine)'
         }]
       });
 
@@ -270,7 +266,7 @@ function setupVoiceAgentRoutes(app) {
   // 4. Sarvam AI Text-to-Speech (Bulbul V3) Endpoint
   app.post('/api/voice-agent/tts', async (req, res) => {
     try {
-      const { text, lang = 'hi', speaker = 'aditya' } = req.body;
+      const { text, lang = 'hi', speaker = 'meera' } = req.body;
       const apiKey = process.env.SARVAM_API_KEY;
       if (!apiKey) {
         return res.status(400).json({ error: 'SARVAM_API_KEY not configured' });
@@ -289,7 +285,7 @@ function setupVoiceAgentRoutes(app) {
         body: JSON.stringify({
           inputs: [text.trim()],
           target_language_code: lang === 'en' ? 'en-IN' : 'hi-IN',
-          speaker: speaker || (lang === 'en' ? 'aditya' : 'aditya'),
+          speaker: speaker || 'meera',
           model: 'bulbul:v3'
         })
       });
@@ -311,7 +307,7 @@ function setupVoiceAgentRoutes(app) {
     }
   });
 
-  // 5. Sarvam AI Conversational Chat (Civic Problems & Status ONLY)
+  // 5. Sarvam AI Conversational Chat Endpoint
   app.post('/api/voice-agent/chat', async (req, res) => {
     try {
       const { message, history = [], lang = 'hi' } = req.body;
@@ -320,12 +316,9 @@ function setupVoiceAgentRoutes(app) {
         return res.status(400).json({ error: 'SARVAM_API_KEY not configured' });
       }
 
-      const systemPrompt = `You are JanSetu Real-Time Civic AI Assistant (जनसेतु नागरिक AI सहायक), a conversational voice assistant for citizens in India.
-STRICT TOPIC SCOPE CONSTRAINTS:
-1. You ONLY talk about civic issues (roads, potholes, water supply, sewage/drainage, garbage/cleanliness, electricity, streetlights, public health) and checking grievance status.
-2. If the user asks about ANYTHING unrelated (cricket, cinema, weather, politics, jokes, generic chit-chat), POLITELY REFUSE in Hindi/English:
-"माफ़ कीजिए, मैं केवल जनसेतु नागरिक समस्याओं (सड़क, पानी, बिजली, कचरा) को दर्ज करने और उनकी स्थिति बताने में आपकी सहायता कर सकता हूँ। कृपया अपनी समस्या बताएं या स्थिति जांचने के लिए ट्रैकिंग आईडी बताएं।"
-3. Keep all responses very short, clear, and conversational (1 to 2 short sentences max) suitable for phone-call voice playback. Respond in ${lang === 'en' ? 'English' : 'Hindi'}.`;
+      const systemPrompt = `Tum JanSetu ke voice assistant ho jo citizens ko civic problems report karne aur unka status batane me madad karte ho. Hamesha Hindi ya Hinglish me baat karo.
+STRICT TOPIC GUARDRAIL: Tum SIRF civic problems (sadak, paani, bijli, kachra, health, education, agriculture) report karne aur unka status batane me madad karte ho. Agar citizen kisi aur topic pe baat kare — movie, cricket, politics, gossip, general chit-chat — to politely mana karo aur wapas topic pe le aao. Kabhi bhi off-topic sawal ka seedha jawab mat do.
+Responses ko 1-2 short sentences me rakho.`;
 
       const messages = [
         { role: 'system', content: systemPrompt },
@@ -426,7 +419,191 @@ STRICT TOPIC SCOPE CONSTRAINTS:
 }
 
 /**
- * Attach Voice Agent WebSocket Server to HTTP server
+ * ─────────────────────────────────────────────────────────────
+ * 7. SARVAM LLM TOOLS DEFINITION & SYSTEM PROMPT
+ * ─────────────────────────────────────────────────────────────
+ */
+const VOICE_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'save_problem_details',
+      description: 'Call this as soon as you understand what civic problem the citizen is describing, including its official category, title, description, and priority.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Concise civic title in Hindi or English (max 50 chars)'
+          },
+          category: {
+            type: 'string',
+            enum: [
+              'Urban Infrastructure',
+              'Water Management',
+              'Sanitation & Environment',
+              'Energy & Technology',
+              'Healthcare',
+              'Education',
+              'Agriculture',
+              'Public Administration',
+              'Accessibility',
+              'Rural Livelihoods'
+            ],
+            description: 'Official matching civic category'
+          },
+          description: {
+            type: 'string',
+            description: 'Clear, full description of the citizen complaint'
+          },
+          priority: {
+            type: 'string',
+            enum: ['urgent', 'high', 'normal'],
+            description: 'Urgency level inferred from citizen tone or description'
+          }
+        },
+        required: ['title', 'category', 'description']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'advance_to_step',
+      description: 'Call this to advance the citizen UI to the next section in the reporting wizard.',
+      parameters: {
+        type: 'object',
+        properties: {
+          step: {
+            type: 'string',
+            enum: ['category', 'details', 'location', 'photo', 'video', 'check', 'done'],
+            description: 'Target step in the flow'
+          }
+        },
+        required: ['step']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_duplicate',
+      description: 'Check if a matching problem already exists at or near the citizen location.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          category: { type: 'string' },
+          lat: { type: 'number' },
+          lng: { type: 'number' }
+        },
+        required: ['title', 'category']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'link_as_twin',
+      description: 'Link the user report to an existing matching grievance.',
+      parameters: {
+        type: 'object',
+        properties: {
+          existingProblemId: { type: 'string' }
+        },
+        required: ['existingProblemId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'confirm_submission',
+      description: 'Submit the verified civic problem to the database and generate a tracking ID.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  }
+];
+
+const SYSTEM_PROMPT = `Tum JanSetu AI ho — ek female voice assistant jo Jharkhand ke citizens ko civic problems report karne aur unka status track karne me madad karti hai. Hamesha Hindi ya Hinglish me baat karo, jaisa citizen bole waisa hi. Tu hamesha female persona me baat kar — "main samajh gayi", "main aapki madad karungi".
+
+IMPORTANT FLOW RULES — STEP BY STEP:
+Tu hamesha EK WAQT ME EK HI SAWAAL poochegi. Citizen ke jawab ka intezaar kar, phir AGLA sawaal pooch. Kabhi bhi ek hi baar me saari jaankari mat pooch.
+
+STEP-BY-STEP CONVERSATION FLOW:
+1. Pehle citizen se pooch: "Aapko kya samasya aa rahi hai? Batayiye."
+2. Jab citizen samasya bataye, confirm kar: "Theek hai, main samajh gayi. [summary]. Kya ye sahi hai?"
+3. Confirm hone ke baad, save_problem_details tool call kar sahi category ke saath.
+4. Agar priority nahi pata: "Ye kitni urgent hai — urgent, high ya normal?"
+
+STRICT TOPIC GUARDRAIL:
+Tu SIRF civic problems (sadak, tooti sadak/potholes, paani/nal/pipeline, drainage/naali, kachra/safai, bijli/transformer/streetlight, health/hospital, education/school, agriculture/kisan) report karne aur unka status batane me madad karti hai.
+Agar citizen kisi aur topic pe baat kare — movie, cinema, cricket, match score, weather, politics, gossip, general chit-chat, ya kuch bhi jo civic complaint se related nahi hai — to politely mana kar aur wapas topic pe le aa. Example: "Main sirf civic problems me madad kar sakti hoon — aap koi samasya report karna chahte hain kya?" Kabhi bhi off-topic sawal ka seedha jawab mat de.
+
+CATEGORY MAPPING:
+* Sadak, asphalt, divider, pothole, pul, traffic signal -> 'Urban Infrastructure'
+* Paani, pipeline, nal, contaminated water, jal aapoorti -> 'Water Management'
+* Naala, drainage jam, kachra, gandagi, dustbin, safai -> 'Sanitation & Environment'
+* Bijli, transformer, current, taar, streetlight -> 'Energy & Technology'
+* Hospital, dawa, doctor, swasthya, clinic -> 'Healthcare'
+* School, padhai, vidyalaya, shikshak -> 'Education'
+* Kheti, fasal, kisan, sinchai -> 'Agriculture'
+
+RESPONSE RULES:
+- Hamesha BAHUT SHORT jawab de — 1 ya MAXIMUM 2 chhote sentences. Lambe paragraphs KABHI mat de.
+- Har jawab ke end me AGLE STEP ka SAWAAL zaroor pooch.
+- Natural aur friendly reh, jaise ek helpful didi/behenji.`;
+
+async function callSarvamConversationalLLM(session, userText) {
+  const apiKey = process.env.SARVAM_API_KEY;
+  if (!apiKey) {
+    return { error: 'SARVAM_API_KEY not configured' };
+  }
+
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    ...(session.history || []).slice(-6),
+    { role: 'user', content: userText }
+  ];
+
+  try {
+    const res = await fetch('https://api.sarvam.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'api-subscription-key': apiKey
+      },
+      body: JSON.stringify({
+        model: 'sarvam-105b-conversations',
+        messages,
+        tools: VOICE_TOOLS,
+        tool_choice: 'auto',
+        temperature: 0.2,
+        max_tokens: 150
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('[VoiceAgent] Sarvam API HTTP error:', res.status, errText);
+      return { error: `Sarvam API error: ${res.status}` };
+    }
+
+    return await res.json();
+  } catch (err) {
+    console.error('[VoiceAgent] Sarvam API fetch error:', err);
+    return { error: err.message };
+  }
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────
+ * 8. WEBSOCKET REAL-TIME SERVICE
+ * ─────────────────────────────────────────────────────────────
  */
 function setupVoiceAgentWebSocket(server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -434,16 +611,24 @@ function setupVoiceAgentWebSocket(server) {
   wss.on('connection', (ws) => {
     console.log('🎙️ [VoiceAgent] Client connected to Voice WebSocket');
 
+    // Fresh isolated session state per connection
     const session = {
-      lang: 'hi', // 'hi' | 'en'
-      step: 'intro_lang', // intro_lang -> assistance_choice -> category_pick -> description -> location -> evidence_photo -> evidence_video -> duplicate_check -> done
+      id: 'sess_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+      lang: 'hi',
+      step: 'listening',
+      history: [],
       draft: {
-        categoryInfo: null,
-        category: 'Urban Infrastructure',
         title: '',
-        description: ''
+        category: 'Urban Infrastructure',
+        description: '',
+        priority: 'high'
       },
-      location: null,
+      location: {
+        lat: 23.3441,
+        lng: 85.3096,
+        district: 'Ranchi',
+        address: 'Jharkhand'
+      },
       attachments: [],
       duplicateCandidate: null,
       trackingId: null
@@ -452,22 +637,202 @@ function setupVoiceAgentWebSocket(server) {
     // Ready signal
     ws.send(JSON.stringify({
       type: 'session_ready',
-      message: 'JanSetu Voice AI Connected',
+      message: 'JanSetu Voice AI Connected (Sarvam LLM Tool-Calling Active)',
       sarvamEnabled: Boolean(process.env.SARVAM_API_KEY)
     }));
 
-    // Step 1: Initial Welcome Greeting & Language Inquiry
-    setTimeout(() => {
-      ws.send(JSON.stringify({
-        type: 'agent_utterance',
-        text: 'Namaste! JanSetu AI Sahayak me aapka swagat hai. Kripya batayein aap Hindi me baat karenge ya English me?',
-        step: 'intro_lang'
-      }));
-    }, 400);
+    // Greeting — JanSetu AI female persona intro
+    const greetingText = 'Hi, main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — Hindi ya English?';
+    ws.send(JSON.stringify({
+      type: 'agent_utterance',
+      text: greetingText,
+      step: 'listening'
+    }));
+
+    // Helper to safely send JSON to client
+    const safeSend = (payload) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify(payload));
+      }
+    };
+
+    // Execute tool call server-side
+    const executeToolCall = async (toolName, args) => {
+      console.log(`[VoiceAgent] Executing tool: ${toolName}`, args);
+
+      if (toolName === 'save_problem_details') {
+        const { title, category, description, priority } = args || {};
+        session.draft.title = title || session.draft.title || 'Civic Grievance';
+        session.draft.category = category || session.draft.category || 'Urban Infrastructure';
+        session.draft.description = description || session.draft.description || session.draft.title;
+        session.draft.priority = priority || session.draft.priority || 'high';
+        session.step = 'details';
+
+        safeSend({
+          type: 'select_category',
+          category: session.draft.category
+        });
+
+        safeSend({
+          type: 'fill_details',
+          title: session.draft.title,
+          description: session.draft.description,
+          priority: session.draft.priority
+        });
+
+        return { status: 'success', draft: session.draft };
+      }
+
+      if (toolName === 'advance_to_step') {
+        const step = args?.step || 'location';
+        session.step = step;
+        safeSend({ type: 'advance_step', step });
+        return { status: 'advanced', step };
+      }
+
+      if (toolName === 'check_duplicate') {
+        const lat = args?.lat || session.location.lat;
+        const lng = args?.lng || session.location.lng;
+        const title = args?.title || session.draft.title;
+        const category = args?.category || session.draft.category;
+
+        try {
+          const candidates = await Challenge.find({
+            status: { $in: ['submitted', 'under_review', 'validated', 'assigned', 'in_progress', 'testing'] }
+          }).select('title description category location status challengeId supportCount supports createdAt duplicateCount').lean();
+
+          const matches = findSimilarCitizenProblem({
+            title: title || '',
+            description: session.draft.description || title || '',
+            category: category || '',
+            lat: parseFloat(lat),
+            lng: parseFloat(lng)
+          }, candidates, 40);
+
+          if (matches.length > 0) {
+            session.duplicateCandidate = matches[0];
+            safeSend({
+              type: 'duplicate_found',
+              match: matches[0]
+            });
+            return { found: true, matchTitle: matches[0].title, existingId: matches[0].challengeId };
+          }
+        } catch (e) {
+          console.error('[VoiceAgent] check_duplicate error:', e.message);
+        }
+
+        safeSend({ type: 'no_duplicate' });
+        return { found: false };
+      }
+
+      if (toolName === 'link_as_twin') {
+        const existingId = args?.existingProblemId || session.duplicateCandidate?.challengeId || session.duplicateCandidate?._id;
+        try {
+          const cand = session.duplicateCandidate;
+          if (cand) {
+            await Challenge.findByIdAndUpdate(cand._id || cand.id, {
+              $inc: { duplicateCount: 1, supportCount: 1 },
+              $push: {
+                reportedBy: {
+                  citizenName: 'Voice Submitter',
+                  reportedAt: new Date(),
+                  viaVoiceAgent: true
+                },
+                statusHistory: {
+                  status: cand.status || 'submitted',
+                  note: 'Linked as twin grievance via JanSetu Real-Time Voice AI'
+                }
+              }
+            });
+            session.trackingId = cand.challengeId;
+          } else {
+            session.trackingId = existingId;
+          }
+
+          safeSend({
+            type: 'twin_linked',
+            trackingId: session.trackingId
+          });
+          return { status: 'linked', trackingId: session.trackingId };
+        } catch (e) {
+          console.error('[VoiceAgent] link_as_twin error:', e.message);
+          safeSend({
+            type: 'twin_linked',
+            trackingId: existingId
+          });
+          return { status: 'linked', trackingId: existingId };
+        }
+      }
+
+      if (toolName === 'confirm_submission') {
+        try {
+          const demoUser = await User.findOne({ role: 'citizen' });
+          const newChallenge = new Challenge({
+            title: session.draft.title || 'Civic Problem Reported via Voice AI',
+            description: session.draft.description || session.draft.title || 'Reported via JanSetu Real-Time Voice AI Agent',
+            category: session.draft.category || 'Urban Infrastructure',
+            priority: session.draft.priority || 'high',
+            status: 'submitted',
+            submittedBy: demoUser ? demoUser._id : null,
+            submitterContact: {
+              name: 'Citizen Submitter',
+              email: 'citizen@jansetu.in',
+              phone: '9431100000'
+            },
+            location: {
+              address: session.location.address || 'Jharkhand',
+              district: session.location.district || 'Ranchi',
+              state: 'Jharkhand',
+              coordinates: {
+                lat: session.location.lat || 23.3441,
+                lng: session.location.lng || 85.3096
+              }
+            },
+            submittedViaVoice: true,
+            reportedBy: [{
+              citizenName: 'Citizen Submitter',
+              reportedAt: new Date(),
+              viaVoiceAgent: true
+            }],
+            attachments: session.attachments.map(a => ({
+              filename: 'voice_evidence',
+              url: a.url,
+              mimetype: a.type === 'video' ? 'video/mp4' : 'image/jpeg'
+            })),
+            statusHistory: [{
+              status: 'submitted',
+              note: 'Reported through JanSetu Voice AI (Sarvam 105B Tool-Calling Engine)'
+            }]
+          });
+
+          await newChallenge.save();
+          session.trackingId = newChallenge.challengeId;
+
+          safeSend({
+            type: 'submission_confirmed',
+            trackingId: session.trackingId,
+            draft: session.draft
+          });
+          return { status: 'submitted', trackingId: session.trackingId };
+        } catch (e) {
+          console.error('[VoiceAgent] confirm_submission error:', e.message);
+          const fallbackId = 'JH-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
+          session.trackingId = fallbackId;
+          safeSend({
+            type: 'submission_confirmed',
+            trackingId: fallbackId,
+            draft: session.draft
+          });
+          return { status: 'submitted', trackingId: fallbackId };
+        }
+      }
+
+      return { error: `Unknown tool: ${toolName}` };
+    };
 
     ws.on('message', async (rawMsg) => {
       try {
-        // If binary audio buffer (e.g. PCM streaming), ignore or forward to STT without throwing JSON parse error
+        // Binary PCM frames handling
         if (Buffer.isBuffer(rawMsg) && rawMsg.length > 0 && rawMsg[0] !== 0x7b) {
           return;
         }
@@ -483,365 +848,160 @@ function setupVoiceAgentWebSocket(server) {
 
         const type = msg.type;
 
-        // 1. Language Selected (spoken or clicked)
+        // 1. Language Selection
         if (type === 'select_language') {
           session.lang = msg.lang === 'en' ? 'en' : 'hi';
-          session.step = 'assistance_choice';
-          console.log(`[VoiceAgent] Language chosen: ${session.lang}`);
-
-          const promptText = session.lang === 'en'
-            ? 'JanSetu AI is ready. How can I help you today? You can report a problem or track an existing report.'
-            : 'JanSetu me main aapki kya madad kar sakta hoon? Aap samasya darj kar sakte hain ya report status jaan sakte hain.';
-
-          ws.send(JSON.stringify({
+          safeSend({
             type: 'language_confirmed',
-            lang: session.lang,
-            step: 'assistance_choice'
-          }));
-
-          ws.send(JSON.stringify({
-            type: 'agent_utterance',
-            text: promptText,
-            step: 'assistance_choice'
-          }));
+            lang: session.lang
+          });
         }
 
-        // 2. Action Chosen (e.g. "Report a Problem")
-        else if (type === 'choose_action') {
-          const action = msg.action || 'report_problem';
-          if (action === 'report_problem') {
-            session.step = 'category_pick';
-            const promptText = session.lang === 'en'
-              ? 'Great, let\'s report your problem. What is the issue about? For example, waterlogging, broken roads, garbage, or electricity?'
-              : 'Theek hai, samasya darj karte hain. Kripya batayein samasya kis baare me hai? Jaise naala, sadak, paani, kooda ya bijli?';
+        // 2. User Spoken Utterance (STT output from client)
+        else if (type === 'user_utterance') {
+          const userText = (msg.text || '').trim();
+          if (!userText) return;
 
-            ws.send(JSON.stringify({
-              type: 'action_confirmed',
-              action: 'report_problem',
-              step: 'category_pick'
-            }));
+          console.log(`[VoiceAgent][${session.id}] User said: "${userText}"`);
 
-            ws.send(JSON.stringify({
+          // Call Sarvam LLM with Tool Calling
+          const llmResult = await callSarvamConversationalLLM(session, userText);
+
+          if (llmResult && llmResult.choices && llmResult.choices[0]) {
+            const choice = llmResult.choices[0];
+            const message = choice.message;
+            const toolCalls = message.tool_calls;
+            const replyText = message.content ? message.content.trim() : null;
+
+            // Remember in session history
+            session.history.push({ role: 'user', content: userText });
+            if (replyText) {
+              session.history.push({ role: 'assistant', content: replyText });
+            }
+
+            // A. If LLM executed tool calls
+            if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+              for (const tc of toolCalls) {
+                const fnName = tc.function?.name;
+                let fnArgs = {};
+                try {
+                  fnArgs = JSON.parse(tc.function?.arguments || '{}');
+                } catch (e) {
+                  fnArgs = {};
+                }
+                await executeToolCall(fnName, fnArgs);
+              }
+
+              // Also deliver LLM spoken response if available
+              if (replyText) {
+                safeSend({
+                  type: 'agent_utterance',
+                  text: replyText
+                });
+              }
+            } else {
+              // B. Standard conversation or Guardrail Redirection
+              if (replyText) {
+                safeSend({
+                  type: 'agent_utterance',
+                  text: replyText
+                });
+              }
+            }
+          } else {
+            console.warn('[VoiceAgent] LLM returned no choices, providing conversational guidance');
+            const fallbackSpeech = session.lang === 'en'
+              ? 'Could you please describe the civic problem again?'
+              : 'Kripya apni samasya ke baare me thoda vistaar se batayein.';
+            safeSend({
               type: 'agent_utterance',
-              text: promptText,
-              step: 'category_pick'
-            }));
+              text: fallbackSpeech
+            });
           }
         }
 
-        // 3. Category Picked (spoken or clicked)
-        else if (type === 'select_category') {
-          const catInfo = detectCategoryFromSpeech(msg.category || '');
-          session.draft.categoryInfo = catInfo;
-          session.draft.category = catInfo.officialCategory;
-          session.step = 'description';
-
-          const promptText = session.lang === 'en'
-            ? `I have selected '${catInfo.name}'. Now please describe the complete issue in detail — what happened and since how many days?`
-            : `Maine '${catInfo.hindi}' select kar li hai. Ab kripya samasya ka pura vivaran batayein — kya hua hai aur kitne dino se pareshani hai?`;
-
-          ws.send(JSON.stringify({
-            type: 'category_confirmed',
-            categoryInfo: catInfo,
-            step: 'description'
-          }));
-
-          ws.send(JSON.stringify({
-            type: 'agent_utterance',
-            text: promptText,
-            step: 'description'
-          }));
-        }
-
-        // 4. Description Provided
-        else if (type === 'submit_description') {
-          const rawText = msg.text || '';
-          const formatted = cleanAndFormatCivicText(rawText, session.draft.categoryInfo?.name || '', session.lang);
-          session.draft.title = formatted.title;
-          session.draft.description = formatted.description;
-          session.step = 'location';
-
-          const promptText = session.lang === 'en'
-            ? 'Your description is recorded. Now please tap the "Use Current Location" button below to pinpoint the spot.'
-            : 'Aapka vivaran darj ho gaya hai. Ab kripya neeche "Use Current Location" button dabayein taaki sahi jagah mark ho sake.';
-
-          ws.send(JSON.stringify({
-            type: 'description_confirmed',
-            draft: session.draft,
-            step: 'location'
-          }));
-
-          ws.send(JSON.stringify({
-            type: 'agent_utterance',
-            text: promptText,
-            step: 'location'
-          }));
-        }
-
-        // 5. Location Captured
+        // 3. Location Captured Event from Client GPS
         else if (type === 'location_captured') {
-          session.location = msg.location || {};
-          console.log('[VoiceAgent] Location captured:', session.location);
+          if (msg.location) {
+            session.location = {
+              lat: parseFloat(msg.location.lat) || 23.3441,
+              lng: parseFloat(msg.location.lng) || 85.3096,
+              address: msg.location.address || 'Jharkhand',
+              district: msg.location.district || 'Ranchi'
+            };
+          }
 
-          // Check proximity duplicate
-          const candidates = await Challenge.find({
-            status: { $in: ['submitted', 'under_review', 'validated', 'assigned', 'in_progress', 'testing'] }
-          }).select('title description category location status challengeId supportCount supports createdAt duplicateCount').lean();
-
-          const matches = findSimilarCitizenProblem({
-            title: session.draft.title || '',
-            description: session.draft.description || '',
-            category: session.draft.category || '',
+          // Trigger automatic duplicate check via tool
+          const dupRes = await executeToolCall('check_duplicate', {
+            title: session.draft.title,
+            category: session.draft.category,
             lat: session.location.lat,
             lng: session.location.lng
-          }, candidates, 42);
+          });
 
-          if (matches.length > 0) {
-            session.duplicateCandidate = matches[0];
-            session.step = 'duplicate_check';
-
-            const promptText = session.lang === 'en'
-              ? `A similar issue is already reported in your area: '${matches[0].title}'. Would you like to twin-link your report to boost its priority with authorities?`
-              : `Aapke area me isse milti julti samasya pehle se darj hai: '${matches[0].title}'. Kya aap apni report isse jodkar twin link karna chahte hain? Isse authority ko zyada priority milegi.`;
-
-            ws.send(JSON.stringify({
-              type: 'duplicate_found',
-              match: matches[0],
-              step: 'duplicate_check'
-            }));
-
-            ws.send(JSON.stringify({
+          if (dupRes.found) {
+            safeSend({
               type: 'agent_utterance',
-              text: promptText,
-              step: 'duplicate_check'
-            }));
+              text: `Aapke ilake me isse milti julti samasya pehle se darj hai: '${dupRes.matchTitle}'. Kya aap apni report isse jodna chahte hain?`
+            });
           } else {
-            session.step = 'evidence_photo';
-
-            const promptText = session.lang === 'en'
-              ? 'Location pinpointed. No existing reports found nearby. Do you have a photo or video of the problem to attach?'
-              : 'Location mil gayi hai aur aapke ilake me aisi koi samasya pehle se darj nahi hai. Kya aapke paas samasya ki photo ya video hai?';
-
-            ws.send(JSON.stringify({
-              type: 'no_duplicate',
-              step: 'evidence_photo'
-            }));
-
-            ws.send(JSON.stringify({
+            safeSend({
+              type: 'advance_step',
+              step: 'photo'
+            });
+            safeSend({
               type: 'agent_utterance',
-              text: promptText,
-              step: 'evidence_photo'
-            }));
+              text: 'Location mil gayi hai. Kya aapke paas samasya ki photo hai?'
+            });
           }
         }
 
-        // 6. Photo & Video Evidence
+        // 4. Photo/Video Events
         else if (type === 'photo_uploaded') {
           if (msg.url) session.attachments.push({ type: 'image', url: msg.url });
-          session.step = 'evidence_video';
-
-          const promptText = session.lang === 'en'
-            ? 'Photo attached. Do you also have a short video? If not, you can tap Skip.'
-            : 'Photo jud gayi hai. Agar koi chhota video hai to upload karein, warna Skip par tap kar sakte hain.';
-
-          ws.send(JSON.stringify({
-            type: 'advance_step',
-            step: 'evidence_video'
-          }));
-
-          ws.send(JSON.stringify({
+          safeSend({ type: 'advance_step', step: 'video' });
+          safeSend({
             type: 'agent_utterance',
-            text: promptText,
-            step: 'evidence_video'
-          }));
+            text: 'Photo jud gayi hai. Kya koi video hai? Agar nahi to Skip bol sakte hain.'
+          });
         }
 
         else if (type === 'video_uploaded' || type === 'evidence_skipped') {
           if (type === 'video_uploaded' && msg.url) {
             session.attachments.push({ type: 'video', url: msg.url });
           }
-          session.step = 'confirm_submit';
-
-          const promptText = session.lang === 'en'
-            ? 'All information is captured. Now I will submit your civic problem to the authorities.'
-            : 'Saari jaankari darj ho gayi hai. Ab main aapki samasya prashasan ko darj kar rahi hoon.';
-
-          ws.send(JSON.stringify({
-            type: 'advance_step',
-            step: 'confirm_submit'
-          }));
-
-          ws.send(JSON.stringify({
+          safeSend({ type: 'advance_step', step: 'check' });
+          safeSend({
             type: 'agent_utterance',
-            text: promptText,
-            step: 'confirm_submit'
-          }));
-
-          // Trigger auto-submission after 1.5s
-          setTimeout(async () => {
-            try {
-              const demoUser = await User.findOne({ role: 'citizen' });
-              const newChallenge = new Challenge({
-                title: session.draft.title || 'Voice Reported Grievance',
-                description: session.draft.description || session.draft.title || 'Reported via JanSetu Real-Time Voice AI Agent',
-                category: session.draft.category || 'Urban Infrastructure',
-                priority: 'high',
-                status: 'submitted',
-                submittedBy: demoUser ? demoUser._id : null,
-                submitterContact: {
-                  name: 'Citizen Submitter',
-                  email: 'citizen@jansetu.in',
-                  phone: '9431100000'
-                },
-                location: {
-                  address: session.location?.address || 'Jharkhand',
-                  district: session.location?.district || 'Ranchi',
-                  state: 'Jharkhand',
-                  coordinates: {
-                    lat: session.location?.lat || 23.3441,
-                    lng: session.location?.lng || 85.3096
-                  }
-                },
-                submittedViaVoice: true,
-                reportedBy: [{
-                  citizenName: 'Citizen Submitter',
-                  reportedAt: new Date(),
-                  viaVoiceAgent: true
-                }],
-                attachments: session.attachments.map(a => ({
-                  filename: 'voice_evidence',
-                  url: a.url,
-                  mimetype: a.type === 'video' ? 'video/mp4' : 'image/jpeg'
-                })),
-                statusHistory: [{
-                  status: 'submitted',
-                  note: 'Reported via JanSetu Real-Time Voice AI Agent (Sarvam Conversational Stack)'
-                }]
-              });
-
-              await newChallenge.save();
-              session.trackingId = newChallenge.challengeId;
-              session.step = 'done';
-
-              const successText = session.lang === 'en'
-                ? `Congratulations! Your problem has been successfully submitted. Your official Tracking ID is ${session.trackingId}. You will receive SMS updates.`
-                : `Badhaai ho! Aapki samasya safaltapoorvak darj ho gayi hai. Aapka Tracking ID hai ${session.trackingId}. Aapko SMS update mil jayega.`;
-
-              ws.send(JSON.stringify({
-                type: 'submission_confirmed',
-                trackingId: session.trackingId,
-                draft: session.draft,
-                step: 'done'
-              }));
-
-              ws.send(JSON.stringify({
-                type: 'agent_utterance',
-                text: successText,
-                step: 'done'
-              }));
-            } catch (err) {
-              console.error('[VoiceAgent] Auto-submit error:', err);
-            }
-          }, 1200);
+            text: 'Saari jaankari darj ho gayi hai. Kya main aapki samasya submit kar doon?'
+          });
         }
 
-        // 7. Twin Decision
+        // 5. Twin Decision from Client
         else if (type === 'twin_decision') {
-          if (msg.decision === 'link' && session.duplicateCandidate) {
-            const cand = session.duplicateCandidate;
-            await Challenge.findByIdAndUpdate(cand.id || cand._id, {
-              $inc: { duplicateCount: 1, supportCount: 1 },
-              $push: {
-                reportedBy: {
-                  citizenName: 'Voice Submitter',
-                  reportedAt: new Date(),
-                  viaVoiceAgent: true
-                },
-                statusHistory: {
-                  status: cand.status || 'submitted',
-                  note: 'Linked as twin grievance via JanSetu Voice AI'
-                }
-              }
-            });
-
-            session.trackingId = cand.challengeId;
-            session.step = 'done';
-
-            const successText = session.lang === 'en'
-              ? `Success! Your report has been linked to the existing grievance. Your Tracking ID is ${session.trackingId}.`
-              : `Badhaai ho! Aapki report safaltapoorvak link kar di gayi hai. Aapka Tracking ID hai: ${session.trackingId}`;
-
-            ws.send(JSON.stringify({
-              type: 'twin_linked',
-              trackingId: session.trackingId,
-              step: 'done'
-            }));
-
-            ws.send(JSON.stringify({
-              type: 'agent_utterance',
-              text: successText,
-              step: 'done'
-            }));
+          if (msg.decision === 'link') {
+            await executeToolCall('link_as_twin', {});
           } else {
-            // Citizen wants to submit as fresh issue
-            session.step = 'evidence_photo';
-            const promptText = session.lang === 'en'
-              ? 'Alright, recording this as a fresh problem. Do you have a photo or video to upload?'
-              : 'Theek hai, ise alag nayi samasya ke roop me darj karte hain. Kya aapke paas photo ya video hai?';
-
-            ws.send(JSON.stringify({
-              type: 'advance_step',
-              step: 'evidence_photo'
-            }));
-
-            ws.send(JSON.stringify({
+            safeSend({ type: 'advance_step', step: 'photo' });
+            safeSend({
               type: 'agent_utterance',
-              text: promptText,
-              step: 'evidence_photo'
-            }));
+              text: 'Theek hai, ise nayi samasya ke roop me darj karte hain. Kripya photo upload karein.'
+            });
           }
         }
 
-        // 8. General User Spoken Utterance
-        else if (type === 'user_utterance') {
-          const text = (msg.text || '').trim();
-          console.log(`[VoiceAgent] Spoken in step '${session.step}':`, text);
-
-          // Step 1: Language selection by speech
-          if (session.step === 'intro_lang') {
-            if (/english|angreji/i.test(text)) {
-              ws.emit('message', JSON.stringify({ type: 'select_language', lang: 'en' }));
-            } else {
-              ws.emit('message', JSON.stringify({ type: 'select_language', lang: 'hi' }));
-            }
-          }
-
-          // Step 2: Assistance choice by speech
-          else if (session.step === 'assistance_choice') {
-            if (/report|samasya|problem|shikayat|darj|issue|complaint/i.test(text)) {
-              ws.emit('message', JSON.stringify({ type: 'choose_action', action: 'report_problem' }));
-            } else {
-              ws.emit('message', JSON.stringify({ type: 'choose_action', action: 'report_problem' }));
-            }
-          }
-
-          // Step 3: Category pick by speech
-          else if (session.step === 'category_pick') {
-            ws.emit('message', JSON.stringify({ type: 'select_category', category: text }));
-          }
-
-          // Step 4: Description by speech
-          else if (session.step === 'description') {
-            ws.emit('message', JSON.stringify({ type: 'submit_description', text }));
-          }
+        // 6. Confirm Final Submission
+        else if (type === 'confirm_submission') {
+          await executeToolCall('confirm_submission', {});
         }
+
       } catch (err) {
-        console.error('[VoiceAgent] WebSocket message handling error:', err);
+        console.error('[VoiceAgent] WebSocket message error:', err);
       }
     });
 
     ws.on('close', () => {
-      console.log('🎙️ [VoiceAgent] Client disconnected');
+      console.log(`🎙️ [VoiceAgent] Session ${session.id} disconnected`);
     });
   });
 

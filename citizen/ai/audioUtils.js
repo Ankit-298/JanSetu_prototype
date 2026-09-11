@@ -90,23 +90,29 @@ let currentSarvamAudio = null;
 /**
  * Speak text in Hindi / English using Sarvam AI Bulbul V3 with browser fallback
  */
-async function speakText(text, langOrOnEnd, maybeOnEnd) {
+async function speakText(text, langOrOnEnd, maybeOnEnd, maybeOnStart) {
   if (!text) return;
 
   let lang = 'hi';
   let onEnd = null;
+  let onStart = null;
 
   if (typeof langOrOnEnd === 'string') {
     lang = langOrOnEnd.startsWith('en') ? 'en' : 'hi';
     onEnd = maybeOnEnd;
+    onStart = maybeOnStart;
   } else if (typeof langOrOnEnd === 'function') {
     onEnd = langOrOnEnd;
+    onStart = maybeOnEnd;
   }
 
   // Stop any currently playing speech
   stopSpeaking();
 
-  // Try Sarvam AI Real-Time TTS first
+  // Try Sarvam AI Real-Time TTS first with strict timeout
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 2000) : null;
+
   try {
     const res = await fetch('/api/voice-agent/tts', {
       method: 'POST',
@@ -114,37 +120,46 @@ async function speakText(text, langOrOnEnd, maybeOnEnd) {
       body: JSON.stringify({
         text: text.trim(),
         lang,
-        speaker: 'aditya'
-      })
+        speaker: 'meera'
+      }),
+      signal: controller ? controller.signal : undefined
     });
+
+    if (timeoutId) clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
       if (data.dataUrl) {
         const audio = new Audio(data.dataUrl);
         currentSarvamAudio = audio;
+        audio.onplay = () => {
+          if (onStart) onStart();
+        };
         audio.onended = () => {
           currentSarvamAudio = null;
           if (onEnd) onEnd();
         };
         audio.onerror = () => {
           currentSarvamAudio = null;
-          fallbackBrowserSpeech(text, lang, onEnd);
+          fallbackBrowserSpeech(text, lang, onEnd, onStart);
         };
+        if (onStart) onStart();
         await audio.play();
         return;
       }
     }
   } catch (e) {
-    // Network or server issue -> fallback
+    if (timeoutId) clearTimeout(timeoutId);
+    // Network or server issue -> fallback to browser speech
   }
 
   // Fallback to browser synthesis
-  fallbackBrowserSpeech(text, lang, onEnd);
+  fallbackBrowserSpeech(text, lang, onEnd, onStart);
 }
 
-function fallbackBrowserSpeech(text, lang, onEnd) {
+function fallbackBrowserSpeech(text, lang, onEnd, onStart) {
   if (!('speechSynthesis' in window)) {
+    if (onStart) onStart();
     if (onEnd) setTimeout(onEnd, 1500);
     return;
   }
@@ -152,14 +167,23 @@ function fallbackBrowserSpeech(text, lang, onEnd) {
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
-  utterance.rate = 1.0;
-  utterance.pitch = 1.05;
+  utterance.rate = 1.05;
+  utterance.pitch = 1.15;
 
+  // Prefer female Indian voice for consistent JanSetu AI persona
   const voices = window.speechSynthesis.getVoices();
-  const matchedVoice = voices.find(v => (lang === 'en' ? v.lang.includes('en') : v.lang.includes('hi'))) ||
+  const langCode = lang === 'en' ? 'en' : 'hi';
+  const femaleVoice = voices.find(v => v.lang.includes(langCode) && /female|woman|heera|swati|lekha/i.test(v.name)) ||
+                      voices.find(v => v.lang.includes('IN') && /female|woman|heera|swati|lekha/i.test(v.name));
+  const matchedVoice = femaleVoice ||
+                       voices.find(v => (lang === 'en' ? v.lang.includes('en') : v.lang.includes('hi'))) ||
                        voices.find(v => v.name.includes('India') || v.lang.includes('IN'));
 
   if (matchedVoice) utterance.voice = matchedVoice;
+
+  if (onStart) {
+    utterance.onstart = onStart;
+  }
 
   if (onEnd) {
     utterance.onend = onEnd;

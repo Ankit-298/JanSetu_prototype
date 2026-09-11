@@ -121,6 +121,192 @@ exports.getChallenge = async (req, res, next) => {
   }
 };
 
+// @desc    Get friendly live status updates and estimated resolution time for citizen problem tracker
+// @route   GET /api/challenges/:id/updates
+// @access  Public / Optional Auth
+exports.getChallengeUpdates = async (req, res, next) => {
+  try {
+    const targetId = req.params.id;
+    let challenge = null;
+    if (mongoose.Types.ObjectId.isValid(targetId)) {
+      challenge = await Challenge.findById(targetId)
+        .populate('assignedUniversity', 'name shortName code location')
+        .populate('industryCollaborators.partner', 'name companyType')
+        .populate('projectTeam.students', 'name')
+        .populate('projectTeam.faculty', 'name');
+    }
+    if (!challenge) {
+      challenge = await Challenge.findOne({ challengeId: targetId })
+        .populate('assignedUniversity', 'name shortName code location')
+        .populate('industryCollaborators.partner', 'name companyType')
+        .populate('projectTeam.students', 'name')
+        .populate('projectTeam.faculty', 'name');
+    }
+
+    if (!challenge) {
+      return res.status(404).json({ success: false, message: 'Problem not found' });
+    }
+
+    // Build chronological friendly citizen updates
+    const updates = [];
+    const univName = challenge.assignedUniversity?.name || challenge.assignedUniversity?.shortName || 'University Innovation Taskforce';
+
+    // 1. Citizen submits
+    updates.push({
+      stage: 'submitted',
+      dot: 'gray',
+      messageHi: 'Aapki shikayat safaltapoorvak darj ho gayi hai.',
+      messageEn: 'Your grievance has been successfully submitted.',
+      timestamp: challenge.createdAt || new Date()
+    });
+
+    // 2. Admin review
+    const isUnderReview = challenge.statusHistory?.some(h => h.status === 'under_review') || challenge.status === 'under_review';
+    const isVerified = ['validated', 'assigned', 'in_progress', 'testing', 'resolved', 'closed'].includes(challenge.status);
+    if (isUnderReview || isVerified) {
+      const reviewTime = challenge.statusHistory?.find(h => h.status === 'under_review')?.changedAt || new Date(new Date(challenge.createdAt).getTime() + 15 * 60000);
+      updates.push({
+        stage: 'under_review',
+        dot: 'blue',
+        messageHi: 'Admin aapki shikayat ki jaanch kar rahe hain.',
+        messageEn: 'Administrative authority is reviewing your grievance.',
+        timestamp: reviewTime
+      });
+    }
+
+    // 3. Admin assigns to university
+    const isAssigned = isVerified && (challenge.assignedUniversity || ['assigned', 'in_progress', 'testing', 'resolved', 'closed'].includes(challenge.status));
+    if (isAssigned) {
+      const assignTime = challenge.assignedAt || challenge.statusHistory?.find(h => h.status === 'assigned')?.changedAt || new Date(new Date(challenge.createdAt).getTime() + 45 * 60000);
+      updates.push({
+        stage: 'assigned',
+        dot: 'blue',
+        messageHi: `Aapki samasya ${univName} ko bhej di gayi hai samadhan ke liye.`,
+        messageEn: `Problem assigned to ${univName} for technical solution.`,
+        timestamp: assignTime
+      });
+
+      // 4. University accepts
+      updates.push({
+        stage: 'university_accepted',
+        dot: 'blue',
+        messageHi: `${univName} ne is samasya ko sweekar kar liya hai.`,
+        messageEn: `${univName} has accepted this problem.`,
+        timestamp: new Date(new Date(assignTime).getTime() + 20 * 60000)
+      });
+    }
+
+    // 5. Student team picks it up
+    const isWorking = ['in_progress', 'testing', 'resolved', 'closed'].includes(challenge.status) || (challenge.projectTeam && (challenge.projectTeam.students?.length > 0 || challenge.projectTeam.faculty?.length > 0));
+    if (isWorking) {
+      const workTime = challenge.statusHistory?.find(h => h.status === 'in_progress')?.changedAt || new Date(new Date(challenge.createdAt).getTime() + 120 * 60000);
+      updates.push({
+        stage: 'team_started',
+        dot: 'blue',
+        messageHi: 'Ek team ne is samasya par kaam shuru kar diya hai.',
+        messageEn: 'An innovation taskforce team has started work on this problem.',
+        timestamp: workTime
+      });
+    }
+
+    // 6. Mentor guidance (only if mentor involved)
+    const mentorCollab = challenge.industryCollaborators?.find(c => c.role === 'mentor');
+    if (mentorCollab) {
+      updates.push({
+        stage: 'mentor_assigned',
+        dot: 'blue',
+        messageHi: 'Team ko ek industry expert se margdarshan mil raha hai.',
+        messageEn: 'Team is receiving guidance from an industry expert.',
+        timestamp: mentorCollab.joinedAt || new Date(new Date(challenge.createdAt).getTime() + 180 * 60000)
+      });
+    }
+
+    // 7. Milestones completed (only completed ones)
+    if (Array.isArray(challenge.milestones)) {
+      challenge.milestones.filter(m => m.status === 'completed' || m.completedAt).forEach((m, idx) => {
+        updates.push({
+          stage: 'milestone_completed',
+          dot: 'blue',
+          messageHi: `${m.title || (idx === 0 ? 'Pratham charan' : 'Agla charan')} poora ho gaya — prototype taiyar ho raha hai.`,
+          messageEn: `Milestone completed: ${m.title || 'Engineering phase complete'}.`,
+          timestamp: m.completedAt || new Date(new Date(challenge.createdAt).getTime() + (240 + idx * 60) * 60000)
+        });
+      });
+    }
+
+    // 8. Project deployed / Solution prepared
+    const isDeployed = ['testing', 'resolved', 'closed'].includes(challenge.status);
+    if (isDeployed) {
+      updates.push({
+        stage: 'solution_ready',
+        dot: 'green',
+        messageHi: 'Aapki samasya ka samadhan taiyaar ho gaya hai! Jald hi implement kiya jayega.',
+        messageEn: 'Technical solution is ready and queued for ground implementation.',
+        timestamp: challenge.statusHistory?.find(h => h.status === 'testing')?.changedAt || new Date(new Date(challenge.createdAt).getTime() + 360 * 60000)
+      });
+    }
+
+    // 9. Industry adopts/implements (only if industry partner involved)
+    const industryPartner = challenge.industryCollaborators?.find(c => c.partner && c.role !== 'mentor');
+    if (industryPartner && isDeployed) {
+      const orgName = industryPartner.partner?.name || 'Tata Steel Foundation';
+      updates.push({
+        stage: 'industry_adopted',
+        dot: 'green',
+        messageHi: `${orgName} dwara samadhan ko zameeni star par laagu kiya ja raha hai.`,
+        messageEn: `Solution is being implemented on-ground supported by ${orgName}.`,
+        timestamp: industryPartner.joinedAt || new Date(new Date(challenge.createdAt).getTime() + 420 * 60000)
+      });
+    }
+
+    // 10. Marked resolved
+    const isResolved = ['resolved', 'closed'].includes(challenge.status) || challenge.resolvedAt;
+    if (isResolved) {
+      updates.push({
+        stage: 'resolved',
+        dot: 'green',
+        messageHi: 'Aapki samasya safaltapoorvak hal ho gayi hai. Dhanyawad!',
+        messageEn: 'Your grievance has been successfully resolved. Thank you!',
+        timestamp: challenge.resolvedAt || challenge.statusHistory?.find(h => h.status === 'resolved')?.changedAt || challenge.updatedAt
+      });
+    }
+
+    // Sort newest first
+    updates.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Calculate historical average resolution time for category
+    const resolvedInCat = await Challenge.find({
+      category: challenge.category,
+      status: { $in: ['resolved', 'closed'] },
+      resolvedAt: { $ne: null }
+    }).select('createdAt resolvedAt').lean();
+
+    let avgDays = 12;
+    if (resolvedInCat.length > 0) {
+      const totalDays = resolvedInCat.reduce((sum, r) => {
+        return sum + Math.max(1, (new Date(r.resolvedAt) - new Date(r.createdAt)) / (1000 * 60 * 60 * 24));
+      }, 0);
+      avgDays = Math.round(totalDays / resolvedInCat.length);
+    }
+
+    const daysSince = Math.max(0, Math.floor((Date.now() - new Date(challenge.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
+
+    res.status(200).json({
+      success: true,
+      challengeId: challenge.challengeId,
+      title: challenge.title,
+      description: challenge.description,
+      status: challenge.status,
+      category: challenge.category,
+      avgResolutionDays: avgDays,
+      daysSinceSubmission: daysSince,
+      updates
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // @desc    Create challenge
 // @route   POST /api/challenges
 // @access  Private (Citizen, Admin) or Guest/Demo with submitterContact
@@ -306,44 +492,6 @@ exports.createChallenge = async (req, res, next) => {
       }]
     });
 
-    // Sync into University database so Problem has identical filePath and attachments
-    try {
-      const { Problem } = require('../../university/database');
-      if (Problem) {
-        const locStr = challenge.location?.district 
-          ? `${challenge.location.district}, ${challenge.location.state || ''}`
-          : (challenge.location?.address || 'India');
-        const univProblem = new Problem({
-          _id: challenge._id,
-          title: challenge.title,
-          description: challenge.description,
-          category: challenge.category,
-          location: locStr,
-          impact: challenge.priority === 'urgent' ? 'High' : challenge.priority === 'high' ? 'High' : 'Medium',
-          status: 'Open',
-          challengeId: challenge.challengeId || `JH-2026-${challenge._id.toString().slice(-4)}`,
-          sourceCitizenProblemId: challenge._id,
-          submitterContact: challenge.submitterContact,
-          attachments: challenge.attachments || [],
-          filePath: challenge.filePath || (challenge.attachments && challenge.attachments[0]?.filePath) || null,
-          beforeImage: challenge.resolutionProof?.beforeImage || challenge.coverImage || challenge.image || (challenge.attachments && challenge.attachments[0]?.url) || '',
-          videoUrl: challenge.videoUrl || (challenge.attachments && challenge.attachments.find(a => (a.mimetype && a.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg)$/i.test(a.url))?.url) || '',
-          evidenceMedia: (challenge.attachments || []).map((a, i) => ({
-            mediaType: ((a.mimetype && a.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg)$/i.test(a.url)) ? 'video' : 'image',
-            url: a.url,
-            filePath: a.filePath,
-            title: a.originalName || `Citizen Evidence ${i + 1}`,
-            timestamp: 'Verified Field Telemetry'
-          })),
-          fullLocation: challenge.location,
-          interested: 1,
-          twinnedWith: []
-        });
-        await univProblem.save();
-      }
-    } catch (univSyncErr) {
-      console.warn('[ChallengeController] Problem sync notice:', univSyncErr.message);
-    }
 
     // Update user stats if submitter is tracked
     if (submitterUserId) {
@@ -511,9 +659,9 @@ exports.assignChallenge = async (req, res, next) => {
       await notifyUniversityAssignment(challenge, rep._id, req.user);
     }
 
-    // Sync into University Portal (UniversityNotification & Problem)
+    // Sync into University Portal (UniversityNotification)
     try {
-      const { Notification: UnivNotification, Problem } = require('../../university/database');
+      const { Notification: UnivNotification } = require('../../university/database');
       const locStr = challenge.location?.district 
         ? `${challenge.location.district}, ${challenge.location.state || ''}`
         : (challenge.location?.address || 'India');
@@ -549,36 +697,10 @@ exports.assignChallenge = async (req, res, next) => {
         await un.save();
       }
 
-      if (Problem) {
-        let prob = await Problem.findOne({ $or: [{ sourceCitizenProblemId: challenge._id }, { _id: challenge._id }] });
-        if (!prob) {
-          prob = new Problem({
-            _id: challenge._id,
-            title: challenge.title,
-            description: challenge.description,
-            category: challenge.category,
-            location: locStr,
-            impact: challenge.priority === 'urgent' ? 'High' : challenge.priority === 'high' ? 'High' : 'Medium',
-            status: 'Assigned',
-            authority: `Assigned Taskforce: ${university.name}`,
-            challengeId: challenge.challengeId || `JH-2026-${challenge._id.toString().slice(-4)}`,
-            sourceCitizenProblemId: challenge._id,
-            submitterContact: challenge.submitterContact,
-            attachments: challenge.attachments || [],
-            filePath: challenge.filePath || (challenge.attachments && challenge.attachments[0]?.filePath) || null,
-            beforeImage: challenge.resolutionProof?.beforeImage || challenge.coverImage || challenge.image || (challenge.attachments && challenge.attachments[0]?.url) || '',
-            interested: 1,
-            twinnedWith: []
-          });
-          await prob.save();
-        } else {
-          prob.status = 'Assigned';
-          prob.authority = `Assigned Taskforce: ${university.name}`;
-          await prob.save();
-        }
-      }
+      challenge.authority = `Assigned Taskforce: ${university.name}`;
+      await challenge.save();
     } catch (syncErr) {
-      console.error('Error syncing challenge to University database:', syncErr);
+      console.error('Error syncing challenge notification:', syncErr);
     }
 
     await logActivity({
@@ -822,14 +944,14 @@ exports.toggleSupport = async (req, res, next) => {
 };
 
 // @desc    Get public social feed
-// @route   GET /api/feed
+// @route   GET /api/feed or /api/challenges/feed or /api/problems/feed
 // @access  Public
 exports.getPublicFeed = async (req, res, next) => {
   try {
     const {
-      page = 1, limit = 10,
-      state, category, status,
-      sort = 'recent', search
+      page = 1, limit = 10, cursor,
+      state, district, category, status, scope,
+      sort = 'recent', search, lat, lng, radius = 25
     } = req.query;
 
     const query = {
@@ -837,44 +959,290 @@ exports.getPublicFeed = async (req, res, next) => {
       status: { $nin: ['draft', 'rejected'] }
     };
 
-    if (state && state !== 'all') query['location.state'] = state;
-    if (category) query.category = category;
-    if (status && status !== 'all') query.status = status;
-    if (search) query.$text = { $search: search };
+    if (state && state !== 'all' && state !== 'All') query['location.state'] = state;
+    if (district && district !== 'all' && district !== 'All') {
+      query['location.district'] = new RegExp('^' + district.trim(), 'i');
+    }
+    if (category && category !== 'all' && category !== 'All' && category !== 'All Categories') {
+      query.category = new RegExp(category.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    }
+    if (status && status !== 'all' && status !== 'All') {
+      query.status = status;
+    }
+    if (search && search.trim()) {
+      query.$or = [
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { description: { $regex: search.trim(), $options: 'i' } },
+        { 'location.district': { $regex: search.trim(), $options: 'i' } }
+      ];
+    }
+
+    if (lat && lng) {
+      const pLat = parseFloat(lat);
+      const pLng = parseFloat(lng);
+      const radKm = parseFloat(radius) || 25;
+      if (!isNaN(pLat) && !isNaN(pLng)) {
+        const degDelta = radKm / 111;
+        query.$and = query.$and || [];
+        query.$and.push({
+          $or: [
+            {
+              'location.coordinates.lat': { $gte: pLat - degDelta, $lte: pLat + degDelta },
+              'location.coordinates.lng': { $gte: pLng - degDelta, $lte: pLng + degDelta }
+            },
+            {
+              'location.coordinates.lat': null
+            }
+          ]
+        });
+      }
+    }
+
+    // Cursor-based pagination (created before cursor)
+    if (cursor) {
+      const cursorDate = new Date(cursor);
+      if (!isNaN(cursorDate.getTime())) {
+        query.createdAt = { $lt: cursorDate };
+      } else if (mongoose.Types.ObjectId.isValid(cursor)) {
+        query._id = { $lt: new mongoose.Types.ObjectId(cursor) };
+      }
+    }
 
     const sortOptions = {
-      recent: '-createdAt',
-      supported: '-supportCount',
-      discussed: '-commentCount',
-      oldest: 'createdAt'
+      recent: { createdAt: -1 },
+      latest: { createdAt: -1 },
+      'most-affected': { duplicateCount: -1, createdAt: -1 },
+      affected: { duplicateCount: -1, createdAt: -1 },
+      supported: { praiseCount: -1, supportCount: -1, createdAt: -1 },
+      praised: { praiseCount: -1, supportCount: -1, createdAt: -1 },
+      discussed: { commentCount: -1, createdAt: -1 },
+      oldest: { createdAt: 1 }
     };
-    const sortBy = sortOptions[sort] || '-createdAt';
+    const sortBy = sortOptions[sort] || { createdAt: -1 };
+
+    const parsedLimit = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
+    const parsedPage = Math.max(parseInt(page) || 1, 1);
+    const skip = cursor ? 0 : (parsedPage - 1) * parsedLimit;
 
     const [challenges, total] = await Promise.all([
       Challenge.find(query)
         .populate('submittedBy', 'name avatar role')
-        .populate('assignedUniversity', 'name shortName')
-        .select('title description category priority status location attachments coverImage supportCount commentCount viewCount createdAt submittedBy assignedUniversity isFeatured submitterContact')
+        .populate('assignedUniversity', 'name shortName logo')
+        .select('title description category priority status location attachments coverImage image resolutionProof supportCount supports praiseCount praisedBy displayNamePublicly commentCount viewCount createdAt submittedBy assignedUniversity isFeatured submitterContact reportedBy duplicateCount twinnedChallenges twinnedWith officialSlipId authority department')
         .sort(sortBy)
-        .skip((parseInt(page) - 1) * parseInt(limit))
-        .limit(parseInt(limit)),
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean(),
       Challenge.countDocuments(query)
     ]);
 
-    // Increment view counts in background
+    const currentUserId = req.user ? (req.user.id || req.user._id || '').toString() : (req.headers['x-citizen-id'] || '');
+
+    // Enrich challenges for the social feed
+    const enriched = challenges.map(c => {
+      const pCount = c.praiseCount !== undefined ? c.praiseCount : (Array.isArray(c.praisedBy) ? c.praisedBy.length : 0);
+      const sCount = c.supportCount !== undefined ? c.supportCount : (Array.isArray(c.supports) ? c.supports.length : 0);
+      const repCount = Array.isArray(c.reportedBy) ? c.reportedBy.length : 0;
+      const dupCount = typeof c.duplicateCount === 'number' ? c.duplicateCount : 0;
+      const mCount = Math.max(repCount, dupCount);
+
+      const isPraisedByMe = Boolean(currentUserId && Array.isArray(c.praisedBy) && c.praisedBy.some(id => id.toString() === currentUserId));
+      const isMeTooByMe = Boolean(currentUserId && Array.isArray(c.reportedBy) && c.reportedBy.some(r => r.citizenId && r.citizenId.toString() === currentUserId));
+      const isMyReport = Boolean(currentUserId && c.submittedBy && (c.submittedBy._id || c.submittedBy).toString() === currentUserId);
+
+      // Extract all media attachments
+      let mediaList = [];
+      if (Array.isArray(c.attachments) && c.attachments.length > 0) {
+        mediaList = c.attachments.map((a, idx) => ({
+          url: a.url,
+          mimetype: a.mimetype || 'image/jpeg',
+          originalName: a.originalName || `Photo ${idx + 1}`
+        })).filter(m => m.url);
+      }
+      if (mediaList.length === 0 && (c.coverImage || c.image)) {
+        mediaList.push({
+          url: c.coverImage || c.image,
+          mimetype: 'image/jpeg',
+          originalName: 'Ground Evidence Photo'
+        });
+      }
+
+      // Respect privacy flag
+      let authorName = 'Verified Citizen';
+      let isVerified = true;
+      if (c.displayNamePublicly === false) {
+        authorName = 'Anonymous Citizen';
+      } else if (c.submittedBy && c.submittedBy.name) {
+        authorName = c.submittedBy.name;
+      } else if (c.submitterContact && c.submitterContact.name) {
+        authorName = c.submitterContact.name;
+      }
+
+      let displayLocation = 'Ranchi, Jharkhand';
+      let district = 'Ranchi';
+      let state = 'Jharkhand';
+      if (c.location) {
+        if (typeof c.location === 'object') {
+          district = c.location.district || c.location.city || 'Ranchi';
+          state = c.location.state || 'Jharkhand';
+          displayLocation = `${district}, ${state}`.replace(/^, |, $/g, '') || c.location.address || 'Ranchi, Jharkhand';
+        } else if (typeof c.location === 'string') {
+          displayLocation = c.location;
+          district = c.location.split(',')[0]?.trim() || 'Ranchi';
+          state = c.location.split(',')[1]?.trim() || 'Jharkhand';
+        }
+      }
+
+      return {
+        ...c,
+        authorName,
+        isVerified,
+        district,
+        state,
+        displayLocation,
+        praiseCount: pCount,
+        supportCount: sCount,
+        meTooCount: mCount,
+        isPraisedByMe,
+        isMeTooByMe,
+        isMyReport,
+        mediaList
+      };
+    });
+
+    // Fire & forget view count update
     const ids = challenges.map(c => c._id);
-    Challenge.updateMany({ _id: { $in: ids } }, { $inc: { viewCount: 1 } }).exec();
+    if (ids.length > 0) {
+      Challenge.updateMany({ _id: { $in: ids } }, { $inc: { viewCount: 1 } }).exec();
+    }
+
+    const nextCursor = challenges.length === parsedLimit ? challenges[challenges.length - 1].createdAt : null;
 
     res.status(200).json({
       success: true,
-      data: challenges,
+      data: enriched,
+      nextCursor,
+      hasMore: Boolean(nextCursor),
       pagination: {
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit)),
-        hasMore: parseInt(page) < Math.ceil(total / parseInt(limit))
+        page: parsedPage,
+        limit: parsedLimit,
+        pages: Math.ceil(total / parsedLimit),
+        hasMore: cursor ? Boolean(nextCursor) : (parsedPage * parsedLimit < total)
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Toggle praise on challenge/problem (❤️ Like)
+// @route   POST /api/challenges/:id/praise
+// @access  Public / Private
+exports.togglePraise = async (req, res, next) => {
+  try {
+    const challenge = await Challenge.findById(req.params.id);
+    if (!challenge) return res.status(404).json({ success: false, message: 'Challenge not found' });
+
+    const userId = req.user ? (req.user.id || req.user._id) : (req.headers['x-citizen-id'] || '67cb56000000000000000002');
+    if (!Array.isArray(challenge.praisedBy)) challenge.praisedBy = [];
+
+    const praisedIndex = challenge.praisedBy.findIndex(id => id.toString() === userId.toString());
+    let isPraised = false;
+
+    if (praisedIndex > -1) {
+      challenge.praisedBy.splice(praisedIndex, 1);
+      challenge.praiseCount = Math.max(0, (challenge.praiseCount || 1) - 1);
+      isPraised = false;
+    } else {
+      challenge.praisedBy.push(userId);
+      challenge.praiseCount = (challenge.praiseCount || 0) + 1;
+      isPraised = true;
+    }
+
+    await challenge.save();
+
+    res.status(200).json({
+      success: true,
+      praised: isPraised,
+      praiseCount: challenge.praiseCount
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    "I am also affected" (Me Too) co-reporting and twinning action
+// @route   POST /api/challenges/:id/me-too
+// @access  Public / Private
+exports.meTooChallenge = async (req, res, next) => {
+  try {
+    const challenge = await Challenge.findById(req.params.id);
+    if (!challenge) return res.status(404).json({ success: false, message: 'Challenge not found' });
+
+    const userId = req.user ? (req.user.id || req.user._id) : (req.headers['x-citizen-id'] || '67cb56000000000000000002');
+    const userName = req.user ? req.user.name : (req.headers['x-citizen-name'] || 'Citizen');
+
+    // Check if citizen is the original submitter
+    const submitterId = challenge.submittedBy ? challenge.submittedBy.toString() : '';
+    if (submitterId && submitterId === userId.toString()) {
+      return res.status(400).json({
+        success: false,
+        isMyReport: true,
+        message: 'This is your report — you cannot co-report your own submission'
+      });
+    }
+
+    if (!Array.isArray(challenge.reportedBy)) challenge.reportedBy = [];
+    const alreadyReported = challenge.reportedBy.some(r => r.citizenId && r.citizenId.toString() === userId.toString());
+
+    if (alreadyReported) {
+      // Toggle OFF: remove citizen from co-reporters
+      challenge.reportedBy = challenge.reportedBy.filter(r => r.citizenId && r.citizenId.toString() !== userId.toString());
+      challenge.duplicateCount = Math.max(0, (challenge.duplicateCount || 1) - 1);
+      challenge.supportCount = Math.max(0, (challenge.supportCount || 1) - 1);
+      if (Array.isArray(challenge.supports)) {
+        challenge.supports = challenge.supports.filter(s => s.toString() !== userId.toString());
+      }
+      await challenge.save();
+      return res.status(200).json({
+        success: true,
+        isMeTooByMe: false,
+        meTooCount: challenge.reportedBy.length,
+        duplicateCount: challenge.duplicateCount,
+        message: 'Co-report removed'
+      });
+    }
+
+    // Add citizen to co-reporters
+    challenge.reportedBy.push({
+      citizenId: userId,
+      citizenName: userName,
+      reportedAt: new Date(),
+      viaVoiceAgent: false
+    });
+
+    // Increment duplicate / support signals
+    challenge.duplicateCount = (challenge.duplicateCount || 0) + 1;
+    challenge.supportCount = (challenge.supportCount || 0) + 1;
+    if (!Array.isArray(challenge.supports)) challenge.supports = [];
+    if (!challenge.supports.includes(userId)) challenge.supports.push(userId);
+
+    // Elevate urgency / twinning signal if duplicate count crosses threshold
+    if (challenge.duplicateCount >= 3 && challenge.priority !== 'urgent') {
+      challenge.priority = challenge.duplicateCount >= 5 ? 'urgent' : 'high';
+      challenge.collaborationReady = true;
+    }
+
+    await challenge.save();
+
+    res.status(200).json({
+      success: true,
+      meTooCount: challenge.reportedBy.length,
+      duplicateCount: challenge.duplicateCount,
+      isMeTooByMe: true,
+      priority: challenge.priority,
+      message: 'Thank you! Your co-report has been recorded and reinforces this community priority.'
     });
   } catch (error) {
     next(error);
@@ -1210,32 +1578,7 @@ exports.deleteChallengeFiles = async (req, res, next) => {
     }
     await challenge.save();
 
-    // Clear file paths & evidence in University Problem model as well
-    try {
-      const Problem = mongoose.models.Problem || require('../../university/database/Problem');
-      if (Problem) {
-        await Problem.updateMany(
-          {
-            $or: [
-              { sourceCitizenProblemId: challenge._id },
-              { _id: challenge._id },
-              { challengeId: challenge.challengeId }
-            ]
-          },
-          {
-            $set: {
-              filePath: null,
-              beforeImage: '',
-              afterImage: '',
-              attachments: [],
-              evidenceMedia: []
-            }
-          }
-        );
-      }
-    } catch (e) {
-      console.warn('University Problem file sync error:', e.message);
-    }
+    // File paths & evidence are stored solely in unified Challenge collection
 
     res.status(200).json({
       success: true,
@@ -1266,7 +1609,7 @@ exports.getChallengeChat = async (req, res, next) => {
       challenge = await Challenge.findOne({ challengeId: id }).populate('assignedUniversity');
     }
 
-    const Problem = mongoose.models.Problem || require('../../university/database/Problem');
+    const Problem = Challenge;
     let problem = null;
     if (Problem) {
       problem = await Problem.findOne({
@@ -1408,7 +1751,7 @@ exports.postChallengeChatMessage = async (req, res, next) => {
       challenge = await Challenge.findOne({ challengeId: id }).populate('assignedUniversity');
     }
 
-    const Problem = mongoose.models.Problem || require('../../university/database/Problem');
+    const Problem = Challenge;
     let problem = null;
     if (Problem) {
       problem = await Problem.findOne({
@@ -1508,7 +1851,7 @@ exports.markChallengeChatRead = async (req, res, next) => {
       await challenge.save();
     }
 
-    const Problem = mongoose.models.Problem || require('../../university/database/Problem');
+    const Problem = Challenge;
     if (Problem) {
       await Problem.updateMany(
         {

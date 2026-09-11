@@ -3,12 +3,27 @@ import './citizenstyle.css';
 import AIReportAgent from '../ai/AIReportAgent';
 import AIFloatingTrigger from '../ai/AIFloatingTrigger';
 import '../ai/voiceAgent.css';
+import ExploreChallenges from './components/ExploreChallenges';
 
 function App() {
   const [isVoiceAgentOpen, setIsVoiceAgentOpen] = useState(false);
+  const [activePage, setActivePage] = useState('dashboard'); // 'dashboard' | 'explore'
 
   useEffect(() => {
     window.openAIVoiceReport = () => setIsVoiceAgentOpen(true);
+    window.openExplorePage = () => setActivePage('explore');
+    window.openExploreModal = () => setActivePage('explore');
+    window.openDashboardPage = () => setActivePage('dashboard');
+    window.toggleSidebarDrawer = () => {
+      const sb = document.getElementById('citizenSidebar');
+      if (sb) {
+        if (window.innerWidth <= 768) {
+          sb.classList.toggle('mobile-open');
+        } else {
+          sb.classList.toggle('collapsed');
+        }
+      }
+    };
     const loadScript = (src) => {
       const script = document.createElement('script');
       script.src = src;
@@ -103,7 +118,15 @@ function App() {
       {/* Clean Navigation List with University-Panel Inspired Sections */}
       <nav className="sidebar-menu">
         <div className="sidebar-section-label">Citizen Services</div>
-        <button className="nav-item active" onClick={() => { navTo('dashboard') }}>
+        <button
+          className={`nav-item ${activePage === 'dashboard' ? 'active' : ''}`}
+          onClick={() => {
+            setActivePage('dashboard');
+            const sb = document.getElementById('citizenSidebar');
+            if (sb) sb.classList.remove('mobile-open');
+            if (typeof navTo === 'function') navTo('dashboard');
+          }}
+        >
           <svg viewBox="0 0 24 24">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
@@ -129,7 +152,14 @@ function App() {
           <span id="navChatUnreadDot" style={{"display":"none","width":"10px","height":"10px","backgroundColor":"#22C55E","borderRadius":"50%","marginLeft":"auto","boxShadow":"0 0 8px #22C55E"}} title="New Message"></span>
         </button>
 
-        <button className="nav-item" onClick={() => { openExploreModal() }}>
+        <button
+          className={`nav-item ${activePage === 'explore' ? 'active' : ''}`}
+          onClick={() => {
+            setActivePage('explore');
+            const sb = document.getElementById('citizenSidebar');
+            if (sb) sb.classList.remove('mobile-open');
+          }}
+        >
           <svg viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="10" />
             <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
@@ -200,16 +230,26 @@ function App() {
         </div>
       </div>
     </aside>
+    {/* Mobile Drawer Overlay Backdrop */}
+    <div
+      className="sidebar-mobile-backdrop"
+      onClick={() => {
+        const sb = document.getElementById('citizenSidebar');
+        if (sb) sb.classList.remove('mobile-open');
+      }}
+    ></div>
 
     <main className="main-viewport">
 
       {/* Top Panorama Banner with Full Aesthetic Indian Monuments & Abdul Kalam (Full Length) */}
-      <header className="top-panorama-wrapper">
-        <div className="panorama-monument-layer">
-          <img src="/citizen/images/header.png" className="panorama-monument-photo" alt="Indian Monuments & APJ Abdul Kalam Banner"
-            onError={(e) => { e.target.src = '/citizen/images/citizen-header-banner.png'; }} />
-          <div className="panorama-monument-scrim"></div>
-        </div>
+      <header className={`top-panorama-wrapper ${activePage === 'explore' ? 'explore-header-minimal' : ''}`}>
+        {activePage !== 'explore' && (
+          <div className="panorama-monument-layer">
+            <img src="/citizen/images/header.png" className="panorama-monument-photo" alt="Indian Monuments & APJ Abdul Kalam Banner"
+              onError={(e) => { e.target.src = '/citizen/images/citizen-header-banner.png'; }} />
+            <div className="panorama-monument-scrim"></div>
+          </div>
+        )}
 
         <div className="panorama-top-row">
           <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
@@ -227,24 +267,28 @@ function App() {
           </div>
 
           <div className="panorama-actions-right">
-            <div className="heritage-flag-pill"
-              style={{"display":"inline-flex","alignItems":"center","gap":"6px","background":"rgba(255,255,255,0.92)","border":"1px solid rgba(255,153,51,0.4)","borderRadius":"20px","padding":"3px 10px","fontSize":"11px","fontWeight":"800","color":"#002D62","boxShadow":"0 2px 6px rgba(255,153,51,0.15)"}}>
-              <span style={{"fontSize":"14px"}}>🇮🇳</span><span data-i18n="satyameva_tag">सत्यमेव जयते · झारखण्ड</span>
-            </div>
-            {/* 🌐 Tri-Language Switcher (Pure English / Pure Hindi / Hinglish) */}
-            <div className="lang-switcher-pill">
-              <button type="button" className="lang-btn" id="langBtn_en" onClick={() => { setLanguage('en') }}>English</button>
-              <button type="button" className="lang-btn active" id="langBtn_hi"
-                onClick={() => { setLanguage('hi') }}>&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-              <button type="button" className="lang-btn" id="langBtn_hinglish"
-                onClick={() => { setLanguage('hinglish') }}>Hinglish</button>
-            </div>
+            {activePage !== 'explore' && (
+              <>
+                <div className="heritage-flag-pill"
+                  style={{"display":"inline-flex","alignItems":"center","gap":"6px","background":"rgba(255,255,255,0.92)","border":"1px solid rgba(255,153,51,0.4)","borderRadius":"20px","padding":"3px 10px","fontSize":"11px","fontWeight":"800","color":"#002D62","boxShadow":"0 2px 6px rgba(255,153,51,0.15)"}}>
+                  <span style={{"fontSize":"14px"}}>🇮🇳</span><span data-i18n="satyameva_tag">सत्यमेव जयते · झारखण्ड</span>
+                </div>
+                {/* 🌐 Tri-Language Switcher (Pure English / Pure Hindi / Hinglish) */}
+                <div className="lang-switcher-pill">
+                  <button type="button" className="lang-btn" id="langBtn_en" onClick={() => { setLanguage('en') }}>English</button>
+                  <button type="button" className="lang-btn active" id="langBtn_hi"
+                    onClick={() => { setLanguage('hi') }}>हिंदी</button>
+                  <button type="button" className="lang-btn" id="langBtn_hinglish"
+                    onClick={() => { setLanguage('hinglish') }}>Hinglish</button>
+                </div>
 
-            <div id="netStatusBadge"
-              style={{"fontSize":"11.5px","fontWeight":"700","color":"var(--india-green)","background":"rgba(255,255,255,0.92)","padding":"4px 10px","borderRadius":"20px","display":"flex","alignItems":"center","gap":"5px"}}>
-              <span style={{"width":"7px","height":"7px","borderRadius":"50%","background":"var(--india-green)"}}></span>
-              <span id="netStatusText">Online</span>
-            </div>
+                <div id="netStatusBadge"
+                  style={{"fontSize":"11.5px","fontWeight":"700","color":"var(--india-green)","background":"rgba(255,255,255,0.92)","padding":"4px 10px","borderRadius":"20px","display":"flex","alignItems":"center","gap":"5px"}}>
+                  <span style={{"width":"7px","height":"7px","borderRadius":"50%","background":"var(--india-green)"}}></span>
+                  <span id="netStatusText">Online</span>
+                </div>
+              </>
+            )}
 
             <button className="notif-bell-btn" onClick={() => { openNotificationsModal() }} title="Notifications">
               <svg viewBox="0 0 24 24">
@@ -266,60 +310,65 @@ function App() {
           </div>
         </div>
 
-        {/* Dynamic Quote Rotator Row (Auto-updates every 10 seconds in chosen language) */}
-        <div className="panorama-hero-row">
-          <div className="hero-quote-container">
-            <span className="hero-quote-mark-open">“</span>
-            <div className="hero-quote-lines" id="heroQuoteLines">
-              &#2310;&#2346;&#2325;&#2368; &#2310;&#2357;&#2366;&#2332;&#2364;, &#2310;&#2346;&#2325;&#2366;
-              &#2309;&#2343;&#2367;&#2325;&#2366;&#2352;, <span className="highlight-green">&#2360;&#2361;&#2367;&#2340;
-                &#2361;&#2352; &#2360;&#2350;&#2360;&#2381;&#2351;&#2366;
-                &#2360;&#2369;&#2354;&#2332;&#2375;&#2327;&#2368;, &#2348;&#2338;&#2364;&#2375;&#2327;&#2366;
-                &#2361;&#2350;&#2366;&#2352;&#2366; &#2333;&#2366;&#2352;&#2326;&#2339;&#2381;&#2337;&#2308;</span>
+        {/* Dynamic Quote Rotator Row (Auto-updates every 10 seconds in chosen language) - Dashboard only */}
+        {activePage === 'dashboard' && (
+          <div className="panorama-hero-row">
+            <div className="hero-quote-container">
+              <span className="hero-quote-mark-open">“</span>
+              <div className="hero-quote-lines" id="heroQuoteLines">
+                &#2310;&#2346;&#2325;&#2368; &#2310;&#2357;&#2366;&#2332;&#2364;, &#2310;&#2346;&#2325;&#2366;
+                &#2309;&#2343;&#2367;&#2325;&#2368;&#2352;, <span className="highlight-green">&#2360;&#2361;&#2367;&#2340;
+                  &#2361;&#2352; &#2360;&#2350;&#2360;&#2381;&#2351;&#2366;
+                  &#2360;&#2369;&#2354;&#2332;&#2375;&#2327;&#2368;, &#2348;&#2338;&#2364;&#2375;&#2327;&#2366;
+                  &#2361;&#2350;&#2366;&#2352;&#2366; &#2333;&#2366;&#2352;&#2326;&#2339;&#2381;&#2337;&#2308;</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className="btn-report-hero" onClick={() => { openReportModal() }}>
+                <svg viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span data-i18n="btn_report_hero">समस्या दर्ज करें</span>
+              </button>
+
+              <button 
+                type="button"
+                className="btn-report-ai-hero"
+                onClick={() => setIsVoiceAgentOpen(true)}
+                style={{
+                  background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 50%, #4f46e5 100%)',
+                  color: '#ffffff',
+                  border: '1px solid rgba(255,255,255,0.35)',
+                  borderRadius: '12px',
+                  padding: '11px 20px',
+                  fontSize: '14.5px',
+                  fontWeight: '700',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(37,99,235,0.35), 0 0 16px rgba(56,189,248,0.25)',
+                  transition: 'all 0.25s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'none'}
+                title="JanSetu Voice AI से बोलकर समस्या दर्ज करें"
+              >
+                <span style={{ fontSize: '18px' }}>🎙️</span>
+                <span>AI Se Report Karein</span>
+              </button>
             </div>
           </div>
-
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button className="btn-report-hero" onClick={() => { openReportModal() }}>
-              <svg viewBox="0 0 24 24">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span data-i18n="btn_report_hero">समस्या दर्ज करें</span>
-            </button>
-
-            <button 
-              type="button"
-              className="btn-report-ai-hero"
-              onClick={() => setIsVoiceAgentOpen(true)}
-              style={{
-                background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 50%, #4f46e5 100%)',
-                color: '#ffffff',
-                border: '1px solid rgba(255,255,255,0.35)',
-                borderRadius: '12px',
-                padding: '11px 20px',
-                fontSize: '14.5px',
-                fontWeight: '700',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(37,99,235,0.35), 0 0 16px rgba(56,189,248,0.25)',
-                transition: 'all 0.25s ease'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'none'}
-              title="JanSetu Voice AI से बोलकर समस्या दर्ज करें"
-            >
-              <span style={{ fontSize: '18px' }}>🎙️</span>
-              <span>AI Se Report Karein</span>
-            </button>
-          </div>
-        </div>
+        )}
       </header>
 
-      {/* DASHBOARD BODY CONTENT (Spacious & Clean) */}
-      <div className="dashboard-content-body">
+      {/* DASHBOARD BODY CONTENT or EXPLORE CHALLENGES SOCIAL FEED */}
+      {activePage === 'explore' ? (
+        <ExploreChallenges onNavigateDashboard={() => setActivePage('dashboard')} />
+      ) : (
+        <div className="dashboard-content-body">
 
         {/* Action Required Banner (Item 7) */}
         <div className="action-required-banner" id="actionRequiredBanner" style={{"display":"none"}}>
@@ -428,12 +477,13 @@ function App() {
             <div className="active-tracker-card" onClick={() => { openActiveReportDetail() }}>
               <div className="tracker-top-meta-row">
                 <span className="tracker-report-id" id="activeReportId">Report ID: JH-2026-4819</span>
-                <div style={{"display":"flex","alignItems":"center","gap":"8px"}}>
+                <div style={{"display":"flex","alignItems":"center","gap":"8px","flexWrap":"wrap"}}>
                   <button type="button"
-                    style={{"background":"#EFF6FF","border":"1px solid #BFDBFE","color":"var(--navy)","fontSize":"11px","fontWeight":"800","borderRadius":"14px","padding":"4px 10px","cursor":"pointer","display":"inline-flex","alignItems":"center","gap":"4px"}}
-                    onClick={() => { event.stopPropagation(); const a = getCurrentlyTrackedReport(); if (a) openReportSlip(a.id); }}
+                    className="tracker-slip-btn"
+                    id="trackerSlipBtn"
+                    onClick={(event) => { event.stopPropagation(); const a = getCurrentlyTrackedReport(); if (a) openReportSlip(a.id); }}
                     title="Download Official Slip">
-                    <span>📄</span> <span>Slip</span>
+                    <span className="slip-icon">📄</span> <span>Slip</span>
                   </button>
                   <span id="activeTrackerDeleteAction"></span>
                   <span className="status-badge-in-progress" id="activeReportStatus">
@@ -478,21 +528,21 @@ function App() {
                 <div className="timeline-connecting-line" id="timelineConn1"></div>
                 <div className="timeline-step-item">
                   <div className="timeline-dot-bubble" id="timelineStepVerified">2</div>
-                  <div className="timeline-step-label" data-i18n="step_verified">Verified</div>
+                  <div className="timeline-step-label" data-i18n="step_verified">Admin Verified</div>
                   <div className="timeline-step-date" id="timelineDateVerified">--</div>
                   <div className="timeline-step-note" id="timelineNoteVerified">--</div>
                 </div>
                 <div className="timeline-connecting-line" id="timelineConn2"></div>
                 <div className="timeline-step-item">
                   <div className="timeline-dot-bubble" id="timelineStepWorking">3</div>
-                  <div className="timeline-step-label" data-i18n="step_working">Working</div>
+                  <div className="timeline-step-label" data-i18n="step_working">Team Working</div>
                   <div className="timeline-step-date" id="timelineDateWorking">--</div>
                   <div className="timeline-step-note" id="timelineNoteWorking">--</div>
                 </div>
                 <div className="timeline-connecting-line" id="timelineConn3"></div>
                 <div className="timeline-step-item">
                   <div className="timeline-dot-bubble" id="timelineStepResolution">4</div>
-                  <div className="timeline-step-label" data-i18n="step_resolution">Resolution</div>
+                  <div className="timeline-step-label" data-i18n="step_resolution">Implementation</div>
                   <div className="timeline-step-date" id="timelineDateResolution">--</div>
                   <div className="timeline-step-note" id="timelineNoteResolution">--</div>
                 </div>
@@ -505,9 +555,44 @@ function App() {
                 </div>
               </div>
 
+              {/* Estimated Resolution Time Line (Part 2.4) */}
+              <div className="tracker-est-time-row" id="trackerEstTimeRow">
+                <span className="tracker-est-time-icon">⏱️</span>
+                <span id="trackerEstTimeText">Similar problems typically resolve in ~12 days. Yours was submitted recently.</span>
+              </div>
+
+              {/* Delivery-Tracking Style Live Update Message Feed (Part 2.2) */}
+              <div className="tracker-live-feed-section" id="trackerLiveFeedSection"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (typeof window !== 'undefined' && typeof window.toggleLiveUpdatesExpansion === 'function') {
+                    window.toggleLiveUpdatesExpansion();
+                  }
+                }}
+                title="Click anywhere to expand or collapse updates">
+                <div className="tracker-live-feed-header">
+                  <div className="tracker-live-feed-title-wrap">
+                    <span className="tracker-live-feed-icon">📬</span>
+                    <span className="tracker-live-feed-title">Live Updates</span>
+                    <span className="tracker-live-pulse-badge">
+                      <span className="live-pulse-dot"></span> Live
+                    </span>
+                  </div>
+                  <div className="tracker-live-feed-actions">
+                    <span className="tracker-checking-updates-indicator" id="trackerCheckingUpdatesIndicator" style={{"display":"none"}}>
+                      <span className="tracker-spin-sync">🔄</span> Checking...
+                    </span>
+                    <span className="tracker-feed-expand-badge" id="trackerFeedExpandBadge"></span>
+                  </div>
+                </div>
+
+                <div className="tracker-live-feed-list" id="trackerLiveFeedList">
+                  {/* Real-time pipeline update messages injected dynamically */}
+                </div>
+              </div>
 
               {/* Problem Solution Check Widget (Item 8) */}
-              <div className="solution-check-box" id="solCheckBox" onClick={() => { event.stopPropagation(); }}>
+              <div className="solution-check-box" id="solCheckBox" onClick={(e) => { e.stopPropagation(); }}>
                 <div className="sol-check-title">
                   <span>🎯</span>
                   <span data-i18n="sol_check_title">Problem Solution Check</span>
@@ -629,7 +714,7 @@ function App() {
                 {/* Dynamically rendered */}
               </div>
 
-              <button className="btn-explore-nearby" onClick={() => { openExploreModal() }} data-i18n="btn_explore_all">
+              <button className="btn-explore-nearby" onClick={() => { setActivePage('explore'); }} data-i18n="btn_explore_all">
                 Explore All Nearby Issues →
               </button>
             </div>
@@ -639,6 +724,7 @@ function App() {
         </div>
 
       </div>
+      )}
 
     </main>
   </div>
@@ -1472,66 +1558,84 @@ function App() {
     </div>
   </div>
 
-  {/* ============================================================
-     MODAL 4: EXPLORE CHALLENGES IN JHARKHAND
-     ============================================================ */}
-  <div className="modal-overlay" id="exploreModal">
-    <div className="modal-card-box" style={{"maxWidth":"740px"}}>
-      <div className="modal-header-bar">
-        <div className="modal-header-title">
-          <span>🌐</span>
-          <span data-i18n="modal_explore_title">Explore Challenges in Jharkhand</span>
-        </div>
-        <button className="modal-close-btn" onClick={() => { closeModal('exploreModal') }}>✕</button>
-      </div>
-
-      <div className="modal-body-scroll">
-        <p style={{"fontSize":"13px","color":"var(--gray-600)","marginBottom":"10px"}} data-i18n="explore_subtext">
-          Browse community problems from your region. Click to inspect details or support issues affecting you:
-        </p>
-
-        {/* Instant Keyword Search Bar */}
-        <div style={{"position":"relative","marginBottom":"12px"}}>
-          <span
-            style={{"position":"absolute","left":"14px","top":"50%","transform":"translateY(-50%)","fontSize":"16px","color":"#64748B","pointerEvents":"none"}}>🔍</span>
-          <input type="text" id="exploreSearchInput" className="form-input-control"
-            placeholder="Search problems by keyword (e.g. water, road, school, electricity)..."
-            oninput="onExploreSearchInput(this.value)" autocomplete="off"
-            style={{"padding":"11px 40px 11px 42px","fontSize":"13.5px","borderRadius":"12px","border":"1.5px solid #CBD5E1","background":"#FFFFFF","width":"100%","boxSizing":"border-box","boxShadow":"0 2px 8px rgba(0,0,0,0.04)","transition":"all 0.2s ease","outline":"none"}} />
-          <button type="button" id="exploreSearchClearBtn" onClick={() => { clearExploreSearch() }}
-            style={{"display":"none","position":"absolute","right":"12px","top":"50%","transform":"translateY(-50%)","background":"#E2E8F0","border":"none","width":"22px","height":"22px","borderRadius":"50%","fontSize":"11px","fontWeight":"800","color":"#475569","cursor":"pointer","alignItems":"center","justifyContent":"center","transition":"all 0.15s ease"}}
-            title="Clear search">✕</button>
-        </div>
-
-        <div style={{"display":"flex","flexDirection":"column","gap":"12px"}} id="exploreFullContainer">
-          {/* Rendered dynamically */}
-        </div>
-      </div>
-    </div>
-  </div>
 
   {/* ============================================================
-     MODAL 5: ALL MY REPORTS
+  {/* ============================================================
+     MODAL 5: ALL MY REPORTS (REDESIGNED PREMIUM V2 - REFERENCE MATCH)
      ============================================================ */}
   <div className="modal-overlay" id="allReportsModal">
-    <div className="modal-card-box" style={{"maxWidth":"740px"}}>
-      <div className="modal-header-bar">
-        <div className="modal-header-title">
-          <span>📋</span>
-          <span data-i18n="modal_all_reports_title">All Submitted Reports</span>
+    <div className="modal-card-box all-submitted-modal-box">
+      {/* Header Bar */}
+      <div className="all-rep-modal-header">
+        <div className="all-rep-header-left">
+          <div className="all-rep-header-icon">📋</div>
+          <div className="all-rep-title-block">
+            <h2 className="all-rep-main-title" data-i18n="modal_all_reports_title">All Submitted Reports</h2>
+            <p className="all-rep-subtitle">Track and manage all the issues you have reported.</p>
+          </div>
         </div>
-        <button className="modal-close-btn" onClick={() => { closeModal('allReportsModal') }}>✕</button>
+        
+        <div className="all-rep-header-right">
+          <div className="all-rep-quote-pill">
+            <span className="quote-leaf-icon">🌱</span>
+            <div className="quote-text-wrap">
+              <span className="quote-line1">"Your Reports Help Build</span>
+              <span className="quote-line2">A Cleaner, Safer Jharkhand"</span>
+            </div>
+          </div>
+          <button type="button" className="all-rep-close-btn" onClick={() => { closeModal('allReportsModal') }} title="Close">✕</button>
+        </div>
       </div>
-      <div style={{"padding":"12px 20px 0","display":"flex","gap":"8px"}}>
-        <button type="button" id="tabAllRepAll" className="lang-btn active" onClick={() => { filterAllReportsModal('all') }}>All
-          Reports</button>
-        <button type="button" id="tabAllRepProg" className="lang-btn" onClick={() => { filterAllReportsModal('in_progress') }}>⏳ In
-          Progress</button>
-        <button type="button" id="tabAllRepSolved" className="lang-btn" onClick={() => { filterAllReportsModal('solved') }}>✅
-          Resolved</button>
+
+      {/* Filter Tabs & Live Search / Sort Row */}
+      <div className="all-rep-toolbar-row">
+        <div className="all-rep-tabs-group">
+          <button type="button" id="tabAllRepAll" className="all-rep-filter-pill active" onClick={() => { filterAllReportsModal('all') }}>
+            <span className="pill-icon">📋</span>
+            <span>All Reports</span>
+            <span className="pill-counter" id="countAllRepAll">(0)</span>
+          </button>
+          <button type="button" id="tabAllRepProg" className="all-rep-filter-pill in-prog" onClick={() => { filterAllReportsModal('in_progress') }}>
+            <span className="pill-icon">⏳</span>
+            <span>In Progress</span>
+            <span className="pill-counter" id="countAllRepProg">(0)</span>
+          </button>
+          <button type="button" id="tabAllRepSolved" className="all-rep-filter-pill resolved" onClick={() => { filterAllReportsModal('solved') }}>
+            <span className="pill-icon">✅</span>
+            <span>Resolved</span>
+            <span className="pill-counter" id="countAllRepSolved">(0)</span>
+          </button>
+        </div>
+
+        <div className="all-rep-search-sort-group">
+          <div className="all-rep-search-box">
+            <span className="search-mag-icon">🔍</span>
+            <input 
+              type="text" 
+              id="allRepSearchInput" 
+              className="all-rep-search-control" 
+              placeholder="Search your reports..." 
+              onInput={(e) => { if (window.onAllReportsSearch) window.onAllReportsSearch(e.target.value); }} 
+            />
+          </div>
+
+          <div className="all-rep-sort-box">
+            <select 
+              id="allRepSortSelect" 
+              className="all-rep-sort-control" 
+              onChange={(e) => { if (window.onAllReportsSortChange) window.onAllReportsSortChange(e.target.value); }}
+            >
+              <option value="latest">⇅ Latest First</option>
+              <option value="oldest">⇅ Oldest First</option>
+              <option value="status">⇅ By Status</option>
+            </select>
+          </div>
+        </div>
       </div>
-      <div className="modal-body-scroll" id="allReportsModalList">
-        {/* Populated dynamically */}
+
+      {/* Reports Card List Container */}
+      <div className="modal-body-scroll all-rep-scroll-body" id="allReportsModalList">
+        {/* Populated dynamically via renderAllReportsModalList() */}
       </div>
     </div>
   </div>

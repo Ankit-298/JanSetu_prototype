@@ -1,4 +1,3 @@
-const Problem = require('./Problem');
 const Project = require('./Project');
 const Team = require('./Team');
 const Mentor = require('./Mentor');
@@ -9,7 +8,6 @@ const Leaderboard = require('./Leaderboard');
 const Certificate = require('./Certificate');
 
 module.exports = {
-  Problem,
   Project,
   Team,
   Mentor,

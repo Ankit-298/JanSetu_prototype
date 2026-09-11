@@ -127,16 +127,18 @@ setupVoiceAgentRoutes(app);
 
 app.use('/api/auth', require('./others/routes/auth'));
 app.use('/api/challenges', require('./others/routes/challenges'));
+app.use('/api/problems', require('./others/routes/challenges'));
 app.use('/api/notifications', require('./others/routes/notifications'));
 app.use('/api/analytics', require('./others/routes/analytics'));
 app.use('/api/admin', require('./others/routes/admin'));
 app.use('/api', require('./university/api'));
 
-// Comments standalone route (for delete)
-const { deleteComment, toggleCommentLike } = require('./others/controllers/commentController');
-const { protect: commentProtect } = require('./others/middleware/auth');
+// Comments standalone route (for delete, like, flag)
+const { deleteComment, toggleCommentLike, flagComment } = require('./others/controllers/commentController');
+const { protect: commentProtect, optionalAuth: commentOptionalAuth } = require('./others/middleware/auth');
 app.delete('/api/comments/:id', commentProtect, deleteComment);
 app.post('/api/comments/:id/like', commentProtect, toggleCommentLike);
+app.post('/api/comments/:id/flag', commentOptionalAuth, flagComment);
 
 // Public map-data shortcut
 app.get('/api/map-data', (req, res, next) => { req.url = '/challenges/map-data'; require('./others/routes/challenges')(req, res, next); });

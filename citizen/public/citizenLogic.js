@@ -1071,7 +1071,7 @@
 
       const adminTime = isVerified
         ? (valDateStr || formatRealDate(r.updatedAt || r.createdAt))
-        : `${baseDate} · ${currentLanguage === 'hi' ? 'सत्यापन कतार में' : 'Pending Admin Review'}`;
+        : null;
 
       const adminInfo = {
         name: adminOfficerName,
@@ -1115,7 +1115,7 @@
         action: isWorking || isSolved
           ? (currentLanguage === 'hi' ? 'इंडस्ट्री पार्टनर द्वारा सीएसआर फंड व आवश्यक उपकरण साइट पर भेजे गए।' : 'Dispatched required equipment & CSR supplies directly to site.')
           : (currentLanguage === 'hi' ? 'इंडस्ट्री पार्टनर इन्वेंटरी में आवश्यक उपकरण स्टैंडबाय पर रखे गए हैं।' : 'Supplies & equipment queued in regional CSR warehouse.'),
-        time: isWorking || isSolved ? (asgDateStr || valDateStr || baseDate) : 'Open for CSR Partnership',
+        time: isWorking || isSolved ? (asgDateStr || valDateStr || baseDate) : 'Seeking Implementation Partner',
         supplied: isWorking || isSolved
       };
 
@@ -1152,26 +1152,26 @@
           num: 2,
           icon: '🏛️',
           name: currentLanguage === 'hi' ? 'प्रशासनिक सत्यापन' : 'Admin Verified',
-          date: data.adminInfo.time,
-          note: data.isVerified ? (currentLanguage === 'hi' ? 'प्रशासन अनुमोदित ✓' : 'Admin Approved ✓') : (currentLanguage === 'hi' ? 'सत्यापन कतार' : 'In Queue'),
+          date: data.isVerified ? data.adminInfo.time : (currentLanguage === 'hi' ? 'सत्यापन कतार में' : 'Pending Admin Review'),
+          note: data.isVerified ? (currentLanguage === 'hi' ? 'प्रशासन अनुमोदित ✓' : 'Admin Approved ✓') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'In Queue'),
           desc: `${data.adminInfo.name}`,
           state: data.isVerified ? 'completed' : 'current'
         },
         {
           num: 3,
           icon: '🎓',
-          name: currentLanguage === 'hi' ? 'कॉलेज टास्कफोर्स' : 'University Assigned',
-          date: data.universityInfo.time,
-          note: data.universityInfo.working ? (currentLanguage === 'hi' ? 'असाइन किया गया ✓' : 'HEI Assigned ✓') : (data.isVerified ? (currentLanguage === 'hi' ? 'आवंटन कतार' : 'In Queue') : 'Pending'),
+          name: currentLanguage === 'hi' ? 'टीम कार्य' : 'Team Working',
+          date: data.universityInfo.working ? data.universityInfo.time : (data.isVerified ? (currentLanguage === 'hi' ? 'आवंटन कतार' : 'Awaiting University Allocation') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'Pending')),
+          note: data.universityInfo.working ? (currentLanguage === 'hi' ? 'टीम सक्रिय ✓' : 'Team Assigned ✓') : (data.isVerified ? (currentLanguage === 'hi' ? 'कतार में' : 'In Queue') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'Pending')),
           desc: `${data.universityInfo.name}`,
           state: data.universityInfo.completed ? 'completed' : (data.universityInfo.working ? 'current' : 'pending')
         },
         {
           num: 4,
           icon: '🏭',
-          name: currentLanguage === 'hi' ? 'इंडस्ट्री व जमीनी कार्य' : 'Industry & Ground Fix',
-          date: data.industryInfo.time,
-          note: data.isSolved ? (currentLanguage === 'hi' ? 'समाधान पूर्ण ✓' : 'Fix Deployed ✓') : (data.isWorking ? (currentLanguage === 'hi' ? 'कार्य प्रगति पर' : 'Active Fix') : 'Pending'),
+          name: currentLanguage === 'hi' ? 'जमीनी क्रियान्वयन' : 'Implementation',
+          date: data.isSolved ? data.industryInfo.time : (data.isWorking ? (currentLanguage === 'hi' ? 'समाधान क्रियान्वयन' : 'Seeking Implementation Partner') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'Pending')),
+          note: data.isSolved ? (currentLanguage === 'hi' ? 'समाधान पूर्ण ✓' : 'Fix Deployed ✓') : (data.isWorking ? (currentLanguage === 'hi' ? 'प्रगति पर' : 'In Progress') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'Pending')),
           desc: `${data.industryInfo.company}`,
           state: data.isSolved ? 'completed' : (data.isWorking ? 'current' : 'pending')
         },
@@ -1179,8 +1179,8 @@
           num: 5,
           icon: '🌟',
           name: currentLanguage === 'hi' ? 'समाधान व पुष्टि' : 'Certified Closed',
-          date: data.isSolved ? (r.citizenVerified ? 'Certified' : 'Awaiting Feedback') : 'Pending',
-          note: (data.isSolved && r.citizenVerified) ? (currentLanguage === 'hi' ? 'प्रमाणित बंद ✓' : 'Certified Closed ✓') : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि' : 'Citizen Feedback') : 'Final Step'),
+          date: (data.isSolved && r.citizenVerified) ? (r.closedAt ? formatRealDate(r.closedAt) : (currentLanguage === 'hi' ? 'प्रमाणित बंद' : 'Certified Closed')) : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि का इंतजार' : 'Awaiting Feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
+          note: (data.isSolved && r.citizenVerified) ? (currentLanguage === 'hi' ? 'प्रमाणित बंद ✓' : 'Certified Closed ✓') : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि' : 'Citizen Feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
           desc: (data.isSolved && r.citizenVerified) ? (currentLanguage === 'hi' ? 'नागरिक द्वारा समाधान सत्यापित, केस बंद' : 'Citizen verified resolution, grievance closed') : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि का इंतजार' : 'Awaiting citizen verification feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
           state: (data.isSolved && r.citizenVerified) ? 'completed' : (data.isSolved ? 'current' : 'pending')
         }
@@ -1473,7 +1473,7 @@
           sClosed.className = 'timeline-dot-bubble completed';
           sClosed.textContent = '✓';
         } else {
-          sClosed.className = 'timeline-dot-bubble current';
+          sClosed.className = 'timeline-dot-bubble current active-pulse';
           sClosed.textContent = '⚡';
         }
       } else if (isWorking) {
@@ -1485,22 +1485,18 @@
         sVerified.textContent = '✓';
         if (c2) c2.className = 'timeline-connecting-line active-line';
 
-        sWorking.className = 'timeline-dot-bubble current';
+        sWorking.className = 'timeline-dot-bubble current active-pulse';
         sWorking.textContent = '⚡';
       } else if (isVerifiedStage) {
         sSubmitted.className = 'timeline-dot-bubble completed';
         sSubmitted.textContent = '✓';
         if (c1) c1.className = 'timeline-connecting-line active-line';
 
-        sVerified.className = 'timeline-dot-bubble completed';
-        sVerified.textContent = '✓';
-        if (c2) c2.className = 'timeline-connecting-line active-line';
-
-        sWorking.className = 'timeline-dot-bubble current';
-        sWorking.textContent = '⚡';
+        sVerified.className = 'timeline-dot-bubble current active-pulse';
+        sVerified.textContent = '⚡';
       } else {
         // Default: JUST SUBMITTED (Step 1 active)
-        sSubmitted.className = 'timeline-dot-bubble current';
+        sSubmitted.className = 'timeline-dot-bubble current active-pulse';
         sSubmitted.textContent = '⚡';
       }
 
@@ -1529,6 +1525,366 @@
         if (dClo) dClo.textContent = milestones[4]?.date || '--';
         if (nClo) nClo.textContent = milestones[4]?.note || '--';
       }
+    }
+
+    // ============================================================
+    // LIVE UPDATE MESSAGE FEED & RESOLUTION TIME ESTIMATE (Part 2)
+    // ============================================================
+    function generateLiveStatusUpdates(problem, lang) {
+      if (!problem) return [];
+      const updates = [];
+      const univName = (problem.assignedUniversity && (problem.assignedUniversity.name || problem.assignedUniversity.shortName)) || problem.assign || 'BIT Mesra Innovation Lab';
+      const isHi = lang === 'hi';
+
+      const stat = (problem.status || '').toLowerCase();
+      const raw = (problem.rawStatus || '').toLowerCase();
+      const isSolved = stat === 'solved' || problem.isResolved || raw === 'resolved' || raw === 'closed';
+      const isWorking = stat === 'being worked on' || stat === 'in progress' || stat === 'university assigned' || raw === 'assigned' || raw === 'in_progress' || raw === 'testing';
+      const isVerified = isSolved || isWorking || stat === 'verified' || raw === 'validated';
+      const isUnderReview = raw === 'under_review' || isVerified;
+
+      // 1. Citizen submits
+      const subDate = problem.createdAt ? formatRealDate(problem.createdAt) : (problem.submittedDate || 'Recently');
+      updates.push({
+        stage: 'submitted',
+        dot: 'node-gray',
+        message: isHi ? 'Aapki shikayat safaltapoorvak darj ho gayi hai.' : 'Your grievance has been successfully submitted.',
+        timeStr: subDate,
+        timestamp: problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now() - 3600000
+      });
+
+      // 2. Admin starts reviewing
+      if (isUnderReview || isVerified) {
+        updates.push({
+          stage: 'under_review',
+          dot: 'node-blue',
+          message: isHi ? 'Admin aapki shikayat ki jaanch kar rahe hain.' : 'Administrative authority is reviewing your grievance.',
+          timeStr: subDate,
+          timestamp: (problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now()) + 900000
+        });
+      }
+
+      // 3. Admin assigns to university
+      if (isVerified && (isWorking || isSolved || problem.assignedUniversity || problem.assignedAt)) {
+        const asgTime = problem.assignedAt ? formatRealDate(problem.assignedAt) : subDate;
+        updates.push({
+          stage: 'assigned',
+          dot: 'node-blue',
+          message: isHi ? `Aapki samasya ${univName} ko bhej di gayi hai samadhan ke liye.` : `Problem assigned to ${univName} for solution development.`,
+          timeStr: asgTime,
+          timestamp: (problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now()) + 2700000
+        });
+
+        // 4. University accepts
+        updates.push({
+          stage: 'univ_accepted',
+          dot: 'node-blue',
+          message: isHi ? `${univName} ne is samasya ko sweekar kar liya hai.` : `${univName} accepted this problem challenge.`,
+          timeStr: asgTime,
+          timestamp: (problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now()) + 3900000
+        });
+      }
+
+      // 5. A student team picks it up
+      if (isWorking || isSolved) {
+        const workTime = problem.updatedAt ? formatRealDate(problem.updatedAt) : subDate;
+        updates.push({
+          stage: 'team_started',
+          dot: 'node-blue',
+          message: isHi ? 'Ek team ne is samasya par kaam shuru kar diya hai.' : 'An innovation taskforce team has started work on this problem.',
+          timeStr: workTime,
+          timestamp: (problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now()) + 7200000
+        });
+      }
+
+      // 6. Team requests/gets a mentor (only if mentor present)
+      if (problem.industryCollaborators?.some(c => c.role === 'mentor') || problem.hasMentor) {
+        updates.push({
+          stage: 'mentor',
+          dot: 'node-blue',
+          message: isHi ? 'Team ko ek industry expert se margdarshan mil raha hai.' : 'Team is receiving guidance from an industry technical expert.',
+          timeStr: subDate,
+          timestamp: (problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now()) + 10800000
+        });
+      }
+
+      // 7. A milestone is completed (only if milestone completed)
+      if (Array.isArray(problem.milestones)) {
+        problem.milestones.filter(m => m.status === 'completed' || m.completedAt).forEach((m, idx) => {
+          updates.push({
+            stage: 'milestone',
+            dot: 'node-blue',
+            message: isHi ? `${m.title || (idx === 0 ? 'Pratham charan' : 'Agla charan')} poora ho gaya — prototype taiyar ho raha hai.` : `Milestone completed: ${m.title || 'Engineering phase complete'}.`,
+            timeStr: m.completedAt ? formatRealDate(m.completedAt) : subDate,
+            timestamp: (problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now()) + (14400000 + idx * 3600000)
+          });
+        });
+      }
+
+      // 8. Project deployed
+      if (stat === 'testing' || raw === 'testing' || isSolved) {
+        updates.push({
+          stage: 'deployed',
+          dot: 'node-green',
+          message: isHi ? 'Aapki samasya ka samadhan taiyaar ho gaya hai! Jald hi implement kiya jayega.' : 'Technical solution is ready and queued for implementation.',
+          timeStr: problem.updatedAt ? formatRealDate(problem.updatedAt) : subDate,
+          timestamp: (problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now()) + 21600000
+        });
+      }
+
+      // 9. Industry adopts/implements (only if industry partner present)
+      const indPart = problem.industryCollaborators?.find(c => c.partner && c.role !== 'mentor');
+      if (indPart && isSolved) {
+        const pName = indPart.partner?.name || 'Tata Steel Foundation';
+        updates.push({
+          stage: 'industry_adopted',
+          dot: 'node-green',
+          message: isHi ? `${pName} dwara samadhan ko zameeni star par laagu kiya ja raha hai.` : `Solution implemented on-site supported by ${pName}.`,
+          timeStr: problem.updatedAt ? formatRealDate(problem.updatedAt) : subDate,
+          timestamp: (problem.createdAt ? new Date(problem.createdAt).getTime() : Date.now()) + 25200000
+        });
+      }
+
+      // 10. Marked resolved
+      if (isSolved) {
+        updates.push({
+          stage: 'resolved',
+          dot: 'node-green',
+          message: isHi ? 'Aapki samasya safaltapoorvak hal ho gayi hai. Dhanyawad!' : 'Your grievance has been successfully resolved. Thank you!',
+          timeStr: problem.resolvedAt ? formatRealDate(problem.resolvedAt) : (problem.updatedAt ? formatRealDate(problem.updatedAt) : subDate),
+          timestamp: problem.resolvedAt ? new Date(problem.resolvedAt).getTime() : Date.now()
+        });
+      }
+
+      // Sort newest-first (descending)
+      updates.sort((a, b) => b.timestamp - a.timestamp);
+      return updates;
+    }
+
+    function computeResolutionEstimate(report) {
+      if (!report) return '';
+      const cat = report.category || 'General';
+      const sameCatResolved = allReportsList.filter(r => (r.status === 'Solved' || r.isResolved || r.rawStatus === 'resolved') && r.category === cat && r.createdAt && r.resolvedAt);
+
+      let avgDays = 12;
+      if (sameCatResolved.length > 0) {
+        const total = sameCatResolved.reduce((sum, r) => sum + Math.max(1, (new Date(r.resolvedAt) - new Date(r.createdAt)) / (1000 * 60 * 60 * 24)), 0);
+        avgDays = Math.round(total / sameCatResolved.length);
+      } else {
+        const allResolved = allReportsList.filter(r => (r.status === 'Solved' || r.isResolved || r.rawStatus === 'resolved') && r.createdAt && r.resolvedAt);
+        if (allResolved.length > 0) {
+          const total = allResolved.reduce((s, r) => s + Math.max(1, (new Date(r.resolvedAt) - new Date(r.createdAt)) / (1000 * 60 * 60 * 24)), 0);
+          avgDays = Math.round(total / allResolved.length);
+        }
+      }
+
+      const createdTime = report.createdAt ? new Date(report.createdAt).getTime() : Date.now();
+      const daysSince = Math.max(0, Math.floor((Date.now() - createdTime) / (1000 * 60 * 60 * 24)));
+      const daysText = daysSince === 0
+        ? (currentLanguage === 'hi' ? 'आज ही' : 'today')
+        : (daysSince === 1
+          ? (currentLanguage === 'hi' ? '1 दिन पहले' : '1 day ago')
+          : (currentLanguage === 'hi' ? `${daysSince} दिन पहले` : `${daysSince} days ago`));
+
+      if (currentLanguage === 'hi') {
+        return `इस श्रेणी की समस्याएं औसतन ~${avgDays} दिनों में सुलझती हैं। आपकी समस्या ${daysText} दर्ज की गई थी।`;
+      }
+      return `Similar problems typically resolve in ~${avgDays} days. Yours was submitted ${daysText}.`;
+    }
+
+    window.isLiveUpdatesExpanded = false;
+    window.currentActiveUpdates = [];
+
+    function toggleLiveUpdatesExpansion() {
+      window.isLiveUpdatesExpanded = !window.isLiveUpdatesExpanded;
+      renderUpdatesList();
+    }
+    window.toggleLiveUpdatesExpansion = toggleLiveUpdatesExpansion;
+
+    function renderUpdatesList(isSlideIn = false) {
+      const feedList = document.getElementById('trackerLiveFeedList');
+      const badgeEl = document.getElementById('trackerFeedExpandBadge');
+      const sectionEl = document.getElementById('trackerLiveFeedSection');
+      if (!feedList) return;
+
+      const updates = window.currentActiveUpdates || [];
+      if (updates.length === 0) {
+        feedList.innerHTML = `<div style="font-size:12px;color:#94A3B8;padding:8px 0;">Awaiting pipeline updates...</div>`;
+        if (badgeEl) badgeEl.innerHTML = '';
+        return;
+      }
+
+      const isExpanded = Boolean(window.isLiveUpdatesExpanded);
+      if (sectionEl) {
+        if (isExpanded) sectionEl.classList.add('feed-expanded');
+        else sectionEl.classList.remove('feed-expanded');
+      }
+
+      // If collapsed, show ONLY the 2 latest updates
+      // If expanded, show all updates
+      const displayItems = isExpanded ? updates : updates.slice(0, 2);
+
+      let html = displayItems.map((u, idx) => {
+        const isLatest = idx === 0;
+        return `
+          <div class="tracker-feed-item ${isLatest ? 'latest-feed-item' : ''} ${isSlideIn && isLatest ? 'feed-slide-in' : ''}">
+            <div class="tracker-feed-node ${u.dot}"></div>
+            <div class="tracker-feed-content">
+              <div class="tracker-feed-msg">${escapeHtml(u.message)}</div>
+              <div class="tracker-feed-time">${escapeHtml(u.timeStr)}</div>
+            </div>
+            ${isLatest ? `<span class="tracker-feed-badge-new">${currentLanguage === 'hi' ? 'नवीनतम' : 'LATEST'}</span>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      if (updates.length > 2) {
+        if (!isExpanded) {
+          html += `
+            <div class="tracker-feed-toggle-footer">
+              <span class="tracker-toggle-pill">
+                <span>+${updates.length - 2} ${currentLanguage === 'hi' ? 'और अपडेट्स देखें' : 'more updates'}</span>
+                <span class="tracker-toggle-arrow">▾</span>
+              </span>
+              <span class="tracker-toggle-hint">${currentLanguage === 'hi' ? 'विस्तार के लिए कहीं भी क्लिक करें' : 'Click anywhere to expand'}</span>
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="tracker-feed-toggle-footer expanded">
+              <span class="tracker-toggle-pill">
+                <span>${currentLanguage === 'hi' ? 'कम दिखाएं' : 'Show less'}</span>
+                <span class="tracker-toggle-arrow">▴</span>
+              </span>
+              <span class="tracker-toggle-hint">${currentLanguage === 'hi' ? 'संक्षिप्त करने के लिए कहीं भी क्लिक करें' : 'Click anywhere to collapse'}</span>
+            </div>
+          `;
+        }
+      }
+
+      feedList.innerHTML = html;
+
+      if (badgeEl) {
+        if (updates.length > 2) {
+          badgeEl.innerHTML = isExpanded
+            ? `<span class="expand-pill-badge">${currentLanguage === 'hi' ? 'सभी अपडेट्स' : 'All Updates'} <span class="badge-arrow">▴</span></span>`
+            : `<span class="expand-pill-badge">${currentLanguage === 'hi' ? '2 नवीनतम' : '2 Latest'} <span class="badge-arrow">▾</span></span>`;
+        } else {
+          badgeEl.innerHTML = '';
+        }
+      }
+    }
+    window.renderUpdatesList = renderUpdatesList;
+
+    async function renderTrackerLiveFeed(report, isSlideIn = false) {
+      const feedList = document.getElementById('trackerLiveFeedList');
+      const estEl = document.getElementById('trackerEstTimeText');
+      if (!feedList) return;
+
+      if (!report) {
+        feedList.innerHTML = `<div style="font-size:12px;color:#94A3B8;padding:8px 0;">No active problem updates available.</div>`;
+        return;
+      }
+
+      // Update resolution time estimate
+      if (estEl) {
+        estEl.textContent = computeResolutionEstimate(report);
+      }
+
+      // Try fetching updates from API or fall back to client generator
+      let updates = [];
+      try {
+        const targetKey = report.mongoId || report.id;
+        const res = await fetch(`/api/challenges/${targetKey}/updates`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.updates) && json.updates.length > 0) {
+            updates = json.updates.map(u => ({
+              stage: u.stage,
+              dot: u.dot === 'green' ? 'node-green' : (u.dot === 'blue' ? 'node-blue' : 'node-gray'),
+              message: currentLanguage === 'hi' ? u.messageHi : u.messageEn,
+              timeStr: formatRealDate(u.timestamp),
+              timestamp: new Date(u.timestamp).getTime()
+            }));
+            if (json.avgResolutionDays && estEl) {
+              const daysSince = json.daysSinceSubmission || 0;
+              const daysText = daysSince === 0 ? (currentLanguage === 'hi' ? 'आज ही' : 'today') : (daysSince === 1 ? (currentLanguage === 'hi' ? '1 दिन पहले' : '1 day ago') : (currentLanguage === 'hi' ? `${daysSince} दिन पहले` : `${daysSince} days ago`));
+              estEl.textContent = currentLanguage === 'hi'
+                ? `इस श्रेणी की समस्याएं औसतन ~${json.avgResolutionDays} दिनों में सुलझती हैं। आपकी समस्या ${daysText} दर्ज की गई थी।`
+                : `Similar problems typically resolve in ~${json.avgResolutionDays} days. Yours was submitted ${daysText}.`;
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (updates.length === 0) {
+        updates = generateLiveStatusUpdates(report, currentLanguage);
+      }
+
+      window.currentActiveUpdates = updates;
+      renderUpdatesList(isSlideIn);
+    }
+    window.renderTrackerLiveFeed = renderTrackerLiveFeed;
+
+    function toggleTrackerNotification() {
+      const active = getCurrentlyTrackedReport();
+      if (!active) return;
+      const key = `jansetu_notify_pref_${active.id}`;
+      const cur = localStorage.getItem(key) === 'true';
+      const newVal = !cur;
+      localStorage.setItem(key, newVal ? 'true' : 'false');
+      updateTrackerNotificationButtonState(active.id);
+
+      if (newVal) {
+        alert(currentLanguage === 'hi'
+          ? `🔔 रिपोर्ट #${active.id} के लिए WhatsApp और SMS सूचनाएं सक्रिय कर दी गई हैं!`
+          : `🔔 Instant WhatsApp & SMS notifications activated for Report #${active.id}!`);
+      } else {
+        alert(currentLanguage === 'hi'
+          ? `🔕 रिपोर्ट #${active.id} के लिए सूचनाएं बंद कर दी गई हैं।`
+          : `🔕 Notifications turned off for Report #${active.id}.`);
+      }
+    }
+    window.toggleTrackerNotification = toggleTrackerNotification;
+
+    function updateTrackerNotificationButtonState(reportId) {
+      const btn = document.getElementById('trackerNotifyToggleBtn');
+      const txt = document.getElementById('trackerNotifyText');
+      const ico = document.getElementById('trackerNotifyIcon');
+      if (!btn || !reportId) return;
+
+      const active = localStorage.getItem(`jansetu_notify_pref_${reportId}`) === 'true';
+      if (active) {
+        btn.classList.add('active');
+        if (ico) ico.textContent = '✅';
+        if (txt) txt.textContent = currentLanguage === 'hi' ? 'WhatsApp/SMS सक्रिय ✓' : 'WhatsApp/SMS Active ✓';
+      } else {
+        btn.classList.remove('active');
+        if (ico) ico.textContent = '🔔';
+        if (txt) txt.textContent = currentLanguage === 'hi' ? 'WhatsApp/SMS सूचनाएं चालू करें' : 'Notify me on WhatsApp/SMS';
+      }
+    }
+    window.updateTrackerNotificationButtonState = updateTrackerNotificationButtonState;
+
+    // Real-time polling timer for tracker updates (every 30 seconds)
+    let trackerPollTimer = null;
+    function startTrackerPolling() {
+      if (trackerPollTimer) clearInterval(trackerPollTimer);
+      trackerPollTimer = setInterval(async () => {
+        const active = getCurrentlyTrackedReport();
+        if (!active) return;
+        const ind = document.getElementById('trackerCheckingUpdatesIndicator');
+        if (ind) ind.style.display = 'inline-flex';
+        try {
+          await renderTrackerLiveFeed(active, true);
+        } catch (e) {}
+        setTimeout(() => {
+          if (ind) ind.style.display = 'none';
+        }, 1200);
+      }, 30000);
+    }
+    if (typeof window !== 'undefined') {
+      startTrackerPolling();
     }
 
     function renderActiveProblem() {
@@ -1642,20 +1998,17 @@
       if (badge) {
         if (isSolved) {
           badge.className = 'status-badge-in-progress resolved';
+          badge.removeAttribute('style');
           if (label) label.textContent = currentLanguage === 'hi' ? 'समाधान पूर्ण ✓' : 'Solved ✓';
           if (document.getElementById('solCheckBox')) document.getElementById('solCheckBox').classList.add('show');
         } else if (isUnverified) {
-          badge.className = 'status-badge-in-progress';
-          badge.style.background = '#EFF6FF';
-          badge.style.color = '#1D4ED8';
-          badge.style.borderColor = '#BFDBFE';
+          badge.className = 'status-badge-in-progress awaiting-verified';
+          badge.removeAttribute('style');
           if (label) label.textContent = currentLanguage === 'hi' ? '⏳ सत्यापन प्रतीक्षारत' : '⏳ Awaiting Admin Verification';
           if (document.getElementById('solCheckBox')) document.getElementById('solCheckBox').classList.remove('show');
         } else {
-          badge.className = 'status-badge-in-progress';
-          badge.style.background = '#F0FDF4';
-          badge.style.color = '#166534';
-          badge.style.borderColor = '#BBF7D0';
+          badge.className = 'status-badge-in-progress verified-in-progress';
+          badge.removeAttribute('style');
           if (label) label.textContent = currentLanguage === 'hi' ? '✓ प्रशासन द्वारा सत्यापित · कार्य जारी' : '✓ Admin Verified · In Progress';
           if (document.getElementById('solCheckBox')) document.getElementById('solCheckBox').classList.remove('show');
         }
@@ -1691,20 +2044,21 @@
       }
 
       updateTrackerTimeline(active.status, active.isResolved, active.citizenVerified, active);
+      renderTrackerLiveFeed(active);
 
       // Deletion allowed only if unverified by Admin
       const delSlot = document.getElementById('activeTrackerDeleteAction');
       if (delSlot) {
         if (isUnverified) {
           delSlot.innerHTML = `
-          <button type="button" style="background: #FEF2F2; border: 1.5px solid #FECACA; color: #DC2626; font-size: 11px; font-weight: 800; border-radius: 14px; padding: 4px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="event.stopPropagation(); promptDeleteReport('${active.id}');" title="${currentLanguage === 'hi' ? 'सत्यापन से पहले शिकायत हटाएं' : 'Delete unverified grievance'}">
+          <button type="button" class="tracker-delete-btn" onclick="event.stopPropagation(); promptDeleteReport('${active.id}');" title="${currentLanguage === 'hi' ? 'सत्यापन से पहले शिकायत हटाएं' : 'Delete unverified grievance'}">
             <span>🗑️</span> <span>${currentLanguage === 'hi' ? 'हटाएं' : 'Delete'}</span>
           </button>
         `;
         } else {
           delSlot.innerHTML = `
-          <span style="font-size: 10.5px; color: #64748b; background: #f1f5f9; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 3px;" title="${currentLanguage === 'hi' ? 'प्रशासन द्वारा सत्यापित' : 'Admin Verified'}">
-            🔒 ${currentLanguage === 'hi' ? 'सत्यापित' : 'Verified'}
+          <span class="tracker-verified-lock-badge" title="${currentLanguage === 'hi' ? 'प्रशासन द्वारा सत्यापित' : 'Admin Verified'}">
+            <span>🔒</span> <span>${currentLanguage === 'hi' ? 'सत्यापित' : 'Verified'}</span>
           </span>
         `;
         }
@@ -3277,12 +3631,16 @@
       btn.textContent = currentLanguage === 'hi' ? 'दर्ज हो रहा है...' : 'Submitting...';
       btn.disabled = true;
 
-      const title = document.getElementById('reportTitle').value.trim() || 'Panchayat Problem';
-      let description = document.getElementById('reportDescription').value.trim() || title;
+      const enteredTitle = document.getElementById('reportTitle') ? document.getElementById('reportTitle').value.trim() : '';
+      const category = document.getElementById('reportCategory') ? document.getElementById('reportCategory').value : 'Water Management';
+      const locPart = (document.getElementById('reportVillage')?.value?.trim()) || (document.getElementById('reportPanchayat')?.value?.trim()) || (document.getElementById('reportDistrict')?.value?.trim()) || 'Jharkhand';
+      const title = enteredTitle || (currentLanguage === 'hi' ? `${category} समस्या — ${locPart}` : `${category} Issue in ${locPart}`);
+      
+      const enteredDesc = document.getElementById('reportDescription') ? document.getElementById('reportDescription').value.trim() : '';
+      let description = enteredDesc || (currentLanguage === 'hi' ? `${title} के संबंध में स्थानीय नागरिकों द्वारा त्वरित निवारण हेतु अनुरोध।` : `Grievance submitted regarding ${title}. Field inspection and civic resolution requested.`);
       if (description.length < 15) {
         description = `${title} — ${description}. Immediate community attention and civic resolution required.`;
       }
-      const category = document.getElementById('reportCategory') ? document.getElementById('reportCategory').value : 'Water Management';
       const priority = document.querySelector('input[name="priorityChoice"]:checked')?.value || 'high';
       const state = document.getElementById('reportState').value;
       const district = document.getElementById('reportDistrict').value;
@@ -3505,71 +3863,217 @@
     }
 
     let allReportsFilter = 'all';
+    let allReportsSearchQuery = '';
+    let allReportsSortOrder = 'latest';
+
+    function onAllReportsSearch(val) {
+      allReportsSearchQuery = (val || '').trim().toLowerCase();
+      renderAllReportsModalList();
+    }
+    window.onAllReportsSearch = onAllReportsSearch;
+
+    function onAllReportsSortChange(val) {
+      allReportsSortOrder = val || 'latest';
+      renderAllReportsModalList();
+    }
+    window.onAllReportsSortChange = onAllReportsSortChange;
+
+    function formatReportDate(d) {
+      if (!d) return 'Recent';
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return 'Recent';
+      return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + 
+             date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+
+    function formatRelativeTime(d) {
+      if (!d) return '';
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return '';
+      const now = new Date();
+      const diffSec = Math.floor((now - date) / 1000);
+      if (diffSec < 60) return 'Just now';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin} min ago`;
+      const diffHr = Math.floor(diffMin / 60);
+      if (diffHr < 24) return `${diffHr} ${diffHr === 1 ? 'hour' : 'hours'} ago`;
+      const diffDays = Math.floor(diffHr / 24);
+      return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+    }
+
+    function updateAllReportsCounters() {
+      const cAll = document.getElementById('countAllRepAll');
+      const cProg = document.getElementById('countAllRepProg');
+      const cSolved = document.getElementById('countAllRepSolved');
+      const total = allReportsList.length;
+      const inProg = allReportsList.filter(r => r.status !== 'Solved' && !r.isResolved).length;
+      const solved = allReportsList.filter(r => r.status === 'Solved' || r.isResolved).length;
+      if (cAll) cAll.textContent = `(${total})`;
+      if (cProg) cProg.textContent = `(${inProg})`;
+      if (cSolved) cSolved.textContent = `(${solved})`;
+    }
 
     function filterAllReportsModal(filter) {
       allReportsFilter = filter;
       const tabAll = document.getElementById('tabAllRepAll');
       const tabProg = document.getElementById('tabAllRepProg');
       const tabSolved = document.getElementById('tabAllRepSolved');
-      if (tabAll) tabAll.className = filter === 'all' ? 'lang-btn active' : 'lang-btn';
-      if (tabProg) tabProg.className = filter === 'in_progress' ? 'lang-btn active' : 'lang-btn';
-      if (tabSolved) tabSolved.className = filter === 'solved' ? 'lang-btn active' : 'lang-btn';
+      if (tabAll) {
+        if (filter === 'all') tabAll.classList.add('active');
+        else tabAll.classList.remove('active');
+      }
+      if (tabProg) {
+        if (filter === 'in_progress') tabProg.classList.add('active');
+        else tabProg.classList.remove('active');
+      }
+      if (tabSolved) {
+        if (filter === 'solved') tabSolved.classList.add('active');
+        else tabSolved.classList.remove('active');
+      }
       renderAllReportsModalList();
     }
+    window.filterAllReportsModal = filterAllReportsModal;
 
     function renderAllReportsModalList() {
+      updateAllReportsCounters();
       const cont = document.getElementById('allReportsModalList');
       if (!cont) return;
 
-      let list = allReportsList;
+      let list = allReportsList.slice();
       if (allReportsFilter === 'in_progress') {
-        list = allReportsList.filter(r => r.status !== 'Solved' && !r.isResolved);
+        list = list.filter(r => r.status !== 'Solved' && !r.isResolved);
       } else if (allReportsFilter === 'solved') {
-        list = allReportsList.filter(r => r.status === 'Solved' || r.isResolved);
+        list = list.filter(r => r.status === 'Solved' || r.isResolved);
+      }
+
+      // Keyword Search Filter
+      if (allReportsSearchQuery) {
+        const q = allReportsSearchQuery;
+        list = list.filter(r => {
+          const matchTitle = (r.title || '').toLowerCase().includes(q);
+          const matchLoc = (r.location || '').toLowerCase().includes(q);
+          const matchId = (r.id || '').toLowerCase().includes(q);
+          const matchDesc = (r.desc || r.description || '').toLowerCase().includes(q);
+          const matchCat = (r.category || '').toLowerCase().includes(q);
+          const matchAssign = (r.assign || '').toLowerCase().includes(q);
+          return matchTitle || matchLoc || matchId || matchDesc || matchCat || matchAssign;
+        });
+      }
+
+      // Sorting
+      if (allReportsSortOrder === 'latest') {
+        list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      } else if (allReportsSortOrder === 'oldest') {
+        list.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+      } else if (allReportsSortOrder === 'status') {
+        list.sort((a, b) => (a.status || '').localeCompare(b.status || ''));
       }
 
       if (list.length === 0) {
-        cont.innerHTML = `<div style="text-align:center; padding:30px; color:var(--gray-500); font-size:13px;">No reports in this tab.</div>`;
+        cont.innerHTML = `
+          <div style="text-align:center; padding:50px 20px; color:#64748B;">
+            <div style="font-size:36px; margin-bottom:8px;">📋</div>
+            <div style="font-weight:700; font-size:15px; color:#1E293B;">No submitted reports found</div>
+            <p style="font-size:12.5px; margin-top:4px;">Try changing tab or clearing the search query.</p>
+          </div>
+        `;
         return;
       }
 
-      cont.innerHTML = list.map(r => `
-      <div class="report-list-row-item" onclick="openDetailModal('${r.id}')">
-        <img src="${r.image || getCategoryFallbackImage(r.category)}" class="report-row-thumb" alt="Thumb" onerror="this.src='/images/water-tap.jpg'" />
-        <div class="report-row-center-info">
-          <div class="report-row-title-text">${r.title}</div>
-          <div class="report-row-location-text">📍 ${r.location}</div>
-          <div class="report-row-id-text">${r.id} · <span style="color:var(--gray-500);font-weight:normal;">${r.assign || 'JanSetu Taskforce'}</span></div>
-        </div>
-        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0;">
-          <span class="${r.status === 'Solved' ? 'status-pill-resolved' : 'status-pill-assigned'}">${r.status}</span>
-          ${(r.isTwinned || r.isTwin || r.twinnedProblem) ? `<span style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-size:10.5px; font-weight:800; border-radius:12px; padding:2px 8px; display:inline-flex; align-items:center; gap:4px;">🔗 Twinned Problem</span>` : ''}
-          <div style="display: flex; gap: 6px;">
-            <button type="button" style="background:#002D62; color:#fff; font-size:10px; font-weight:800; border-radius:6px; padding:4px 8px; cursor:pointer; border:none;" onclick="event.stopPropagation(); openReportSlip('${r.id}');" title="View & Download Official Slip">
-              📄 Slip
+      cont.innerHTML = list.map(r => {
+        const thumbUrl = r.image || (r.images && r.images[0]) || getCategoryFallbackImage(r.category);
+        const imgCount = (r.images && Array.isArray(r.images) && r.images.length) ? r.images.length : 1;
+        
+        let statusClass = 'submitted';
+        let statusLabel = 'Submitted';
+        if (r.status === 'Solved' || r.isResolved) {
+          statusClass = 'resolved';
+          statusLabel = 'Resolved';
+        } else if (r.status === 'Being Worked On' || r.status === 'In Progress' || r.status === 'University Assigned') {
+          statusClass = 'in-prog';
+          statusLabel = r.status === 'University Assigned' ? 'Being Worked On' : (r.status || 'Being Worked On');
+        } else if (r.status) {
+          statusLabel = r.status;
+        }
+
+        const dateFormatted = formatReportDate(r.createdAt);
+        const relTime = formatRelativeTime(r.createdAt);
+
+        return `
+        <div class="all-rep-card" onclick="openDetailModal('${r.id}')">
+          <!-- Column 1: Thumbnail & Count Badge -->
+          <div class="all-rep-card-thumb-wrap">
+            <img src="${thumbUrl}" class="all-rep-card-thumb" alt="${r.title || 'Report'}" onerror="this.src='/images/water-tap.jpg'" />
+            <div class="all-rep-thumb-count-badge">
+              <span>📷</span>
+              <span>${imgCount}</span>
+            </div>
+          </div>
+
+          <!-- Column 2: Title, Location, Sub-ID, Description -->
+          <div class="all-rep-card-content">
+            <div class="all-rep-card-title">${r.title || 'Panchayat Problem'}</div>
+            <div class="all-rep-card-location">📍 ${r.location || 'Jharkhand'}</div>
+            <div class="all-rep-card-id-assign">${r.id} · <span style="color:#64748B;font-weight:600;">${r.assign || 'JanSetu Taskforce'}</span></div>
+            <div class="all-rep-card-desc">${r.desc || r.description || 'Waterlogging and broken infrastructure causing difficulty for local commuters.'}</div>
+            ${(r.isTwinned || r.isTwin || r.twinnedProblem) ? `<div style="margin-top:4px;"><span style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-size:10px; font-weight:800; border-radius:12px; padding:2px 8px; display:inline-flex; align-items:center; gap:4px;">🔗 Twinned Problem</span></div>` : ''}
+          </div>
+
+          <!-- Column 3: Status & Date/Time -->
+          <div class="all-rep-card-status-col">
+            <span class="all-rep-status-badge ${statusClass}">
+              <span class="status-dot-bullet">●</span>
+              <span>${statusLabel}</span>
+            </span>
+            <div class="all-rep-date-info">
+              <span>📅</span>
+              <span>${dateFormatted}</span>
+            </div>
+            ${relTime ? `<div class="all-rep-rel-time">${relTime}</div>` : ''}
+          </div>
+
+          <!-- Column 4: Premium Action Buttons (Citizen Design System) -->
+          <div class="all-rep-card-actions-col">
+            <button type="button" class="btn-rep-action btn-rep-slip" onclick="event.stopPropagation(); openReportSlip('${r.id}');" title="View & Download Official Slip">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span>View / Slip</span>
             </button>
+
             ${r.status !== 'Solved' && !r.isResolved ? `
-              <button type="button" style="background:#EFF6FF; border:1px solid #BFDBFE; color:var(--navy); font-size:10px; font-weight:700; border-radius:6px; padding:4px 8px; cursor:pointer;" onclick="event.stopPropagation(); trackSpecificReport('${r.id}'); closeModal('allReportsModal');">
-                📌 Track
+              <button type="button" class="btn-rep-action btn-rep-track" onclick="event.stopPropagation(); trackSpecificReport('${r.id}'); closeModal('allReportsModal');" title="Track Live Progress">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+                <span>Track Progress</span>
               </button>
             ` : `
-              <button type="button" style="background:#FFF7ED; border:1px solid #FED7AA; color:#C2410C; font-size:10px; font-weight:800; border-radius:6px; padding:4px 8px; cursor:pointer;" onclick="event.stopPropagation(); deleteProblemFiles('${r.id}');" title="Delete files from Supabase to free up cloud storage">
-                🗑️ ${currentLanguage === 'hi' ? 'फ़ाइलें हटाएं' : 'Delete Files'}
+              <button type="button" class="btn-rep-action btn-rep-delete" onclick="event.stopPropagation(); deleteProblemFiles('${r.id}');" title="Delete files from Supabase to free up storage">
+                <span>🗑️</span>
+                <span>Delete Files</span>
               </button>
             `}
+
             ${(r.status === 'Submitted' || !r.isVerified) && r.status !== 'Solved' && !r.isResolved && r.rawStatus !== 'validated' && r.status !== 'Verified' ? `
-              <button type="button" style="background:#FEF2F2; border:1px solid #FECACA; color:#DC2626; font-size:10px; font-weight:800; border-radius:6px; padding:4px 8px; cursor:pointer;" onclick="event.stopPropagation(); promptDeleteReport('${r.id}');" title="${currentLanguage === 'hi' ? 'सत्यापन से पहले हटाएं' : 'Delete Unverified Report'}">
-                🗑️ ${currentLanguage === 'hi' ? 'हटाएं' : 'Delete'}
+              <button type="button" class="btn-rep-action btn-rep-delete" onclick="event.stopPropagation(); promptDeleteReport('${r.id}');" title="Delete Unverified Report">
+                <span>🗑️</span>
+                <span>Delete</span>
               </button>
             ` : ''}
           </div>
+
+          <!-- Column 5: Right Chevron Arrow -->
+          <div class="all-rep-chevron" aria-hidden="true">›</div>
         </div>
-      </div>
-    `).join('');
+        `;
+      }).join('');
     }
 
     function openAllReportsModal() {
       allReportsFilter = 'all';
+      allReportsSearchQuery = '';
+      allReportsSortOrder = 'latest';
+      const sInp = document.getElementById('allRepSearchInput');
+      if (sInp) sInp.value = '';
+      const sSel = document.getElementById('allRepSortSelect');
+      if (sSel) sSel.value = 'latest';
       filterAllReportsModal('all');
       openModal('allReportsModal');
     }
@@ -4341,6 +4845,42 @@
     window.selectChatProblem = selectChatProblem;
 
 
+    function toggleChatMembersPopover(ev) {
+      if (ev) ev.stopPropagation();
+      const popover = document.getElementById('chatMembersPopover');
+      const caret = document.getElementById('chatMembersCaret');
+      if (!popover) return;
+      const isOpen = popover.classList.contains('active');
+      if (isOpen) {
+        popover.classList.remove('active');
+        if (caret) caret.style.transform = 'rotate(0deg)';
+      } else {
+        popover.classList.add('active');
+        if (caret) caret.style.transform = 'rotate(180deg)';
+      }
+    }
+    window.toggleChatMembersPopover = toggleChatMembersPopover;
+
+    function closeChatMembersPopover() {
+      const popover = document.getElementById('chatMembersPopover');
+      const caret = document.getElementById('chatMembersCaret');
+      if (popover) popover.classList.remove('active');
+      if (caret) caret.style.transform = 'rotate(0deg)';
+    }
+    window.closeChatMembersPopover = closeChatMembersPopover;
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('click', (e) => {
+        const popover = document.getElementById('chatMembersPopover');
+        const btn = document.getElementById('chatMembersTriggerBtn');
+        if (popover && popover.classList.contains('active')) {
+          if (!popover.contains(e.target) && (!btn || !btn.contains(e.target))) {
+            closeChatMembersPopover();
+          }
+        }
+      });
+    }
+
     function renderChatRoomHeader(rep) {
       const header = document.getElementById('chatRoomHeader');
       if (!header) return;
@@ -4349,19 +4889,88 @@
         return;
       }
 
-      const isSol = (rep.status || '').toLowerCase().includes('solv') || rep.isResolved;
-      const isRev = ((rep.status || '').toLowerCase().includes('work') || (rep.status || '').toLowerCase().includes('prog') || (rep.status || '').toLowerCase().includes('verif') || rep.isVerified) && !isSol;
-      const statusLabel = isSol ? 'Resolved' : (isRev ? 'Under Review' : 'Submitted');
-      const statusColor = isSol ? '#166534' : (isRev ? '#B45309' : '#1D4ED8');
-      const statusBg = isSol ? '#DCFCE7' : (isRev ? '#FEF3C7' : '#DBEAFE');
-      const statusBorder = isSol ? '#BBF7D0' : (isRev ? '#FDE68A' : '#BFDBFE');
-
       header.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap;">
-            <span style="font-size: 11.5px; font-weight: 800; color: #1E3A8A; background: #DBEAFE; border: 1px solid #BFDBFE; padding: 2.5px 9px; border-radius: 6px;">${rep.id}</span>
-            <span style="font-size: 11px; font-weight: 700; color: #0369A1; background: #F0F9FF; border: 1px solid #BAE6FD; padding: 2.5px 9px; border-radius: 6px;">📂 ${escapeHtml(rep.category || 'General')}</span>
-            <span style="font-size: 11px; font-weight: 800; color: ${statusColor}; background: ${statusBg}; border: 1px solid ${statusBorder}; padding: 2.5px 9px; border-radius: 6px;">◆ ${statusLabel}</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; position: relative;">
+            <span style="font-size: 12px; font-weight: 850; color: #002D62; background: #EFF6FF; border: 1.5px solid #BFDBFE; padding: 3px 10px; border-radius: 8px; letter-spacing: 0.3px;">${rep.id}</span>
+            <button type="button" class="chat-members-btn" id="chatMembersTriggerBtn" onclick="toggleChatMembersPopover(event)" title="Click to view assigned committee members and officials">
+              <span style="font-size: 13px;">👥</span>
+              <span>Members</span>
+              <span class="chat-members-badge">4</span>
+              <span id="chatMembersCaret" style="font-size: 9px; font-weight: 800; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);">⌵</span>
+            </button>
+
+            <!-- Members Popup Card (Shows Prof. R. K. Sharma, Shri S. K. Verma & Team on Click) -->
+            <div class="chat-members-popover-card" id="chatMembersPopover" onclick="event.stopPropagation();">
+              <div class="cmp-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 16px;">👥</span>
+                  <div>
+                    <div style="font-size: 13.5px; font-weight: 850; color: #0F172A; line-height: 1.2;">Problem Committee</div>
+                    <div style="font-size: 10.5px; color: #64748B;">4 Active Tripartite Stakeholders</div>
+                  </div>
+                </div>
+                <button type="button" class="cmp-close-btn" onclick="closeChatMembersPopover()" title="Close">✕</button>
+              </div>
+
+              <div class="cmp-body">
+                <!-- Member 1: Prof. R. K. Sharma -->
+                <div class="cmp-member-item">
+                  <div class="cmp-avatar cmp-avatar-univ">🎓</div>
+                  <div class="cmp-info">
+                    <div class="cmp-name-row">
+                      <span class="cmp-name">Prof. R. K. Sharma</span>
+                      <span class="cmp-role-pill cmp-role-univ">University Guide</span>
+                    </div>
+                    <div class="cmp-desc">IIT Delhi · Academic Mentor &amp; Technical Evaluator</div>
+                  </div>
+                  <div class="cmp-status"><span class="cmp-dot cmp-dot-green"></span>Online</div>
+                </div>
+
+                <!-- Member 2: Shri S. K. Verma -->
+                <div class="cmp-member-item">
+                  <div class="cmp-avatar cmp-avatar-admin">🛡️</div>
+                  <div class="cmp-info">
+                    <div class="cmp-name-row">
+                      <span class="cmp-name">Shri S. K. Verma</span>
+                      <span class="cmp-role-pill cmp-role-admin">JanSetu Admin</span>
+                    </div>
+                    <div class="cmp-desc">Municipal Taskforce · Executive Sanctioning Officer</div>
+                  </div>
+                  <div class="cmp-status"><span class="cmp-dot cmp-dot-blue"></span>Online</div>
+                </div>
+
+                <!-- Member 3: Citizen Reporter -->
+                <div class="cmp-member-item">
+                  <div class="cmp-avatar cmp-avatar-cit">👤</div>
+                  <div class="cmp-info">
+                    <div class="cmp-name-row">
+                      <span class="cmp-name">Citizen Reporter (You)</span>
+                      <span class="cmp-role-pill cmp-role-cit">Reporting Citizen</span>
+                    </div>
+                    <div class="cmp-desc">Grievance Author · Site Verification Stakeholder</div>
+                  </div>
+                  <div class="cmp-status"><span class="cmp-dot cmp-dot-green"></span>Connected</div>
+                </div>
+
+                <!-- Member 4: Field Team -->
+                <div class="cmp-member-item">
+                  <div class="cmp-avatar cmp-avatar-field">👷</div>
+                  <div class="cmp-info">
+                    <div class="cmp-name-row">
+                      <span class="cmp-name">Civic Ground Team</span>
+                      <span class="cmp-role-pill cmp-role-field">Ward Supervisor</span>
+                    </div>
+                    <div class="cmp-desc">Rapid Response Cell · Ground Action Unit</div>
+                  </div>
+                  <div class="cmp-status"><span class="cmp-dot cmp-dot-gray"></span>Assigned</div>
+                </div>
+              </div>
+
+              <div class="cmp-footer">
+                <span>💬 All members receive live notifications for messages in this channel.</span>
+              </div>
+            </div>
           </div>
           
           <button type="button" class="chat-view-details-btn" onclick="openReportFromChat('${rep.id}')" title="Inspect full audit trail and report details">
@@ -4369,31 +4978,12 @@
           </button>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 260px;">
-            <div style="font-size: 15px; font-weight: 850; color: #0F172A; line-height: 1.35; margin-bottom: 3px;">
-              ${escapeHtml(rep.title)}
-            </div>
-            <div style="font-size: 12px; color: #64748B; display: flex; align-items: center; gap: 5px;">
-              <span>📍</span> <span>${escapeHtml(rep.location || 'Jharkhand')}</span>
-            </div>
+        <div>
+          <div style="font-size: 16px; font-weight: 850; color: #0F172A; line-height: 1.35; margin-bottom: 3px;">
+            ${escapeHtml(rep.title)}
           </div>
-
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <div class="chat-participant-pill" style="background: #F0FDF4; border: 1px solid #BBF7D0;">
-              <span style="font-size: 12.5px;">🎓</span>
-              <strong style="color: #166534; font-size: 11.5px;">Prof. R. K. Sharma</strong>
-              <span class="tag" style="color: #15803D;">· University Guide</span>
-            </div>
-            <div class="chat-participant-pill" style="background: #EFF6FF; border: 1px solid #BFDBFE;">
-              <span style="font-size: 12.5px;">🛡️</span>
-              <strong style="color: #1E40AF; font-size: 11.5px;">Shri S. K. Verma</strong>
-              <span class="tag" style="color: #2563EB;">· JanSetu Admin</span>
-            </div>
-            <div class="chat-participant-pill" style="background: #F8FAFC; border: 1px solid #E2E8F0; cursor: default;" title="Active Civic Observers">
-              <span style="font-size: 12px;">👥</span>
-              <span style="font-weight: 700; color: #475569; font-size: 11px;">+2 Members &gt;</span>
-            </div>
+          <div style="font-size: 12px; color: #64748B; display: flex; align-items: center; gap: 5px;">
+            <span>📍</span> <span>${escapeHtml(rep.location || 'Jharkhand')}</span>
           </div>
         </div>
       `;

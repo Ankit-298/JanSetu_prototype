@@ -21,18 +21,7 @@ const challengeSchema = new mongoose.Schema({
   category: {
     type: String,
     required: [true, 'Category is required'],
-    enum: [
-      'Education',
-      'Healthcare',
-      'Agriculture',
-      'Water Management',
-      'Sanitation & Environment',
-      'Rural Livelihoods',
-      'Accessibility',
-      'Urban Infrastructure',
-      'Public Administration',
-      'Energy & Technology'
-    ]
+    trim: true
   },
   aiSuggestedCategory: String,
   aiConfidenceScore: { type: Number, min: 0, max: 1 },
@@ -44,14 +33,17 @@ const challengeSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'submitted', 'under_review', 'validated', 'assigned', 'in_progress', 'testing', 'resolved', 'rejected', 'closed'],
+    enum: [
+      'draft', 'submitted', 'under_review', 'validated', 'assigned', 'in_progress', 'testing', 'resolved', 'rejected', 'closed',
+      'Open', 'Assigned', 'In Progress', 'Deployed', 'Rejected'
+    ],
     default: 'submitted'
   },
   // Submitter
   submittedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    default: null
   },
   submitterContact: {
     name: String,
@@ -183,12 +175,18 @@ const challengeSchema = new mongoose.Schema({
     startupsCreated: Number,
     implementationStatus: String
   },
-  // Support system
+  // Support & Praise social system
   supports: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
   supportCount: { type: Number, default: 0 },
+  praisedBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  praiseCount: { type: Number, default: 0 },
+  displayNamePublicly: { type: Boolean, default: true },
   commentCount: { type: Number, default: 0 },
   bookmarkedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   // Tripartite Problem Chat Messages (Citizen, University Taskforce, Admin)
@@ -219,6 +217,47 @@ const challengeSchema = new mongoose.Schema({
     similarityScore: Number,
     linkedAt: { type: Date, default: Date.now }
   }],
+  // University academic & collaboration fields
+  academicBrief: {
+    projectType: { type: String, default: 'Capstone Project' },
+    discipline: { type: String, default: 'Computer Science' },
+    duration: { type: String, default: '6-8 Months' },
+    semesterFit: { type: String, default: 'Semester 7-8' }
+  },
+  twinnedWith: [{
+    university: String,
+    region: String,
+    status: { type: String, default: 'In Progress' },
+    matchedAt: { type: Date, default: Date.now },
+    challenge: { type: mongoose.Schema.Types.ObjectId, ref: 'Challenge' }
+  }],
+  impact: { type: String, enum: ['High', 'Medium', 'Low'], default: 'Medium' },
+  forkable: {
+    university: String,
+    similarity: Number,
+    status: String,
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+    sourceProjectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' }
+  },
+  isBattleTestedSource: { type: Boolean, default: false },
+  interested: { type: Number, default: 0 },
+  bookmarked: { type: Boolean, default: false },
+  collaborationReady: { type: Boolean, default: false },
+  daysUnassigned: { type: Number, default: 0 },
+  authority: { type: String, default: '' },
+  department: { type: String, default: '' },
+  officialSlipId: { type: String, default: '' },
+  groundPainPoints: [String],
+  citizenNotes: String,
+  audioUrl: { type: String, default: '' },
+  evidenceMedia: [{
+    mediaType: { type: String, default: 'image' },
+    url: String,
+    filePath: { type: String, default: null },
+    title: String,
+    size: String,
+    timestamp: String
+  }],
   // Meta
   viewCount: { type: Number, default: 0 },
   isPublic: { type: Boolean, default: true },
@@ -229,13 +268,15 @@ const challengeSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-
-// Text search index
+// Text search & query indexes
 challengeSchema.index({ title: 'text', description: 'text', tags: 'text' });
-challengeSchema.index({ category: 1, status: 1, priority: 1 });
+challengeSchema.index({ category: 1, status: 1 });
+challengeSchema.index({ createdAt: -1 });
 challengeSchema.index({ 'location.district': 1 });
+challengeSchema.index({ 'location.coordinates.lat': 1, 'location.coordinates.lng': 1 });
 challengeSchema.index({ submittedBy: 1 });
 challengeSchema.index({ assignedUniversity: 1 });
+challengeSchema.index({ 'twinnedWith.university': 1 });
 
 // Virtual: days since submission
 challengeSchema.virtual('daysSinceSubmission').get(function() {
@@ -248,5 +289,5 @@ challengeSchema.virtual('isOverdue').get(function() {
   return Date.now() > this.deadline && this.status !== 'resolved' && this.status !== 'closed';
 });
 
-module.exports = mongoose.model('Challenge', challengeSchema);
+module.exports = mongoose.models.Challenge || mongoose.model('Challenge', challengeSchema);
 

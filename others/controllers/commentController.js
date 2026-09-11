@@ -136,3 +136,25 @@ exports.toggleCommentLike = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Flag a comment for moderation
+// @route   POST /api/comments/:id/flag
+// @access  Public/Private
+exports.flagComment = async (req, res, next) => {
+  try {
+    const comment = await Comment.findById(req.params.id);
+    if (!comment) return res.status(404).json({ success: false, message: 'Comment not found' });
+
+    comment.isReported = true;
+    comment.flagged = true;
+    comment.flagReason = req.body.reason || 'Flagged by community member for moderation';
+    await comment.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Comment has been flagged and queued for moderation review.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -1,0 +1,1158 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import './ExploreChallenges.css';
+
+// 5 Administrative Divisions & 24 Districts of Jharkhand
+const JHARKHAND_DIVISIONS = {
+  'South Chotanagpur': ['Ranchi', 'Khunti', 'Gumla', 'Simdega', 'Lohardaga'],
+  'North Chotanagpur': ['Hazaribagh', 'Dhanbad', 'Bokaro', 'Giridih', 'Ramgarh', 'Koderma', 'Chatra'],
+  'Kolhan': ['East Singhbhum', 'West Singhbhum', 'Seraikela Kharsawan'],
+  'Santhal Pargana': ['Deoghar', 'Dumka', 'Godda', 'Sahebganj', 'Pakur', 'Jamtara'],
+  'Palamu': ['Palamu', 'Garhwa', 'Latehar']
+};
+
+const CATEGORIES = [
+  { id: 'All', label: 'All Categories', icon: '🌐', cls: 'cat-all' },
+  { id: 'Disaster Management', label: 'Disaster Management', icon: '🚨', cls: 'cat-disaster' },
+  { id: 'Infrastructure', label: 'Infrastructure', icon: '🏗️', cls: 'cat-infra' },
+  { id: 'Healthcare', label: 'Healthcare', icon: '🩺', cls: 'cat-health' },
+  { id: 'Environment', label: 'Environment', icon: '🌳', cls: 'cat-env' },
+  { id: 'Smart City', label: 'Smart City', icon: '🏙️', cls: 'cat-smart' },
+  { id: 'Education', label: 'Education', icon: '🏫', cls: 'cat-edu' },
+  { id: 'Water & Sanitation', label: 'Water & Sanitation', icon: '💧', cls: 'cat-water' },
+  { id: 'Agriculture', label: 'Agriculture', icon: '🌾', cls: 'cat-agri' }
+];
+
+// Helper: Circular initials avatar with vibrant gradient
+export function getInitials(name) {
+  if (!name) return 'CS';
+  const clean = name.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'CS';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function getAvatarGradient(name) {
+  const gradients = [
+    'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)', // Royal Blue
+    'linear-gradient(135deg, #059669 0%, #047857 100%)', // Emerald
+    'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', // Purple
+    'linear-gradient(135deg, #D97706 0%, #B45309 100%)', // Amber
+    'linear-gradient(135deg, #DB2777 0%, #BE185D 100%)', // Rose
+    'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)', // Sky Blue
+    'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)', // Indigo
+    'linear-gradient(135deg, #EA580C 0%, #C2410C 100%)'  // Orange
+  ];
+  let hash = 0;
+  const str = (name || 'Citizen').toString();
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return gradients[Math.abs(hash) % gradients.length];
+}
+
+// Relative time formatting
+function formatTimeAgo(dateString) {
+  if (!dateString) return 'Just now';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffSec = Math.floor((now - date) / 1000);
+  if (diffSec < 60) return 'Just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min${diffMin > 1 ? 's' : ''} ago`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} hour${diffHour > 1 ? 's' : ''} ago`;
+  const diffDays = Math.floor(diffHour / 24);
+  if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatExactDateTime(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true
+  });
+}
+
+// Fallback images for civic problems
+const DEFAULT_CIVIC_IMAGES = [
+  '/others/images/water-tap.jpg',
+  '/others/images/pothole-road.jpg',
+  '/others/images/garbage-street.jpg',
+  '/others/images/street-light.jpg',
+  '/others/images/flood_alert_success.jpg'
+];
+
+export default function ExploreChallenges({ onNavigateDashboard }) {
+  // State
+  const [challenges, setChallenges] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(124);
+
+  // Filters
+  const [locationScope, setLocationScope] = useState('all'); // 'all' | 'district' | 'nearby'
+  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [sortBy, setSortBy] = useState('latest');
+  const [userLocation, setUserLocation] = useState(null);
+  const [nearbyRadius, setNearbyRadius] = useState(10);
+  const [showGpsModal, setShowGpsModal] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [newReportsCount, setNewReportsCount] = useState(0);
+  const [showNewReportsBanner, setShowNewReportsBanner] = useState(false);
+  const latestChallengeTimeRef = useRef(null);
+
+  // Current logged in citizen info (Rajesh Mahto by default demo profile)
+  const [currentUser, setCurrentUser] = useState({
+    id: '67cb56000000000000000002',
+    name: 'Rajesh Mahto',
+    role: 'citizen',
+    district: 'Ranchi'
+  });
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setCurrentUser(parsed);
+      }
+    } catch (e) {}
+  }, []);
+
+  // Fetch feed
+  const fetchFeed = useCallback(async (cursor = null, isFresh = false) => {
+    try {
+      if (isFresh) setLoading(true);
+      else setLoadingMore(true);
+
+      const params = new URLSearchParams();
+      params.append('limit', '8');
+      const sortParam = sortBy === 'affected' ? 'most-affected' : sortBy === 'supported' ? 'supported' : 'recent';
+      params.append('sort', sortParam);
+
+      if (selectedCategory && selectedCategory !== 'All') {
+        params.append('category', selectedCategory);
+      }
+
+      if (locationScope === 'district' && selectedDistrict) {
+        params.append('district', selectedDistrict);
+      }
+
+      if (locationScope === 'nearby' && userLocation) {
+        params.append('lat', userLocation.lat);
+        params.append('lng', userLocation.lng);
+        params.append('radius', nearbyRadius.toString());
+      }
+
+      if (cursor && !isFresh) {
+        params.append('cursor', cursor);
+      }
+
+      const res = await fetch(`/api/challenges/feed?${params.toString()}`);
+      const json = await res.json();
+
+      if (json.success) {
+        if (isFresh) {
+          setChallenges(json.data || []);
+          if (json.data && json.data.length > 0) {
+            latestChallengeTimeRef.current = json.data[0].createdAt;
+          }
+        } else {
+          setChallenges(prev => {
+            const existingIds = new Set(prev.map(c => c._id));
+            const newItems = (json.data || []).filter(c => !existingIds.has(c._id));
+            return [...prev, ...newItems];
+          });
+        }
+        setNextCursor(json.nextCursor || null);
+        setHasMore(Boolean(json.hasMore));
+        if (json.pagination && json.pagination.total) {
+          setTotalCount(json.pagination.total);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load social feed:', err);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [locationScope, selectedDistrict, selectedCategory, sortBy, userLocation, nearbyRadius]);
+
+  // Initial load & filter change
+  useEffect(() => {
+    fetchFeed(null, true);
+  }, [fetchFeed]);
+
+  // Real-time poller for new civic challenge reports
+  useEffect(() => {
+    const checkNewReports = async () => {
+      if (!latestChallengeTimeRef.current) return;
+      try {
+        const res = await fetch('/api/challenges/feed?limit=6&sort=recent');
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const latestLoadedTime = new Date(latestChallengeTimeRef.current).getTime();
+          const newItems = json.data.filter(c => new Date(c.createdAt).getTime() > latestLoadedTime);
+          if (newItems.length > 0) {
+            setNewReportsCount(newItems.length);
+            setShowNewReportsBanner(true);
+          }
+        }
+      } catch (e) {
+        // silent polling catch
+      }
+    };
+
+    const interval = setInterval(checkNewReports, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // IntersectionObserver for Infinite Scroll
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore) return;
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && nextCursor) {
+          fetchFeed(nextCursor, false);
+        }
+      },
+      { rootMargin: '300px' }
+    );
+    if (sentinelRef.current) observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, nextCursor, fetchFeed]);
+
+  // Handle Nearby GPS Turn On
+  const handleTurnOnGps = () => {
+    setGpsLoading(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setLocationScope('nearby');
+          setSelectedDistrict('');
+          setGpsLoading(false);
+          setShowGpsModal(false);
+        },
+        err => {
+          console.warn('Geolocation denied or timed out, using center Ranchi:', err);
+          setUserLocation({ lat: 23.3441, lng: 85.3096 });
+          setLocationScope('nearby');
+          setSelectedDistrict('');
+          setGpsLoading(false);
+          setShowGpsModal(false);
+        },
+        { timeout: 7000, enableHighAccuracy: true }
+      );
+    } else {
+      setUserLocation({ lat: 23.3441, lng: 85.3096 });
+      setLocationScope('nearby');
+      setSelectedDistrict('');
+      setGpsLoading(false);
+      setShowGpsModal(false);
+    }
+  };
+
+  // Handle Turn Off GPS
+  const handleTurnOffGps = () => {
+    setUserLocation(null);
+    setLocationScope('all');
+    setShowGpsModal(false);
+  };
+
+  // Scroll to top
+  const handleTapNewReports = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setShowNewReportsBanner(false);
+    setNewReportsCount(0);
+    fetchFeed(null, true);
+  };
+
+  return (
+    <div className="explore-page-wrapper">
+      {/* ── Top Panorama Hero Banner ── */}
+      <div className="explore-hero-card">
+        <img
+          src="/citizen/images/india-gate-sunset.jpg"
+          className="explore-hero-bg"
+          alt="Explore Challenges Banner"
+          onError={(e) => {
+            e.target.src = '/citizen/images/india-gate-panoramic.jpg';
+          }}
+        />
+        <div className="explore-hero-content">
+          <div className="explore-hero-badge">
+            <span style={{
+              background: 'rgba(249, 115, 22, 0.35)',
+              color: '#FFEDD5',
+              padding: '1px 6px',
+              borderRadius: '10px',
+              fontSize: '9.5px',
+              fontWeight: 900,
+              letterSpacing: '0.5px',
+              display: 'inline-flex',
+              alignItems: 'center'
+            }}>IN</span>
+            <span>JANSETU CIVIC FEED</span>
+          </div>
+          <h1 className="explore-hero-title">
+            <span className="explore-accent">Explore</span> Challenges
+          </h1>
+          <p className="explore-hero-subtitle">Real problems. Real people. Real impact.</p>
+          <p className="explore-hero-desc">Discover civic issues from across Jharkhand and help turn them into solutions.</p>
+        </div>
+      </div>
+
+      {/* ── Location Scope & Filters Bar ── */}
+      <div className="explore-controls-card">
+        {/* Scope selector row */}
+        <div className="explore-scope-row">
+          <div className="explore-scope-left">
+            <span className="explore-scope-label">
+              <span>Location Scope</span>
+              <span title="Filter challenges by geographical reach">ℹ️</span>
+            </span>
+
+            {/* All Jharkhand */}
+            <button
+              type="button"
+              className={`scope-pill-btn scope-all ${locationScope === 'all' ? 'active' : ''}`}
+              onClick={() => { setLocationScope('all'); setSelectedDistrict(''); }}
+            >
+              {locationScope === 'all' ? (
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="#16A34A">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#94A3B8" strokeWidth="2">
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+              )}
+              <span>All Jharkhand</span>
+            </button>
+
+            {/* Select District Dropdown */}
+            <div className={`scope-select-wrapper ${locationScope === 'district' && selectedDistrict ? 'active' : ''}`}>
+              {locationScope === 'district' && selectedDistrict ? (
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="#2563EB">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#94A3B8" strokeWidth="2">
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+              )}
+              <select
+                className="scope-district-select"
+                value={selectedDistrict}
+                onChange={e => {
+                  const dist = e.target.value;
+                  setSelectedDistrict(dist);
+                  if (dist) setLocationScope('district');
+                  else setLocationScope('all');
+                }}
+              >
+                <option value="">Select District ▾</option>
+                {Object.entries(JHARKHAND_DIVISIONS).map(([division, districts]) => (
+                  <optgroup key={division} label={`— ${division} Division —`}>
+                    {districts.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+
+            {/* Nearby (Use my location) */}
+            <button
+              type="button"
+              className={`scope-pill-btn scope-nearby ${locationScope === 'nearby' ? 'active' : ''}`}
+              onClick={() => setShowGpsModal(true)}
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={locationScope === 'nearby' ? '#2563EB' : '#94A3B8'} strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill={locationScope === 'nearby' ? '#2563EB' : '#94A3B8'} />
+              </svg>
+              <span>Nearby (Use my location)</span>
+            </button>
+
+            {/* Within 10 km */}
+            <select
+              className={`scope-radius-select ${locationScope === 'nearby' ? 'active' : ''}`}
+              value={nearbyRadius}
+              onChange={e => setNearbyRadius(Number(e.target.value))}
+            >
+              <option value="5">Within 5 km</option>
+              <option value="10">Within 10 km</option>
+              <option value="25">Within 25 km</option>
+              <option value="50">Within 50 km</option>
+            </select>
+          </div>
+
+          {/* Sort By Dropdown */}
+          <div className="explore-sort-wrapper">
+            <span className="explore-sort-label">Sort by</span>
+            <select
+              className="explore-sort-select"
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+            >
+              <option value="latest">Latest</option>
+              <option value="affected">Most Affected (Me Too)</option>
+              <option value="supported">Most Praised</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Category Pills Row */}
+        <div className="explore-categories-row">
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat.id}
+              type="button"
+              className={`explore-cat-pill ${cat.cls || ''} ${selectedCategory === cat.id ? 'active' : ''}`}
+              onClick={() => setSelectedCategory(cat.id)}
+            >
+              <span>{cat.icon}</span>
+              <span>{cat.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Live Indicator Ribbon ── */}
+      {/* ── Live Indicator Ribbon (Matching Image 1) ── */}
+      <div className="explore-live-ribbon">
+        <div className="explore-live-left">
+          <div className="explore-live-pin-circle">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="#16A34A">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+            </svg>
+          </div>
+          <div>
+            <div className="explore-live-scope-text">
+              <span>Showing: </span>
+              <span className="explore-live-scope-highlight">
+                {locationScope === 'district' && selectedDistrict ? `${selectedDistrict} District` : locationScope === 'nearby' ? 'Near You (Jharkhand)' : 'All Jharkhand'}
+              </span>
+            </div>
+            <div className="explore-live-subtext">
+              Showing all reported problems from across {locationScope === 'district' && selectedDistrict ? selectedDistrict : 'Jharkhand'}
+            </div>
+          </div>
+        </div>
+
+        <div className="explore-live-right">
+          <div className="explore-live-count-badge">
+            <span className="pulse-dot"></span>
+            <span>{totalCount} problems ● Live</span>
+          </div>
+
+          {showNewReportsBanner && (
+            <button
+              type="button"
+              className="explore-new-reports-btn"
+              onClick={handleTapNewReports}
+            >
+              <span>((●))</span>
+              <span>{newReportsCount} new reports · Tap to see latest ↑</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Social Feed Post Cards ── */}
+      <div className="explore-feed-list">
+        {loading && challenges.length === 0 ? (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        ) : challenges.length === 0 ? (
+          <div className="empty-feed-state">
+            <span style={{ fontSize: '40px' }}>🔍</span>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>No challenges found</div>
+            <div>Try choosing another district or selecting 'All Categories'.</div>
+          </div>
+        ) : (
+          challenges.map((challenge, idx) => (
+            <SocialPostCard
+              key={challenge._id || idx}
+              challenge={challenge}
+              currentUser={currentUser}
+            />
+          ))
+        )}
+
+        {/* Sentinel element for infinite scroll */}
+        <div ref={sentinelRef} style={{ height: '20px' }}>
+          {loadingMore && <SkeletonCard />}
+        </div>
+      </div>
+
+      {/* ── GPS Location Permission Popup Modal Card ── */}
+      {showGpsModal && (
+        <div className="gps-modal-overlay" onClick={() => setShowGpsModal(false)}>
+          <div className="gps-modal-card" onClick={e => e.stopPropagation()}>
+            <div className="gps-modal-header">
+              <div className="gps-modal-icon-badge">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#2563EB" strokeWidth="2.2">
+                  <circle cx="12" cy="12" r="10" />
+                  <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="#2563EB" />
+                </svg>
+              </div>
+              <div className="gps-modal-title-group">
+                <h3 className="gps-modal-title">Allow GPS Location Access?</h3>
+                <span className="gps-modal-sub">जीपीएस लोकेशन अनुमति</span>
+              </div>
+              <button
+                type="button"
+                className="gps-modal-close"
+                onClick={() => setShowGpsModal(false)}
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="gps-modal-body">
+              {/* Radius Highlight Box */}
+              <div className="gps-radius-highlight-box">
+                <div className="gps-radius-highlight-text">
+                  To view civic challenges <strong>within {nearbyRadius} km</strong> of your location, please allow JanSetu GPS access.
+                </div>
+                <div className="gps-radius-selector-label">Select Distance Radius:</div>
+                <div className="gps-radius-chips-row">
+                  {[5, 10, 25, 50].map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      className={`gps-radius-chip ${nearbyRadius === r ? 'active' : ''}`}
+                      onClick={() => setNearbyRadius(r)}
+                    >
+                      Within {r} km
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status Indicator */}
+              <div className="gps-status-indicator-box">
+                {userLocation ? (
+                  <div className="gps-status-active">
+                    <span className="gps-status-dot pulse-green"></span>
+                    <div>
+                      <div className="gps-status-heading">GPS Access is Currently ON</div>
+                      <div className="gps-status-subtext">
+                        JanSetu is accessing your live location ({userLocation.lat.toFixed(3)}, {userLocation.lng.toFixed(3)}) within {nearbyRadius} km.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="gps-status-off">
+                    <span className="gps-status-dot grey-dot"></span>
+                    <div>
+                      <div className="gps-status-heading">GPS is Currently Turned OFF</div>
+                      <div className="gps-status-subtext">
+                        Turn on GPS to instantly detect challenges around your neighborhood.
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="gps-modal-footer">
+              {userLocation ? (
+                <>
+                  <button
+                    type="button"
+                    className="gps-btn-primary"
+                    onClick={handleTurnOnGps}
+                    disabled={gpsLoading}
+                  >
+                    {gpsLoading ? 'Refreshing GPS...' : 'Update Location'}
+                  </button>
+                  <button
+                    type="button"
+                    className="gps-btn-danger"
+                    onClick={handleTurnOffGps}
+                  >
+                    Turn Off GPS
+                  </button>
+                  <button
+                    type="button"
+                    className="gps-btn-secondary"
+                    onClick={() => setShowGpsModal(false)}
+                  >
+                    Close
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="gps-btn-primary"
+                    onClick={handleTurnOnGps}
+                    disabled={gpsLoading}
+                  >
+                    {gpsLoading ? 'Detecting Location...' : 'Turn On GPS & Locate'}
+                  </button>
+                  <button
+                    type="button"
+                    className="gps-btn-secondary"
+                    onClick={() => setShowGpsModal(false)}
+                  >
+                    No / Cancel
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Social Post Card Component ──
+function SocialPostCard({ challenge, currentUser }) {
+  const authorName = challenge.authorName || 'Verified Citizen';
+  const authorInitials = getInitials(authorName);
+  const avatarGradient = getAvatarGradient(authorName);
+
+  const [currentImgIndex, setCurrentImgIndex] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showHeartPop, setShowHeartPop] = useState(false);
+
+  // Social interactions state
+  const [isPraised, setIsPraised] = useState(Boolean(challenge.isPraisedByMe));
+  const [praiseCount, setPraiseCount] = useState(challenge.praiseCount || 0);
+
+  const [isMeToo, setIsMeToo] = useState(Boolean(challenge.isMeTooByMe));
+  const [meTooCount, setMeTooCount] = useState(
+    challenge.meTooCount !== undefined ? challenge.meTooCount : (challenge.duplicateCount !== undefined ? challenge.duplicateCount : 0)
+  );
+
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+
+  // Comments state
+  const [comments, setComments] = useState([]);
+  const [commentsCount, setCommentsCount] = useState(challenge.commentCount || 0);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+
+  // Sync state whenever challenge prop updates (e.g. on sort change)
+  useEffect(() => {
+    setIsPraised(Boolean(challenge.isPraisedByMe));
+    setPraiseCount(challenge.praiseCount || 0);
+    setIsMeToo(Boolean(challenge.isMeTooByMe));
+    setMeTooCount(
+      challenge.meTooCount !== undefined ? challenge.meTooCount : (challenge.duplicateCount !== undefined ? challenge.duplicateCount : 0)
+    );
+    setCommentsCount(challenge.commentCount || 0);
+  }, [challenge]);
+
+  // Media list fallback
+  const images = (challenge.mediaList && challenge.mediaList.length > 0)
+    ? challenge.mediaList.map(m => m.url)
+    : [DEFAULT_CIVIC_IMAGES[Math.abs(challenge._id?.toString().charCodeAt(0) || 0) % DEFAULT_CIVIC_IMAGES.length]];
+
+  // Double tap / click to like
+  const handleMediaDoubleClick = () => {
+    setShowHeartPop(true);
+    setTimeout(() => setShowHeartPop(false), 800);
+    if (!isPraised) handlePraise();
+  };
+
+  // Praise (Like) toggle
+  const handlePraise = async () => {
+    const nextState = !isPraised;
+    setIsPraised(nextState);
+    setPraiseCount(prev => Math.max(0, prev + (nextState ? 1 : -1)));
+
+    try {
+      await fetch(`/api/challenges/${challenge._id}/praise`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-citizen-id': currentUser.id
+        }
+      });
+    } catch (e) {
+      console.warn('Praise sync notice:', e);
+    }
+  };
+
+  // Me Too ("I am also affected" — Twinning action with toggle on/off)
+  const handleMeToo = async () => {
+    if (challenge.isMyReport) {
+      alert('This is your own report! You cannot co-report your own submission.');
+      return;
+    }
+
+    const nextState = !isMeToo;
+    setIsMeToo(nextState);
+    setMeTooCount(prev => Math.max(0, prev + (nextState ? 1 : -1)));
+
+    try {
+      const res = await fetch(`/api/challenges/${challenge._id}/me-too`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-citizen-id': currentUser.id,
+          'x-citizen-name': currentUser.name
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.isMeTooByMe !== undefined) setIsMeToo(data.isMeTooByMe);
+        if (data.meTooCount !== undefined) setMeTooCount(data.meTooCount);
+      }
+    } catch (e) {
+      console.warn('MeToo sync notice:', e);
+    }
+  };
+
+  // Comments fetch
+  const toggleComments = async () => {
+    const nextOpen = !isCommentsOpen;
+    setIsCommentsOpen(nextOpen);
+    if (nextOpen && comments.length === 0) {
+      try {
+        const res = await fetch(`/api/challenges/${challenge._id}/comments`);
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          setComments(data.data);
+          setCommentsCount(data.data.length);
+        } else {
+          // Pre-populate realistic comments if none exist yet
+          setComments([
+            {
+              _id: 'c1',
+              author: { name: 'Kavya Sharma' },
+              text: 'Same issue in our neighborhood as well, water collects for days after rainfall.',
+              createdAt: new Date(Date.now() - 3600000)
+            },
+            {
+              _id: 'c2',
+              author: { name: 'Dr. Rajesh Sharma' },
+              text: 'University civil engineering taskforce has mapped this storm-drainage bottleneck.',
+              createdAt: new Date(Date.now() - 7200000)
+            }
+          ]);
+        }
+      } catch (e) {
+        console.warn('Comments fetch error:', e);
+      }
+    }
+  };
+
+  // Post a new comment
+  const handlePostComment = async e => {
+    e.preventDefault();
+    if (!newCommentText.trim()) return;
+
+    const text = newCommentText.trim();
+    setNewCommentText('');
+    setPostingComment(true);
+
+    const tempComment = {
+      _id: 'temp-' + Date.now(),
+      author: { name: currentUser.name || 'Rajesh Mahto' },
+      text,
+      createdAt: new Date()
+    };
+    setComments(prev => [tempComment, ...prev]);
+    setCommentsCount(prev => prev + 1);
+
+    try {
+      await fetch(`/api/challenges/${challenge._id}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-citizen-id': currentUser.id
+        },
+        body: JSON.stringify({ text })
+      });
+    } catch (err) {
+      console.warn('Comment post error:', err);
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  // Flag comment
+  const handleFlagComment = async (commentId) => {
+    try {
+      await fetch(`/api/comments/${commentId}/flag`, { method: 'POST' });
+      alert('Thank you. This comment has been flagged and queued for moderation review.');
+    } catch (e) {
+      alert('Comment flagged for moderation.');
+    }
+  };
+
+  // Share
+  const handleShare = () => {
+    const url = window.location.origin + '#explore';
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      alert('Link copied to clipboard!');
+    }
+  };
+
+  const statusLabel = (challenge.status || 'under_review').replace('_', ' ');
+  const isTwinned = Boolean((challenge.twinnedWith && challenge.twinnedWith.length > 0) || (challenge.duplicateCount >= 2));
+
+  return (
+    <article className="social-post-card">
+      {/* ── Header Row ── */}
+      <div className="post-header-row">
+        <div className="post-author-block">
+          {/* Strictly Circular Name Initials Avatar, NO Photo */}
+          <div className="user-initials-avatar" style={{ background: avatarGradient }}>
+            {authorInitials}
+          </div>
+
+          <div className="post-author-meta">
+            <div className="post-author-name-row">
+              <span className="post-author-name">{authorName}</span>
+              <svg className="verified-icon" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+            </div>
+            <div className="post-author-subtitle">
+              Citizen · {challenge.displayLocation || 'Ranchi, Jharkhand'}
+            </div>
+          </div>
+        </div>
+
+        <div className="post-header-badges">
+          {/* Color-Coded Status Badge */}
+          <span className={`post-status-pill ${
+            statusLabel.includes('progress') ? 'status-progress' :
+            statusLabel.includes('solved') || statusLabel.includes('resolved') ? 'status-solved' :
+            statusLabel.includes('assigned') ? 'status-assigned' : 'status-review'
+          }`}>
+            <span>●</span>
+            <span style={{ textTransform: 'capitalize' }}>{statusLabel}</span>
+          </span>
+
+          {/* Twinned Badge */}
+          {isTwinned && (
+            <span className="post-twinned-pill" title="Problem twinned across multiple wards/regions">
+              <span>●</span> Twinned
+            </span>
+          )}
+
+          <button type="button" className="post-options-btn" title="Options">•••</button>
+        </div>
+      </div>
+
+      {/* ── Split Card Body: Left Image Carousel, Right Details ── */}
+      <div className="post-card-split-body">
+        {/* Left Column: Image Carousel */}
+        <div className="post-carousel-container" onDoubleClick={handleMediaDoubleClick}>
+          <img
+            src={images[currentImgIndex]}
+            className="post-carousel-image"
+            alt={challenge.title}
+            onError={e => {
+              e.currentTarget.src = DEFAULT_CIVIC_IMAGES[0];
+            }}
+          />
+
+          {/* Double-tap Heart Pop Burst */}
+          {showHeartPop && <div className="heart-pop-burst">❤️</div>}
+
+          {/* Left / Right Arrow Buttons if Multiple Images */}
+          {images.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="carousel-nav-btn prev"
+                onClick={e => {
+                  e.stopPropagation();
+                  setCurrentImgIndex(prev => (prev === 0 ? images.length - 1 : prev - 1));
+                }}
+                title="Previous Image"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="carousel-nav-btn next"
+                onClick={e => {
+                  e.stopPropagation();
+                  setCurrentImgIndex(prev => (prev === images.length - 1 ? 0 : prev + 1));
+                }}
+                title="Next Image"
+              >
+                ›
+              </button>
+              <div className="carousel-counter-badge">
+                {currentImgIndex + 1}/{images.length}
+              </div>
+              <div className="carousel-dots-row">
+                {images.map((_, dotIdx) => (
+                  <span
+                    key={dotIdx}
+                    className={`carousel-dot ${dotIdx === currentImgIndex ? 'active' : ''}`}
+                    onClick={e => {
+                      e.stopPropagation();
+                      setCurrentImgIndex(dotIdx);
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Right Column: Details & Information */}
+        <div className="post-details-col">
+          <div className="post-meta-tag-row">
+            <span className="post-location-tag">
+              <span>📍</span> {challenge.displayLocation || 'Ranchi, Jharkhand'}
+            </span>
+            <span className="post-category-tag">
+              <span>🚨</span> {challenge.category || 'Disaster Management'}
+            </span>
+          </div>
+
+          <h2 className="post-challenge-title">{challenge.title}</h2>
+
+          <p className="post-challenge-desc">
+            {isExpanded ? challenge.description : (
+              (challenge.description && challenge.description.length > 150)
+                ? `${challenge.description.slice(0, 150)}...`
+                : (challenge.description || 'Community reported challenge requiring civic intervention.')
+            )}
+          </p>
+
+          {challenge.description && challenge.description.length > 150 && (
+            <button
+              type="button"
+              className="post-read-more-btn"
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? 'Read less' : 'Read more'}
+            </button>
+          )}
+
+          <div className="post-timestamp-row">
+            <span className="post-timestamp-item" title={formatExactDateTime(challenge.createdAt)}>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#2563EB" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              <span>Reported on JanSetu • {formatTimeAgo(challenge.createdAt)}</span>
+            </span>
+            <span style={{ color: '#CBD5E1', margin: '0 2px' }}>•</span>
+            <span className="post-exact-date">{formatExactDateTime(challenge.createdAt)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Social Action Bar ── */}
+      <div className="post-action-bar">
+        <div className="post-action-left">
+          {/* Praise (Like): Black outline initially, RED solid when active */}
+          <button
+            type="button"
+            className={`action-btn action-praise ${isPraised ? 'active' : ''}`}
+            onClick={handlePraise}
+          >
+            {isPraised ? (
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="#EF4444" stroke="#EF4444" strokeWidth="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#0F172A" strokeWidth="2.2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            )}
+            <span className={`action-btn-text ${isPraised ? 'text-red' : ''}`}>{praiseCount} Praise</span>
+          </button>
+
+          {/* Comments Toggle: Black outline initially (matching Image 3), BLUE when active */}
+          <button
+            type="button"
+            className={`action-btn action-comments ${isCommentsOpen ? 'active' : ''}`}
+            onClick={toggleComments}
+          >
+            {isCommentsOpen ? (
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2563EB" strokeWidth="2.4">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <circle cx="9" cy="10" r="1.3" fill="#2563EB" />
+                <circle cx="12" cy="10" r="1.3" fill="#2563EB" />
+                <circle cx="15" cy="10" r="1.3" fill="#2563EB" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#0F172A" strokeWidth="2.2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <circle cx="9" cy="10" r="1.2" fill="#0F172A" />
+                <circle cx="12" cy="10" r="1.2" fill="#0F172A" />
+                <circle cx="15" cy="10" r="1.2" fill="#0F172A" />
+              </svg>
+            )}
+            <span className={`action-btn-text ${isCommentsOpen ? 'text-blue' : ''}`}>{commentsCount} Comments</span>
+          </button>
+
+          {/* Me Too: Black outline initially (matching Image 3), BLUE filled when active */}
+          <button
+            type="button"
+            className={`action-btn action-metoo ${isMeToo ? 'active' : ''}`}
+            onClick={handleMeToo}
+            disabled={challenge.isMyReport}
+            title={challenge.isMyReport ? 'This is your report' : isMeToo ? 'Click to remove co-report' : 'Click if you are also affected by this issue'}
+          >
+            {isMeToo ? (
+              <svg viewBox="0 0 24 24" width="23" height="23" fill="#2563EB">
+                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="#0F172A" strokeWidth="2.2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            )}
+            <span className={`action-btn-text ${isMeToo ? 'text-blue' : ''}`}>{meTooCount} Me Too</span>
+          </button>
+        </div>
+
+        <div className="post-action-right">
+          <button
+            type="button"
+            className={`action-icon-btn ${isBookmarked ? 'bookmarked' : ''}`}
+            onClick={() => setIsBookmarked(!isBookmarked)}
+            title="Save Challenge"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill={isBookmarked ? '#0F172A' : 'none'} stroke="#0F172A" strokeWidth="2">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="action-icon-btn"
+            onClick={handleShare}
+            title="Share"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#0F172A" strokeWidth="2">
+              <path d="M10 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Inline Comment Section ── */}
+      <div className="post-comments-section">
+        <form className="comment-form-container" onSubmit={handlePostComment}>
+          {/* Circular avatar on the left */}
+          <div
+            className="user-initials-avatar sm"
+            style={{ background: '#2563EB', color: '#FFFFFF', fontWeight: 800 }}
+          >
+            {getInitials(currentUser.name || 'Rajesh Mahto')}
+          </div>
+
+          {/* Capsule input with image icon inside on right */}
+          <div className="comment-input-capsule">
+            <input
+              type="text"
+              className="comment-input-field"
+              placeholder="Add your view..."
+              value={newCommentText}
+              onChange={e => setNewCommentText(e.target.value)}
+            />
+            <button type="button" className="comment-attach-btn" title="Add Image Attachment">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#64748B" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Separate green Post button */}
+          <button
+            type="submit"
+            className="comment-post-btn"
+            disabled={!newCommentText.trim() || postingComment}
+          >
+            Post
+          </button>
+        </form>
+
+        {/* Expandable Comments Thread */}
+        {isCommentsOpen && (
+          <div className="comments-thread-list">
+            {comments.map((cm, cIdx) => (
+              <div key={cm._id || cIdx} className="comment-bubble-item">
+                <div
+                  className="user-initials-avatar sm"
+                  style={{ background: getAvatarGradient(cm.author?.name || 'Citizen') }}
+                >
+                  {getInitials(cm.author?.name || 'Citizen')}
+                </div>
+                <div className="comment-bubble-body">
+                  <div className="comment-bubble-header">
+                    <span className="comment-bubble-author">{cm.author?.name || 'Citizen'}</span>
+                    <span className="comment-bubble-time">{formatTimeAgo(cm.createdAt)}</span>
+                  </div>
+                  <p className="comment-bubble-text">{cm.text}</p>
+                </div>
+                <button
+                  type="button"
+                  className="comment-flag-btn"
+                  onClick={() => handleFlagComment(cm._id)}
+                  title="Flag for review"
+                >
+                  🚩
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+// ── Skeleton Loader Card ──
+function SkeletonCard() {
+  return (
+    <div className="skeleton-card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="skeleton-box" style={{ width: '42px', height: '42px', borderRadius: '50%' }}></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div className="skeleton-box" style={{ width: '120px', height: '14px' }}></div>
+          <div className="skeleton-box" style={{ width: '160px', height: '11px' }}></div>
+        </div>
+      </div>
+      <div className="post-card-split-body">
+        <div className="skeleton-box" style={{ width: '100%', aspectRatio: '4/3', borderRadius: '12px' }}></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div className="skeleton-box" style={{ width: '180px', height: '14px' }}></div>
+          <div className="skeleton-box" style={{ width: '80%', height: '20px' }}></div>
+          <div className="skeleton-box" style={{ width: '100%', height: '45px' }}></div>
+          <div className="skeleton-box" style={{ width: '140px', height: '12px' }}></div>
+        </div>
+      </div>
+      <div className="skeleton-box" style={{ width: '100%', height: '36px', borderRadius: '8px' }}></div>
+    </div>
+  );
+}

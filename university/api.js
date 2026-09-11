@@ -24,12 +24,12 @@ const upload = multer({ storage: storage });
 
 // Real central models
 const Challenge = require('../others/models/Challenge');
+const Problem = Challenge; // Single source of truth: Problem is Challenge
 const User = require('../others/models/User');
 const CentralNotification = require('../others/models/Notification');
 
 // University database models
 const {
-  Problem,
   Project,
   Team,
   Mentor,
@@ -210,54 +210,58 @@ router.post('/problems/review/:notifId/accept', async (req, res) => {
     const academicBrief = computeAcademicBrief(title, description, priority, category);
     const impact = mapImpact(priority);
 
-    // 1. Create Problem document in University DB
-    const problem = new Problem({
-      title,
-      description,
-      category,
-      location,
-      impact,
-      status: 'Open',
-      sourceCitizenProblemId: citizenProblem?._id || notif.citizenProblemId,
-      submitterContact: citizenProblem?.submitterContact || notif.previewSnapshot?.submitterContact,
-      attachments: citizenProblem?.attachments || notif.previewSnapshot?.attachments || [],
-      filePath: citizenProblem?.filePath || (citizenProblem?.attachments && citizenProblem.attachments[0]?.filePath) || null,
-      beforeImage: citizenProblem?.resolutionProof?.beforeImage || citizenProblem?.coverImage || citizenProblem?.image || (citizenProblem?.attachments && citizenProblem.attachments[0]?.url) || '',
-      academicBrief,
-      interested: 1,
-      bookmarked: false,
-      collaborationReady: false,
-      daysUnassigned: 0,
-      twinnedWith: []
-    });
+    // 1. Find or obtain Problem document
+    let problem = citizenProblem;
+    if (!problem && notif.citizenProblemId) {
+      problem = await Problem.findById(notif.citizenProblemId);
+    }
+
+    if (!problem) {
+      problem = new Problem({
+        title,
+        description,
+        category,
+        status: 'assigned',
+        submitterContact: notif.previewSnapshot?.submitterContact,
+        attachments: notif.previewSnapshot?.attachments || [],
+        filePath: (notif.previewSnapshot?.attachments && notif.previewSnapshot.attachments[0]?.filePath) || null,
+        beforeImage: notif.previewSnapshot?.attachments && notif.previewSnapshot.attachments[0]?.url || '',
+        academicBrief,
+        impact,
+        interested: 1,
+        bookmarked: false,
+        collaborationReady: false,
+        daysUnassigned: 0,
+        twinnedWith: []
+      });
+    } else {
+      problem.status = 'assigned';
+      if (!problem.academicBrief) problem.academicBrief = academicBrief;
+      if (!problem.impact) problem.impact = impact;
+      if (problem.interested === undefined || problem.interested === null) problem.interested = 1;
+    }
 
     // 2. Run Twinning and Fork Checks
     await runTwinningCheck(problem);
     await runForkCheck(problem);
     await problem.save();
 
-    // 3. Update citizen problem in central DB
-    if (citizenProblem) {
-      citizenProblem.status = 'assigned';
-      await citizenProblem.save();
-
-      // Notify citizen in CentralNotification
-      try {
-        const citizenUser = citizenProblem.submittedBy || (await User.findOne({ role: 'citizen' }))?._id;
-        if (citizenUser) {
-          const citizenNotif = new CentralNotification({
-            recipient: citizenUser,
-            type: 'challenge_assigned',
-            title: 'Problem Accepted by University',
-            message: `Your reported problem "${title}" has been accepted by IIT Delhi faculty and published for student project teams.`,
-            data: { challengeId: citizenProblem._id },
-            priority: 'high'
-          });
-          await citizenNotif.save();
-        }
-      } catch (e) {
-        console.error('Citizen notification error:', e);
+    // 3. Notify citizen in CentralNotification
+    try {
+      const citizenUser = problem.submittedBy || (await User.findOne({ role: 'citizen' }))?._id;
+      if (citizenUser) {
+        const citizenNotif = new CentralNotification({
+          recipient: citizenUser,
+          type: 'challenge_assigned',
+          title: 'Problem Accepted by University',
+          message: `Your reported problem "${title}" has been accepted by IIT Delhi faculty and published for student project teams.`,
+          data: { challengeId: problem._id },
+          priority: 'high'
+        });
+        await citizenNotif.save();
       }
+    } catch (e) {
+      console.error('Citizen notification error:', e);
     }
 
     // 4. Update university notification status
@@ -377,17 +381,34 @@ function enrichProblemDoc(p) {
   obj.submitterRole = obj.submitterRole || 'Primary Submitter';
   obj.officialSlipId = obj.officialSlipId || `SLIP-${obj.challengeId}`;
 
-  if (!obj.fullLocation || !obj.fullLocation.district) {
-    const locParts = (obj.location || 'West Singhbhum, Jharkhand').split(',');
-    obj.fullLocation = {
-      village: 'Chaibasa Village',
-      block: 'Chaibasa Block',
-      district: locParts[0]?.trim() || 'West Singhbhum',
-      state: locParts[1]?.trim() || 'Jharkhand',
-      pincode: '833201',
-      address: `${locParts[0]?.trim() || 'West Singhbhum'}, ${locParts[1]?.trim() || 'Jharkhand'}`,
-      coordinates: { lat: 22.5544, lng: 85.8096 }
-    };
+  // Handle both object and string location safely
+  if (obj.location && typeof obj.location === 'object') {
+    const locObj = obj.location;
+    if (!obj.fullLocation || !obj.fullLocation.district) {
+      obj.fullLocation = {
+        village: locObj.city || locObj.district || 'Chaibasa Village',
+        block: 'Chaibasa Block',
+        district: locObj.district || 'West Singhbhum',
+        state: locObj.state || 'Jharkhand',
+        pincode: locObj.pincode || '833201',
+        address: locObj.address || `${locObj.district || ''}, ${locObj.state || ''}`.replace(/^, |, $/g, ''),
+        coordinates: locObj.coordinates || { lat: 22.5544, lng: 85.8096 }
+      };
+    }
+    obj.location = `${locObj.district || locObj.city || ''}, ${locObj.state || ''}`.replace(/^, |, $/g, '') || locObj.address || 'West Singhbhum, Jharkhand';
+  } else {
+    const locParts = (typeof obj.location === 'string' ? obj.location : 'West Singhbhum, Jharkhand').split(',');
+    if (!obj.fullLocation || !obj.fullLocation.district) {
+      obj.fullLocation = {
+        village: 'Chaibasa Village',
+        block: 'Chaibasa Block',
+        district: locParts[0]?.trim() || 'West Singhbhum',
+        state: locParts[1]?.trim() || 'Jharkhand',
+        pincode: '833201',
+        address: `${locParts[0]?.trim() || 'West Singhbhum'}, ${locParts[1]?.trim() || 'Jharkhand'}`,
+        coordinates: { lat: 22.5544, lng: 85.8096 }
+      };
+    }
   }
 
   if (!obj.authority) {

@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
-const { Problem, Project, Team, Mentor, Resource, Notification, UniversityProfile: User, Leaderboard } = require('./database');
+const Problem = require('../others/models/Challenge');
+const { Project, Team, Mentor, Resource, Notification, UniversityProfile: User, Leaderboard } = require('./database');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/innovatesphere';
 

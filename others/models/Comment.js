@@ -30,7 +30,9 @@ const commentSchema = new mongoose.Schema({
   isDeleted: { type: Boolean, default: false },
   deletedAt: Date,
   likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  isReported: { type: Boolean, default: false }
+  isReported: { type: Boolean, default: false },
+  flagged: { type: Boolean, default: false },
+  flagReason: { type: String, default: '' }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
