@@ -245,39 +245,46 @@ const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
  * Semantic Problem Civic Concept Clusters for Meaning Matching
  * Captures what the citizen is expressing regardless of phrasing or sentence structure
  */
-const CIVIC_SEMANTIC_CLUSTERS = {
-  water_pipeline: [
-    'water', 'paani', 'pani', 'pipe', 'pipeline', 'leak', 'leakage', 'phat', 'burst',
-    'tap', 'chapakal', 'handpump', 'nal', 'tank', 'peene', 'drinking', 'bahaav', 'supply',
-    'jal', 'peyjal', 'sewage', 'drainage', 'naali', 'gutter', 'drain', 'naala', 'dirty water',
-    'ganda paani', 'boring', 'waterlogging', 'overflow', 'पानी', 'जल', 'नल', 'पाइप', 'लीकेज',
-    'नाली', 'चापाकल', 'हैंडपंप', 'गंदा पानी', 'पेयजल', 'जलभराव'
+const CIVIC_TOPIC_CLUSTERS = {
+  road: ['road', 'sadak', 'street', 'rasta', 'highway', 'lane', 'path', 'सड़क', 'रोड', 'रास्ता'],
+  water: ['water', 'paani', 'pani', 'pipe', 'tap', 'nal', 'पानी', 'जल', 'नल', 'पाइप'],
+  electricity: ['bijli', 'power', 'electricity', 'light', 'current', 'transformer', 'बिजली', 'लाइट', 'करंट'],
+  sanitation: ['garbage', 'kachra', 'trash', 'dustbin', 'safai', 'कचरा', 'कूड़ा', 'सफाई'],
+  health: ['hospital', 'doctor', 'clinic', 'davai', 'अस्पताल', 'डॉक्टर', 'दवाई']
+};
+
+const SPECIFIC_DEFECT_CLUSTERS = {
+  potholes_road_damage: [
+    'gaddha', 'gaddhe', 'gaddhon', 'pothole', 'potholes', 'crater', 'broken road', 'tuta', 'tuti',
+    'damage', 'damaged', 'pit', 'ditch', 'gadhe', 'accident', 'गड्ढा', 'गड्ढे', 'गड्ढों', 'टूटी',
+    'टूटा', 'गड्ढो', 'क्षतिग्रस्त', 'दुर्घटना'
   ],
-  road_infrastructure: [
-    'road', 'sadak', 'street', 'rasta', 'gaddha', 'gaddhe', 'pothole', 'potholes', 'crater',
-    'broken road', 'highway', 'pul', 'pulia', 'bridge', 'culvert', 'asphalt', 'tar', 'kichad',
-    'mud', 'path', 'lane', 'divider', 'ditch', 'accident', 'speed breaker', 'सड़क', 'रोड',
-    'रास्ता', 'गड्ढा', 'गड्ढे', 'गड्ढों', 'टूटी', 'टूटा', 'खराब', 'दुर्घटना', 'पुल', 'पुलिया', 'कीचड़'
+  road_waterlogging_mud: [
+    'waterlogging', 'jalbhavar', 'kichad', 'mud', 'stagnant water', 'water on road', 'कीचड़', 'जलभराव'
   ],
-  electricity_power: [
-    'bijli', 'power', 'electricity', 'light', 'current', 'voltage', 'transformer', 'pole',
-    'khamba', 'wire', 'taar', 'short circuit', 'spark', 'blackout', 'andhera', 'meter',
-    'phase', 'load shedding', 'outage', 'line', 'बिजली', 'ट्रांसफार्मर', 'खंभा', 'तार', 'करंट',
-    'अंधेरा', 'लाइट', 'वोल्टेज'
+  water_pipe_leakage: [
+    'leak', 'leakage', 'phat gaya', 'burst', 'pipe burst', 'pipeline leak', 'water waste',
+    'पाइप फटा', 'लीकेज', 'पाइप लीकेज'
   ],
-  sanitation_waste: [
-    'garbage', 'kachra', 'trash', 'dustbin', 'safai', 'cleaning', 'waste', 'kuda', 'badbu',
-    'smell', 'dump', 'sanitation', 'litter', 'filth', 'dumping', 'कचरा', 'कूड़ा', 'सफाई',
-    'कूड़ेदान', 'बदबू', 'दुर्गंध'
+  water_shortage_chapakal: [
+    'no water', 'pani nahi', 'paani nahi', 'chapakal band', 'handpump kharab', 'peene ka paani',
+    'supply band', 'dry tap', 'chaapaakal', 'चापाकल खराब', 'पानी नहीं', 'हैंडपंप खराब'
   ],
-  healthcare_medical: [
-    'hospital', 'doctor', 'clinic', 'davai', 'medicine', 'ilaj', 'swasthya', 'health',
-    'ambulance', 'bed', 'nurse', 'dispensary', 'patient', 'treatment', 'अस्पताल', 'डॉक्टर',
-    'दवाई', 'इलाज', 'स्वास्थ्य', 'मरीज'
+  street_light_outage: [
+    'street light', 'light nahi', 'light band', 'andhera', 'darkness', 'bulb', 'pole light',
+    'स्ट्रीट लाइट', 'लाइट बंद', 'अंधेरा'
   ],
-  education_school: [
-    'school', 'shiksha', 'teacher', 'padhai', 'student', 'vidyalaya', 'class', 'classroom',
-    'bench', 'desk', 'midday', 'स्कूल', 'शिक्षा', 'शिक्षक', 'पढ़ाई', 'छात्र'
+  electricity_transformer_hazard: [
+    'transformer', 'voltage', 'spark', 'current', 'wire tuta', 'hanging wire', 'short circuit',
+    'ट्रांसफार्मर', 'हाई वोल्टेज', 'करंट', 'तार टूटा'
+  ],
+  garbage_waste_dump: [
+    'garbage', 'kachra', 'trash', 'dustbin', 'safai nahi', 'kuda', 'dumping', 'badbu', 'smell',
+    'कचरा', 'कूड़ा', 'कूड़ेदान', 'सफाई नहीं', 'दुर्गंध'
+  ],
+  sewage_overflow_drain: [
+    'drain overflow', 'naali overflow', 'gutter', 'naala jaam', 'sewer', 'naali band', 'dirty water',
+    'नाली जाम', 'सीवर', 'गंदा पानी'
   ]
 };
 
@@ -286,7 +293,8 @@ const CIVIC_STOPWORDS = new Set([
   'aur', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'from', 'a', 'an', 'the',
   'is', 'are', 'was', 'were', 'it', 'this', 'that', 'there', 'here', 'very', 'bahut', 'bhi',
   'kuch', 'hoga', 'raha', 'rahi', 'rahe', 'karna', 'karo', 'problem', 'samasya', 'issue',
-  'complaint', 'please', 'help', 'kripya', 'area', 'near', 'pass'
+  'complaint', 'please', 'help', 'kripya', 'area', 'near', 'pass', 'road', 'sadak', 'street',
+  'rasta', 'water', 'paani', 'pani', 'bijli', 'light'
 ]);
 
 function extractInformativeTokens(text = '') {
@@ -302,42 +310,47 @@ function computeSemanticOverlap(textA = '', textB = '') {
   const cleanB = textB.toLowerCase();
   if (!cleanA.trim() || !cleanB.trim()) return 0;
 
-  // 1. Check shared concept clusters (meaning independent of sentence structure)
-  let sharedClusters = 0;
-  for (const clusterWords of Object.values(CIVIC_SEMANTIC_CLUSTERS)) {
-    const hasA = clusterWords.some(w => cleanA.includes(w));
-    const hasB = clusterWords.some(w => cleanB.includes(w));
+  // 1. Check shared specific defect clusters (the real problem, not just the generic location)
+  let defectMatches = 0;
+  for (const words of Object.values(SPECIFIC_DEFECT_CLUSTERS)) {
+    const hasA = words.some(w => cleanA.includes(w));
+    const hasB = words.some(w => cleanB.includes(w));
     if (hasA && hasB) {
-      sharedClusters++;
+      defectMatches++;
     }
   }
 
-  // 2. Token overlap ratio
+  // 2. Token overlap ratio on specific informative words
   const tokensA = extractInformativeTokens(cleanA);
   const tokensB = extractInformativeTokens(cleanB);
   let jaccard = 0;
   if (tokensA.length > 0 && tokensB.length > 0) {
     const setB = new Set(tokensB);
     const common = tokensA.filter(t => setB.has(t));
-    jaccard = common.length / Math.max(1, new Set([...tokensA, ...tokensB]).size);
+    jaccard = common.length / Math.max(tokensA.length, tokensB.length);
+  }
+
+  // If there are no matching problem defects and no significant token overlap, description does NOT match!
+  if (defectMatches === 0 && jaccard < 0.25) {
+    return 0;
   }
 
   let score = 0;
-  if (sharedClusters > 0) {
-    score += Math.min(36, sharedClusters * 30);
+  if (defectMatches > 0) {
+    score += Math.min(38, defectMatches * 35);
   }
-  score += Math.min(15, jaccard * 30);
+  score += Math.min(12, Math.round(jaccard * 25));
 
   return Math.min(45, score);
 }
 
 /**
  * Duplicate Problem Detection with strict 70+ Score Threshold
- * Matches Title semantic relevance + Description semantic intent (meaning-based)
+ * Enforces that BOTH Title AND Description must match (heading alone NEVER triggers duplicate)
  */
 const findSimilarChallenges = (newReport, candidateList = []) => {
   const newTitle = (newReport.title || '').trim();
-  const newDesc = (newReport.description || newReport.desc || newTitle).trim();
+  const newDesc = (newReport.description || newReport.desc || '').trim();
   const newCat = (newReport.category || classifyChallenge(newTitle, newDesc).category || '').toLowerCase();
   
   const extractDist = (obj) => {
@@ -356,14 +369,24 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
 
   for (const cand of candidateList) {
     const candTitle = (cand.title || '').trim();
-    const candDesc = (cand.description || cand.desc || candTitle).trim();
+    const candDesc = (cand.description || cand.desc || '').trim();
     const candCat = (cand.category || '').toLowerCase();
     const candLoc = cand.location || {};
     const candDist = extractDist(cand);
     const candBlock = (candLoc.block || cand.block || '').toLowerCase();
     const candVillage = (candLoc.village || cand.village || '').toLowerCase();
 
-    // 1. Title Match (up to 35 points)
+    // 1. Description Semantic Intent Match (up to 45 points)
+    // CRITICAL: Matches the actual problem details, not just sentence structure
+    const descScore = computeSemanticOverlap(newDesc, candDesc);
+
+    // GATEKEEPER 1: If description does NOT match (score < 25), it CANNOT be a duplicate!
+    // A matching heading alone will NEVER flag a duplicate!
+    if (descScore < 25) {
+      continue;
+    }
+
+    // 2. Title Match (up to 35 points)
     let titleScore = 0;
     const cleanNewTitle = newTitle.toLowerCase().replace(/[^\w\s\u0900-\u097F]/g, ' ').trim();
     const cleanCandTitle = candTitle.toLowerCase().replace(/[^\w\s\u0900-\u097F]/g, ' ').trim();
@@ -382,27 +405,27 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
           tokenRatio = common.length / Math.max(titleTokensA.length, titleTokensB.length);
         }
 
-        // Semantic Intent Cluster check between titles (e.g. road/gaddha in different languages)
-        let clusterMatch = false;
-        for (const clusterWords of Object.values(CIVIC_SEMANTIC_CLUSTERS)) {
-          const hasA = clusterWords.some(w => cleanNewTitle.includes(w));
-          const hasB = clusterWords.some(w => cleanCandTitle.includes(w));
+        let topicMatch = false;
+        for (const words of Object.values(CIVIC_TOPIC_CLUSTERS)) {
+          const hasA = words.some(w => cleanNewTitle.includes(w));
+          const hasB = words.some(w => cleanCandTitle.includes(w));
           if (hasA && hasB) {
-            clusterMatch = true;
+            topicMatch = true;
             break;
           }
         }
-        if (clusterMatch) {
-          titleScore = Math.max(28, Math.round(tokenRatio * 32) + 22);
+        if (topicMatch) {
+          titleScore = Math.max(26, Math.round(tokenRatio * 30) + 20);
         } else if (tokenRatio > 0) {
-          titleScore = Math.round(tokenRatio * 30);
+          titleScore = Math.round(tokenRatio * 25);
         }
       }
     }
 
-    // 2. Description Semantic Intent Match (up to 45 points)
-    // Matches what the description means, independent of sentence structure
-    const descScore = computeSemanticOverlap(newDesc, candDesc);
+    // GATEKEEPER 2: Title must also be relevant (score >= 15)
+    if (titleScore < 15) {
+      continue;
+    }
 
     // 3. Category Match (up to 10 points)
     let catScore = 0;
@@ -429,7 +452,7 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
       if (newVillage && candVillage && newVillage === candVillage) locScore = 10;
       else if (newBlock && candBlock && newBlock === candBlock) locScore = 7;
       else if (newDist && candDist && (newDist === candDist || newDist.includes(candDist) || candDist.includes(newDist))) locScore = 10;
-      else locScore = 5; // Default nearby locality
+      else locScore = 5;
     }
 
     // Total composite similarity score (0 - 100)

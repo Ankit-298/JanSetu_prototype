@@ -4509,35 +4509,38 @@
         return;
       }
 
-    const CLIENT_CIVIC_CLUSTERS = {
-      road_infrastructure: [
-        'road', 'sadak', 'street', 'rasta', 'gaddha', 'gaddhe', 'pothole', 'potholes', 'crater',
-        'broken road', 'highway', 'pul', 'pulia', 'bridge', 'culvert', 'asphalt', 'tar', 'kichad',
-        'mud', 'path', 'lane', 'divider', 'ditch', 'accident', 'speed breaker', 'सड़क', 'रोड',
-        'रास्ता', 'गड्ढा', 'गड्ढे', 'गड्ढों', 'टूटी', 'टूटा', 'खराब', 'दुर्घटना', 'पुल', 'पुलिया'
+    const CLIENT_SPECIFIC_DEFECT_CLUSTERS = {
+      potholes_road_damage: [
+        'gaddha', 'gaddhe', 'gaddhon', 'pothole', 'potholes', 'crater', 'broken road', 'tuta', 'tuti',
+        'damage', 'damaged', 'pit', 'ditch', 'gadhe', 'accident', 'गड्ढा', 'गड्ढे', 'गड्ढों', 'टूटी',
+        'टूटा', 'गड्ढो', 'क्षतिग्रस्त', 'दुर्घटना'
       ],
-      water_pipeline: [
-        'water', 'paani', 'pani', 'pipe', 'pipeline', 'leak', 'leakage', 'phat', 'burst',
-        'tap', 'chapakal', 'handpump', 'nal', 'tank', 'peene', 'drinking', 'bahaav', 'supply',
-        'jal', 'peyjal', 'sewage', 'drainage', 'naali', 'gutter', 'drain', 'naala', 'dirty water',
-        'ganda paani', 'boring', 'waterlogging', 'overflow', 'पानी', 'जल', 'नल', 'पाइप', 'लीकेज',
-        'नाली', 'चापाकल', 'हैंडपंप', 'गंदा पानी', 'पेयजल'
+      road_waterlogging_mud: [
+        'waterlogging', 'jalbhavar', 'kichad', 'mud', 'stagnant water', 'water on road', 'कीचड़', 'जलभराव'
       ],
-      electricity_power: [
-        'bijli', 'power', 'electricity', 'light', 'current', 'voltage', 'transformer', 'pole',
-        'khamba', 'wire', 'taar', 'short circuit', 'spark', 'blackout', 'andhera', 'meter',
-        'phase', 'load shedding', 'outage', 'line', 'बिजली', 'ट्रांसफार्मर', 'खंभा', 'तार', 'करंट',
-        'अंधेरा', 'लाइट', 'वोल्टेज'
+      water_pipe_leakage: [
+        'leak', 'leakage', 'phat gaya', 'burst', 'pipe burst', 'pipeline leak', 'water waste',
+        'पाइप फटा', 'लीकेज', 'पाइप लीकेज'
       ],
-      sanitation_waste: [
-        'garbage', 'kachra', 'trash', 'dustbin', 'safai', 'cleaning', 'waste', 'kuda', 'badbu',
-        'smell', 'dump', 'sanitation', 'litter', 'filth', 'dumping', 'कचरा', 'कूड़ा', 'सफाई',
-        'कूड़ेदान', 'बदबू', 'दुर्गंध'
+      water_shortage_chapakal: [
+        'no water', 'pani nahi', 'paani nahi', 'chapakal band', 'handpump kharab', 'peene ka paani',
+        'supply band', 'dry tap', 'chaapaakal', 'चापाकल खराब', 'पानी नहीं', 'हैंडपंप खराब'
       ],
-      healthcare_medical: [
-        'hospital', 'doctor', 'clinic', 'davai', 'medicine', 'ilaj', 'swasthya', 'health',
-        'ambulance', 'bed', 'nurse', 'dispensary', 'patient', 'treatment', 'अस्पताल', 'डॉक्टर',
-        'दवाई', 'इलाज', 'स्वास्थ्य', 'मरीज'
+      street_light_outage: [
+        'street light', 'light nahi', 'light band', 'andhera', 'darkness', 'bulb', 'pole light',
+        'स्ट्रीट लाइट', 'लाइट बंद', 'अंधेरा'
+      ],
+      electricity_transformer_hazard: [
+        'transformer', 'voltage', 'spark', 'current', 'wire tuta', 'hanging wire', 'short circuit',
+        'ट्रांसफार्मर', 'हाई वोल्टेज', 'करंट', 'तार टूटा'
+      ],
+      garbage_waste_dump: [
+        'garbage', 'kachra', 'trash', 'dustbin', 'safai nahi', 'kuda', 'dumping', 'badbu', 'smell',
+        'कचरा', 'कूड़ा', 'कूड़ेदान', 'सफाई नहीं', 'दुर्गंध'
+      ],
+      sewage_overflow_drain: [
+        'drain overflow', 'naali overflow', 'gutter', 'naala jaam', 'sewer', 'naali band', 'dirty water',
+        'नाली जाम', 'सीवर', 'गंदा पानी'
       ]
     };
 
@@ -4545,27 +4548,15 @@
       if (!newRep || !cand) return { score: 0 };
       const tA = (newRep.title || '').toLowerCase();
       const tB = (cand.title || '').toLowerCase();
-      const dA = (newRep.description || newRep.desc || tA).toLowerCase();
-      const dB = (cand.description || cand.desc || cand.details || tB).toLowerCase();
+      const dA = (newRep.description || '').toLowerCase();
+      const dB = (cand.description || cand.desc || cand.details || '').toLowerCase();
 
-      // 1. Title Intent (35 pts)
-      let titleScore = 0;
-      if (tA === tB || tA.includes(tB) || tB.includes(tA)) {
-        titleScore = 32;
-      } else {
-        for (const cluster of Object.values(CLIENT_CIVIC_CLUSTERS)) {
-          const inA = cluster.some(w => tA.includes(w));
-          const inB = cluster.some(w => tB.includes(w));
-          if (inA && inB) {
-            titleScore = 30;
-            break;
-          }
-        }
-      }
+      // GATEKEEPER 1: If either report has no description or descriptions don't describe the same defect,
+      // it CANNOT be a duplicate purely based on title/heading!
+      if (!dA || !dB) return { score: 0 };
 
-      // 2. Description Intent (45 pts)
       let descScore = 0;
-      for (const cluster of Object.values(CLIENT_CIVIC_CLUSTERS)) {
+      for (const cluster of Object.values(CLIENT_SPECIFIC_DEFECT_CLUSTERS)) {
         const inA = cluster.some(w => dA.includes(w));
         const inB = cluster.some(w => dB.includes(w));
         if (inA && inB) {
@@ -4574,12 +4565,32 @@
         }
       }
 
-      // 3. Category Match (10 pts)
+      // If descriptions do not share the same civic defect, reject duplicate immediately!
+      if (descScore < 25) {
+        return { score: 0 };
+      }
+
+      // 1. Title Intent (35 pts)
+      let titleScore = 0;
+      if (tA === tB || tA.includes(tB) || tB.includes(tA)) {
+        titleScore = 32;
+      } else {
+        for (const cluster of Object.values(CLIENT_SPECIFIC_DEFECT_CLUSTERS)) {
+          const inA = cluster.some(w => tA.includes(w));
+          const inB = cluster.some(w => tB.includes(w));
+          if (inA && inB) {
+            titleScore = 28;
+            break;
+          }
+        }
+      }
+
+      // 2. Category Match (10 pts)
       const catA = (newRep.category || '').toLowerCase();
       const catB = (cand.category || '').toLowerCase();
       let catScore = (catA && catB && (catA === catB || catA.includes(catB) || catB.includes(catA))) ? 10 : 0;
 
-      // 4. District / Location Match (10 pts)
+      // 3. District / Location Match (10 pts)
       const distA = (newRep.location?.district || newRep.district || '').toLowerCase();
       const distB = (cand.district || cand.location?.district || cand.location || '').toString().toLowerCase();
       let locScore = (distA && distB && (distA === distB || distA.includes(distB) || distB.includes(distA))) ? 10 : 5;
