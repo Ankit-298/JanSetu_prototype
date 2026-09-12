@@ -10,8 +10,8 @@ import logging
 from typing import Dict, Any
 
 try:
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # type: ignore
+    from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 except ImportError:
     # Safe stubs when FastAPI is not yet installed in local environment
     class FastAPI:  # type: ignore
@@ -33,12 +33,12 @@ except ImportError:
         pass
 
 try:
-    import httpx
+    import httpx  # type: ignore
 except ImportError:
     httpx = None  # type: ignore
 
 try:
-    from dotenv import load_dotenv
+    from dotenv import load_dotenv  # type: ignore
     load_dotenv()
 except ImportError:
     def load_dotenv(): pass
@@ -417,7 +417,7 @@ async def voice_agent_websocket(websocket: WebSocket):
 
 if __name__ == "__main__":
     try:
-        import uvicorn
+        import uvicorn  # type: ignore
         port = int(os.getenv("VOICE_AGENT_PORT", "8000"))
         uvicorn.run("voice_agent_relay:app", host="0.0.0.0", port=port, reload=True)
     except ImportError:
