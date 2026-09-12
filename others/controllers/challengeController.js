@@ -1028,7 +1028,7 @@ exports.getPublicFeed = async (req, res, next) => {
       Challenge.find(query)
         .populate('submittedBy', 'name avatar role')
         .populate('assignedUniversity', 'name shortName logo')
-        .select('title description category priority status location attachments coverImage image resolutionProof supportCount supports praiseCount praisedBy displayNamePublicly commentCount viewCount createdAt submittedBy assignedUniversity isFeatured submitterContact reportedBy duplicateCount twinnedChallenges twinnedWith officialSlipId authority department')
+        .select('title description category priority status location attachments coverImage image filePath videoUrl video media resolutionProof supportCount supports praiseCount praisedBy displayNamePublicly commentCount viewCount createdAt submittedBy assignedUniversity isFeatured submitterContact reportedBy duplicateCount twinnedChallenges twinnedWith officialSlipId authority department')
         .sort(sortBy)
         .skip(skip)
         .limit(parsedLimit)
@@ -1053,11 +1053,48 @@ exports.getPublicFeed = async (req, res, next) => {
       // Extract all media attachments
       let mediaList = [];
       if (Array.isArray(c.attachments) && c.attachments.length > 0) {
-        mediaList = c.attachments.map((a, idx) => ({
-          url: a.url,
-          mimetype: a.mimetype || 'image/jpeg',
-          originalName: a.originalName || `Photo ${idx + 1}`
-        })).filter(m => m.url);
+        mediaList = c.attachments.map((a, idx) => {
+          const u = a.url || a.filePath;
+          const isVid = (a.mimetype && a.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv)$/i.test(u || '');
+          return {
+            url: u,
+            mimetype: a.mimetype || (isVid ? 'video/mp4' : 'image/jpeg'),
+            originalName: a.originalName || a.filename || (isVid ? `Video ${idx + 1}` : `Photo ${idx + 1}`)
+          };
+        }).filter(m => m.url);
+      }
+      if (c.filePath && typeof c.filePath === 'string') {
+        const isVid = /\.(mp4|webm|mov|ogg|mkv)$/i.test(c.filePath);
+        if (!mediaList.some(m => m.url === c.filePath)) {
+          mediaList.push({
+            url: c.filePath,
+            mimetype: isVid ? 'video/mp4' : 'image/jpeg',
+            originalName: isVid ? 'Field Video' : 'Ground Photo'
+          });
+        }
+      }
+      if (c.videoUrl || c.video) {
+        const v = c.videoUrl || c.video;
+        if (!mediaList.some(m => m.url === v)) {
+          mediaList.push({
+            url: v,
+            mimetype: 'video/mp4',
+            originalName: 'Citizen Video Evidence'
+          });
+        }
+      }
+      if (Array.isArray(c.media)) {
+        c.media.forEach((m, idx) => {
+          const u = typeof m === 'string' ? m : (m.url || m.filePath);
+          const isVid = m.mediaType === 'video' || /\.(mp4|webm|mov|ogg|mkv)$/i.test(u || '');
+          if (u && !mediaList.some(x => x.url === u)) {
+            mediaList.push({
+              url: u,
+              mimetype: isVid ? 'video/mp4' : 'image/jpeg',
+              originalName: m.title || `Media ${idx + 1}`
+            });
+          }
+        });
       }
       if (mediaList.length === 0 && (c.coverImage || c.image)) {
         mediaList.push({

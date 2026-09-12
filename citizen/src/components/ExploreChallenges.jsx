@@ -105,6 +105,7 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [newReportsCount, setNewReportsCount] = useState(0);
   const [showNewReportsBanner, setShowNewReportsBanner] = useState(false);
+  const [compactTrackerChallenge, setCompactTrackerChallenge] = useState(null);
   const latestChallengeTimeRef = useRef(null);
 
   // Current logged in citizen info (Rajesh Mahto by default demo profile)
@@ -414,7 +415,7 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
               onChange={e => setSortBy(e.target.value)}
             >
               <option value="latest">Latest</option>
-              <option value="affected">Most Affected (Me Too)</option>
+              <option value="affected">Most Affected (I Am Also Affected)</option>
               <option value="supported">Most Praised</option>
             </select>
           </div>
@@ -557,6 +558,7 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
               key={challenge._id || idx}
               challenge={challenge}
               currentUser={currentUser}
+              onOpenTracker={(c) => setCompactTrackerChallenge(c)}
             />
           ))
         )}
@@ -580,7 +582,7 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
               </div>
               <div className="gps-modal-title-group">
                 <h3 className="gps-modal-title">Allow GPS Location Access?</h3>
-                <span className="gps-modal-sub">जीपीएस लोकेशन अनुमति</span>
+                <span className="gps-modal-sub">Nearby Grievances &amp; Community Radar</span>
               </div>
               <button
                 type="button"
@@ -681,7 +683,7 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
                     className="gps-btn-secondary"
                     onClick={() => setShowGpsModal(false)}
                   >
-                    No / Cancel
+                    Cancel
                   </button>
                 </>
               )}
@@ -689,12 +691,28 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
           </div>
         </div>
       )}
+
+      {/* ── Compact Tracker Modal (Exact Image 3 Aesthetic) ── */}
+      {compactTrackerChallenge && (
+        <CompactTrackerModal
+          challenge={compactTrackerChallenge}
+          onClose={() => setCompactTrackerChallenge(null)}
+          onViewFullDetails={() => {
+            const cId = compactTrackerChallenge.reportId || compactTrackerChallenge.id || (compactTrackerChallenge._id ? compactTrackerChallenge._id.toString() : 'JH-2026-892014');
+            if (window.exploreList && !window.exploreList.some(r => r.id === cId || r.reportId === cId)) {
+              window.exploreList.push({ ...compactTrackerChallenge, id: cId });
+            }
+            setCompactTrackerChallenge(null);
+            if (window.openDetailModal) window.openDetailModal(cId);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // ── Social Post Card Component ──
-function SocialPostCard({ challenge, currentUser }) {
+function SocialPostCard({ challenge, currentUser, onOpenTracker }) {
   const authorName = challenge.authorName || 'Verified Citizen';
   const authorInitials = getInitials(authorName);
   const avatarGradient = getAvatarGradient(authorName);
@@ -924,6 +942,17 @@ function SocialPostCard({ challenge, currentUser }) {
             </span>
           )}
 
+          {/* Quick Live Tracker Button */}
+          <button
+            type="button"
+            className="post-status-pill"
+            style={{ cursor: 'pointer', background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontWeight: '800' }}
+            onClick={() => onOpenTracker && onOpenTracker(challenge)}
+            title="Click to view live progress tracker"
+          >
+            <span>📊</span> Tracker
+          </button>
+
           <button type="button" className="post-options-btn" title="Options">•••</button>
         </div>
       </div>
@@ -999,7 +1028,14 @@ function SocialPostCard({ challenge, currentUser }) {
             </span>
           </div>
 
-          <h2 className="post-challenge-title">{challenge.title}</h2>
+          <h2
+            className="post-challenge-title"
+            style={{ cursor: 'pointer' }}
+            onClick={() => onOpenTracker && onOpenTracker(challenge)}
+            title="Click to view live progress tracker"
+          >
+            {challenge.title}
+          </h2>
 
           <p className="post-challenge-desc">
             {isExpanded ? challenge.description : (
@@ -1080,27 +1116,29 @@ function SocialPostCard({ challenge, currentUser }) {
             <span className={`action-btn-text ${isCommentsOpen ? 'text-blue' : ''}`}>{commentsCount} Comments</span>
           </button>
 
-          {/* Me Too: Black outline initially (matching Image 3), BLUE filled when active */}
+          {/* I Am Also Affected: Navy blue outline/text initially, GREEN filled when clicked/active */}
           <button
             type="button"
             className={`action-btn action-metoo ${isMeToo ? 'active' : ''}`}
             onClick={handleMeToo}
             disabled={challenge.isMyReport}
-            title={challenge.isMyReport ? 'This is your report' : isMeToo ? 'Click to remove co-report' : 'Click if you are also affected by this issue'}
+            title={challenge.isMyReport ? 'This is your report' : isMeToo ? 'Click to remove status' : 'Click if you are also affected by this issue'}
           >
             {isMeToo ? (
-              <svg viewBox="0 0 24 24" width="23" height="23" fill="#2563EB">
-                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="#16A34A">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
               </svg>
             ) : (
-              <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="#0F172A" strokeWidth="2.2">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#002D62" strokeWidth="2.2">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                 <circle cx="9" cy="7" r="4" />
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             )}
-            <span className={`action-btn-text ${isMeToo ? 'text-blue' : ''}`}>{meTooCount} Me Too</span>
+            <span className={`action-btn-text ${isMeToo ? 'text-green' : 'text-navy'}`}>
+              {isMeToo ? `✓ ${meTooCount} Supported` : `${meTooCount > 0 ? `${meTooCount} ` : ''}I Am Also Affected`}
+            </span>
           </button>
         </div>
 
@@ -1226,3 +1264,244 @@ function SkeletonCard() {
     </div>
   );
 }
+
+// ── Compact Tracker Modal (Exact Image 3 Aesthetic for Feed & Nearby Clicks) ──
+function CompactTrackerModal({ challenge, onClose, onViewFullDetails }) {
+  const cId = challenge.reportId || challenge.id || ('JH-2026-' + (challenge._id ? challenge._id.toString().slice(-6) : '892014'));
+  const statusLabel = (challenge.status || 'in_progress').replace(/_/g, ' ');
+  const isSolved = statusLabel.includes('solved') || statusLabel.includes('resolved') || challenge.isResolved;
+  const isVerified = challenge.isVerified || challenge.adminVerified;
+  const locationText = challenge.displayLocation || challenge.location || 'Ranchi, Jharkhand';
+  const dateText = challenge.createdAt ? new Date(challenge.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Recently';
+
+  const challengeMedia = [];
+  if (Array.isArray(challenge.attachments)) {
+    challenge.attachments.forEach((a, i) => {
+      const u = typeof a === 'string' ? a : (a.url || a.filePath);
+      const isVid = (a.mimetype && a.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv)$/i.test(u || '');
+      if (u) challengeMedia.push({ type: isVid ? 'video' : 'photo', url: u, title: a.originalName || a.filename || `Proof #${i+1}` });
+    });
+  }
+  if (Array.isArray(challenge.mediaList)) {
+    challenge.mediaList.forEach((m, i) => {
+      const u = m.url || m.filePath;
+      const isVid = (m.mimetype && m.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv)$/i.test(u || '');
+      if (u && !challengeMedia.some(x => x.url === u)) {
+        challengeMedia.push({ type: isVid ? 'video' : 'photo', url: u, title: m.originalName || `Evidence #${i+1}` });
+      }
+    });
+  }
+  if (challenge.filePath && typeof challenge.filePath === 'string') {
+    const isVid = /\.(mp4|webm|mov|ogg|mkv)$/i.test(challenge.filePath);
+    if (!challengeMedia.some(x => x.url === challenge.filePath)) {
+      challengeMedia.push({ type: isVid ? 'video' : 'photo', url: challenge.filePath, title: isVid ? 'Field Video Evidence' : 'Ground Evidence Photo' });
+    }
+  }
+  const vid = challenge.videoUrl || challenge.video;
+  if (vid && typeof vid === 'string' && !challengeMedia.some(x => x.url === vid)) {
+    challengeMedia.push({ type: 'video', url: vid, title: 'Ground Video Evidence' });
+  }
+  const img = challenge.image || challenge.coverImage || challenge.beforeImg;
+  if (img && typeof img === 'string' && !challengeMedia.some(x => x.url === img)) {
+    challengeMedia.push({ type: 'photo', url: img, title: 'Ground Evidence Photo' });
+  }
+
+  const handleOpenEvidence = (startIndex = 0) => {
+    const cId = challenge.reportId || challenge.id || (challenge._id ? challenge._id.toString() : 'JH-2026-f77d24');
+    
+    if (typeof window !== 'undefined') {
+      if (!window.exploreList) window.exploreList = [];
+      const itemToSave = {
+        ...challenge,
+        id: cId,
+        reportId: cId,
+        attachments: challengeMedia.map(m => ({ url: m.url, mimetype: m.type === 'video' ? 'video/mp4' : 'image/jpeg', originalName: m.title })),
+        filePath: challengeMedia.find(m => m.type === 'photo')?.url || challenge.filePath,
+        videoUrl: challengeMedia.find(m => m.type === 'video')?.url || challenge.videoUrl
+      };
+      const exIdx = window.exploreList.findIndex(r => r.id === cId || (challenge._id && r._id === challenge._id));
+      if (exIdx >= 0) window.exploreList[exIdx] = { ...window.exploreList[exIdx], ...itemToSave };
+      else window.exploreList.unshift(itemToSave);
+
+      if (challenge.isMyReport) {
+        if (!window.allReportsList) window.allReportsList = [];
+        const repIdx = window.allReportsList.findIndex(r => r.id === cId || (challenge._id && r._id === challenge._id));
+        if (repIdx >= 0) window.allReportsList[repIdx] = { ...window.allReportsList[repIdx], ...itemToSave };
+        else window.allReportsList.unshift(itemToSave);
+      }
+
+      window.currentlyInspectedId = cId;
+    }
+
+    if (challengeMedia.length > 0 && typeof window.openAllMediaEvidenceViewer === 'function') {
+      window.openAllMediaEvidenceViewer(startIndex, {
+        ...challenge,
+        attachments: challengeMedia.map(m => ({ url: m.url, mimetype: m.type === 'video' ? 'video/mp4' : 'image/jpeg', originalName: m.title })),
+        filePath: challengeMedia.find(m => m.type === 'photo')?.url,
+        videoUrl: challengeMedia.find(m => m.type === 'video')?.url,
+        title: challenge.title
+      });
+      return;
+    }
+
+    if (typeof onViewFullDetails === 'function') {
+      onViewFullDetails();
+    }
+  };
+
+  return (
+    <div className="compact-tracker-overlay" onClick={onClose}>
+      <div className="compact-tracker-card" onClick={e => e.stopPropagation()}>
+        {/* Top Tricolor Accent Line */}
+        <div className="profile-tricolor-bar"></div>
+
+        {/* Clean Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#F1F5F9', border: '1.5px solid #CBD5E1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
+              🏛️
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>{challenge.title}</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+                <span>Report ID: <strong style={{ color: '#1E40AF', fontWeight: '800' }}>{cId}</strong></span>
+                <span>•</span>
+                <span style={{ fontWeight: '700', color: isSolved ? '#16A34A' : isVerified ? '#0284C7' : '#D97706' }}>
+                  ● {isSolved ? 'Resolved' : isVerified ? 'Verified & In Progress' : 'Pending Admin Verification'}
+                </span>
+                <span>•</span>
+                <span>📍 {locationText}</span>
+                <span>•</span>
+                <span>📅 {dateText}</span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#F1F5F9', border: '1px solid #CBD5E1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Stepper with animated flow beam */}
+        <div style={{ padding: '16px 20px 10px' }}>
+          <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+            <span>📊</span> <span>Civic Progress Tracker</span>
+          </div>
+
+          <div className="detail-stepper-track" style={{ margin: '14px 0 10px' }}>
+            <div className="detail-stepper-track-progress" style={{ width: isSolved ? '100%' : isVerified ? '50%' : '25%' }}></div>
+            <div className="detail-step-node">
+              <div className="detail-step-circle done">✓</div>
+              <div style={{ fontSize: '10.5px', fontWeight: '800', color: '#0F172A' }}>Submitted</div>
+              <div style={{ fontSize: '9px', color: '#64748B', marginTop: '1px' }}>{dateText}</div>
+            </div>
+            <div className="detail-step-node">
+              <div className={`detail-step-circle ${isVerified ? 'done' : 'current'}`}>{isVerified ? '✓' : '⏳'}</div>
+              <div style={{ fontSize: '10.5px', fontWeight: '800', color: '#0F172A' }}>Admin Verified</div>
+              <div style={{ fontSize: '9px', color: isVerified ? '#16A34A' : '#D97706', fontWeight: '700', marginTop: '1px' }}>
+                {isVerified ? 'Verified' : 'In Review'}
+              </div>
+            </div>
+            <div className="detail-step-node">
+              <div className={`detail-step-circle ${isSolved ? 'done' : isVerified ? 'current' : 'pending'}`}>{isSolved ? '✓' : '3'}</div>
+              <div style={{ fontSize: '10.5px', fontWeight: '800', color: '#0F172A' }}>Team Assigned</div>
+              <div style={{ fontSize: '9px', color: '#94A3B8', marginTop: '1px' }}>{isVerified ? 'University' : 'Pending'}</div>
+            </div>
+            <div className="detail-step-node">
+              <div className={`detail-step-circle ${isSolved ? 'done' : 'pending'}`}>{isSolved ? '✓' : '4'}</div>
+              <div style={{ fontSize: '10.5px', fontWeight: '800', color: '#64748B' }}>Field Work</div>
+              <div style={{ fontSize: '9px', color: '#94A3B8', marginTop: '1px' }}>Implementation</div>
+            </div>
+            <div className="detail-step-node">
+              <div className={`detail-step-circle ${isSolved ? 'done' : 'pending'}`}>{isSolved ? '✓' : '5'}</div>
+              <div style={{ fontSize: '10.5px', fontWeight: '800', color: '#64748B' }}>Certified Closed</div>
+              <div style={{ fontSize: '9px', color: '#94A3B8', marginTop: '1px' }}>Final Check</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Problem summary card */}
+        <div style={{ padding: '0 20px 12px' }}>
+          <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '12px 14px' }}>
+            <div style={{ fontSize: '11px', fontWeight: '800', color: '#EA580C', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span>📄</span> <span>PROBLEM SUMMARY</span>
+            </div>
+            <div style={{ fontSize: '13px', color: '#334155', lineHeight: '1.5', fontWeight: '500' }}>
+              {challenge.description || 'Community reported civic challenge requiring administrative and technical intervention.'}
+            </div>
+          </div>
+        </div>
+
+        {/* Ground Evidence & Field Media Card */}
+        <div style={{ padding: '0 20px 16px' }}>
+          <div style={{ background: '#FFFFFF', border: '1.5px solid #E2E8F0', borderRadius: '12px', padding: '12px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🖼️</span> <span>Ground Evidence &amp; Field Media</span>
+              </span>
+              <span style={{ fontSize: '10.5px', fontWeight: '800', color: challengeMedia.length > 0 ? '#1D4ED8' : '#64748B', background: challengeMedia.length > 0 ? '#EFF6FF' : '#F1F5F9', border: `1px solid ${challengeMedia.length > 0 ? '#BFDBFE' : '#CBD5E1'}`, padding: '2px 8px', borderRadius: '6px' }}>
+                {challengeMedia.length > 0 ? `${challengeMedia.length} File${challengeMedia.length !== 1 ? 's' : ''} Attached` : 'No Media Attached'}
+              </span>
+            </div>
+
+            {challengeMedia.length > 0 ? (
+              <div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
+                  {challengeMedia.map((m, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => handleOpenEvidence(idx)}
+                      style={{ width: '56px', height: '56px', borderRadius: '8px', overflow: 'hidden', border: '1.5px solid #CBD5E1', cursor: 'pointer', position: 'relative', background: m.type === 'video' ? '#0F172A' : '#F1F5F9', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+                      title={m.type === 'video' ? 'Click to play video' : 'Click to view photo'}
+                    >
+                      {m.type === 'video' ? (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#93C5FD' }}>
+                          <span style={{ fontSize: '18px' }}>🎥</span>
+                          <span style={{ fontSize: '8px', fontWeight: '800' }}>VIDEO</span>
+                        </div>
+                      ) : (
+                        <img src={m.url} alt={`Evidence ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenEvidence(0)}
+                  className="btn-view-evidence-prominent"
+                  style={{ width: '100%', padding: '9px 16px', fontSize: '12.5px' }}
+                >
+                  <span>🔍</span> <span>View Full Grievance &amp; Evidence ({challengeMedia.length}) →</span>
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: '8px', color: '#64748B' }}>
+                <span style={{ fontSize: '20px' }}>📷</span>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#475569' }}>No image or video uploaded</div>
+                  <div style={{ fontSize: '9.5px', color: '#94A3B8' }}>No ground evidence attached to this problem</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Clean Footer Bar */}
+        <div style={{ padding: '12px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ padding: '9px 26px', background: '#002D62', color: '#FFFFFF', border: 'none', borderRadius: '8px', fontSize: '12.5px', fontWeight: '800', cursor: 'pointer' }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

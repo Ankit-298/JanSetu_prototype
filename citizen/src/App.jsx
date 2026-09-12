@@ -289,8 +289,9 @@ function App() {
                   style={{"display":"inline-flex","alignItems":"center","gap":"6px","background":"rgba(255,255,255,0.92)","border":"1px solid rgba(255,153,51,0.4)","borderRadius":"20px","padding":"3px 10px","fontSize":"11px","fontWeight":"800","color":"#002D62","boxShadow":"0 2px 6px rgba(255,153,51,0.15)"}}>
                   <span style={{"fontSize":"14px"}}>🇮🇳</span><span data-i18n="satyameva_tag">सत्यमेव जयते · झारखण्ड</span>
                 </div>
-                {/* 🌐 Language Switcher (English / Hinglish) */}
+                {/* 🌐 Language Switcher (हिन्दी / English / Hinglish) */}
                 <div className="lang-switcher-pill">
+                  <button type="button" className="lang-btn" id="langBtn_hi" onClick={() => { setLanguage('hi') }}>हिन्दी</button>
                   <button type="button" className="lang-btn" id="langBtn_en" onClick={() => { setLanguage('en') }}>English</button>
                   <button type="button" className="lang-btn active" id="langBtn_hinglish"
                     onClick={() => { setLanguage('hinglish') }}>Hinglish</button>
@@ -344,7 +345,7 @@ function App() {
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                <span data-i18n="btn_report_hero">समस्या दर्ज करें</span>
+                <span data-i18n="btn_report_hero">Report a Problem</span>
               </button>
 
               <button 
@@ -798,9 +799,9 @@ function App() {
 
           <div className="voice-sample-chips" style={{"display":"flex","gap":"6px","flexWrap":"wrap","marginTop":"6px"}}>
             <span style={{"fontSize":"10.5px","fontWeight":"700","color":"var(--gray-500)","alignSelf":"center"}} data-i18n="voice_examples_label">💡 Examples:</span>
-            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('सड़क पर गहरा गड्ढा है और आवागमन बाधित है', 'सड़क व पुलिया मरम्मत', 'Urban Infrastructure') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_1">🛣️ सड़क गड्ढा</button>
-            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('पीने के पानी का मुख्य पाइप टूट गया है और गंदा पानी आ रहा है', 'पेयजल पाइपलाइन लीकेज', 'Water Management') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_2">🚰 पानी पाइप लीकेज</button>
-            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('गांव में बिजली का ट्रांसफॉर्मर खराब है और 3 दिन से बिजली नहीं है', 'ट्रांसफॉर्मर खराब / बिजली आपूर्ति', 'Energy & Technology') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_3">⚡ बिजली ट्रांसफॉर्मर</button>
+            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('सड़क पर गहरा गड्ढा है और आवागमन बाधित है', 'सड़क व पुलिया मरम्मत', 'Urban Infrastructure') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_1">🛣️ Road Pothole</button>
+            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('पीने के पानी का मुख्य पाइप टूट गया है और गंदा पानी आ रहा है', 'पेयजल पाइपलाइन लीकेज', 'Water Management') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_2">🚰 Water Pipe Leakage</button>
+            <button type="button" className="voice-chip-btn" onClick={() => { window.applyVoiceSample && window.applyVoiceSample('गांव में बिजली का ट्रांसफॉर्मर खराब है और 3 दिन से बिजली नहीं है', 'ट्रांसफॉर्मर खराब / बिजली आपूर्ति', 'Energy & Technology') }} style={{"fontSize":"10.5px","padding":"3px 8px","borderRadius":"6px","border":"1px solid #cbd5e1","background":"#f8fafc","cursor":"pointer"}} data-i18n="voice_sample_3">⚡ Power Transformer</button>
           </div>
 
           <div className="form-group-field" style={{"marginTop":"12px"}}>
@@ -947,7 +948,15 @@ function App() {
 
         {/* STEP 4: MULTIMEDIA PROOF */}
         <div id="stepSection4" style={{"display":"none"}}>
-          <label className="form-label-text" data-i18n="label_step4">Step 4: Attach Proof — Photos or Video</label>
+          <div style={{"display":"flex","alignItems":"center","justifyContent":"space-between","marginBottom":"4px"}}>
+            <label className="form-label-text" data-i18n="label_step4" style={{"marginBottom":"0"}}>Step 4: Attach Proof — Photos or Video</label>
+            <span style={{"fontSize":"11px","fontWeight":"800","color":"#DC2626","background":"#FEE2E2","border":"1px solid #FCA5A5","padding":"2px 8px","borderRadius":"6px"}}>
+              * Mandatory / अनिवार्य
+            </span>
+          </div>
+          <div style={{"fontSize":"11.5px","color":"#64748B","marginBottom":"8px"}}>
+            Photo or Video proof is mandatory to verify and process the grievance.
+          </div>
 
           <div className="multimedia-select-grid" style={{"marginTop":"8px"}}>
             <label className="media-btn-tile">
@@ -1002,19 +1011,6 @@ function App() {
               <div style={{"fontSize":"11px","color":"var(--gray-600)","marginTop":"2px"}} id="dupItemMeta">Report
                 #JH-2026-20481 · 📍 1.2 km away · 👥 14 affected</div>
             </div>
-
-            <div style={{"display":"flex","gap":"10px"}}>
-              <button type="button"
-                style={{"flex":"1","background":"#D97706","color":"#FFF","border":"none","borderRadius":"8px","padding":"10px","fontSize":"12px","fontWeight":"800","cursor":"pointer"}}
-                onClick={() => { supportExistingDetectedReport() }} data-i18n="btn_support_existing">
-                👍 Support Existing Report
-              </button>
-              <button type="button"
-                style={{"background":"#FFF","border":"1px solid var(--gray-300)","color":"var(--gray-700)","borderRadius":"8px","padding":"10px 14px","fontSize":"12px","fontWeight":"700","cursor":"pointer"}}
-                onClick={() => { dismissDuplicateAndProceed() }} data-i18n="btn_report_anyway">
-                ➕ Report New Anyway
-              </button>
-            </div>
           </div>
 
           <div className="ai-check-card">
@@ -1066,11 +1062,35 @@ function App() {
               </div>
             </div>
 
-            <div className="modal-footer-nav">
-              <button type="button" className="btn-modal-secondary" onClick={() => { goToStep(2) }} data-i18n="btn_edit">✎
-                Edit</button>
-              <button type="button" className="btn-modal-primary" id="finalSubmitBtn" onClick={() => { submitRealProblem() }}
-                data-i18n="btn_submit_confirm">✓ Submit Problem</button>
+            <div className="modal-footer-nav" id="step5FooterNav" style={{"display":"flex","justifyContent":"space-between","alignItems":"center","gap":"12px","marginTop":"16px"}}>
+              {/* Left Button: Edit */}
+              <button type="button" className="btn-modal-secondary" onClick={() => { goToStep(2) }} data-i18n="btn_edit" style={{"padding":"11px 20px","fontSize":"13px","fontWeight":"700"}}>
+                ✎ Edit
+              </button>
+
+              {/* Right Side Buttons: Cancel (left of link), Link (rightmost), or Submit Problem (default) */}
+              <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
+                <button type="button" id="dupCancelBtn" className="btn-modal-secondary"
+                  style={{"display":"none","background":"#FFFFFF","border":"1.5px solid #FCA5A5","color":"#DC2626","padding":"11px 18px","fontSize":"13px","fontWeight":"800","borderRadius":"10px","cursor":"pointer"}}
+                  onClick={() => { cancelDeduplicationAndClose() }}
+                  data-i18n="btn_dup_cancel">
+                  ❌ Cancel
+                </button>
+
+                <button type="button" id="dupLinkBtn" className="btn-modal-primary"
+                  style={{"display":"none","background":"#1D4ED8","color":"#FFFFFF","border":"none","padding":"11px 20px","fontSize":"13px","fontWeight":"800","borderRadius":"10px","cursor":"pointer","boxShadow":"0 4px 14px rgba(29, 78, 216, 0.3)"}}
+                  onClick={() => { linkExistingDetectedReport() }}
+                  data-i18n="btn_dup_link">
+                  🔗 Link Problem
+                </button>
+
+                <button type="button" className="btn-modal-primary" id="finalSubmitBtn"
+                  style={{"padding":"11px 22px","fontSize":"13px","fontWeight":"800","borderRadius":"10px"}}
+                  onClick={() => { submitRealProblem() }}
+                  data-i18n="btn_submit_confirm">
+                  ✓ Submit Problem
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1083,295 +1103,369 @@ function App() {
   {/* ============================================================
      MODAL 2: PROBLEM DETAILS INSPECTOR
      ============================================================ */}
+  {/* ============================================================
+     MODAL 2: PROBLEM DETAILS INSPECTOR (IMAGE 3 EXACT REVAMP)
+     ============================================================ */}
   <div className="modal-overlay" id="detailModal">
-    <div className="modal-card-box" style={{"maxWidth":"760px"}}>
-      <div className="modal-header-bar">
-        <div>
-          <div className="modal-header-title" id="detailTitle">Problem Details Inspector</div>
-          <div style={{"fontSize":"12px","color":"var(--navy)","fontWeight":"700","marginTop":"2px"}} id="detailId">Report ID:
-            JH-2026-4819</div>
-        </div>
-        <button className="modal-close-btn" onClick={() => { closeModal('detailModal') }}>✕</button>
-      </div>
+    <div className="modal-card-box detail-modal-custom">
+      {/* Top Tricolor Accent Line */}
+      <div className="profile-tricolor-bar"></div>
 
-      <div className="modal-body-scroll">
-        {/* Dedicated Community Viewer Banner with India Monument Backdrop (Only active for Dekhne Wala Citizen) */}
-        <div id="detailViewerMonumentHero" className="viewer-monument-banner"
-          style={{"display":"none","borderRadius":"16px","overflow":"hidden","marginBottom":"14px","boxShadow":"0 8px 24px rgba(0, 45, 98, 0.22)","border":"2px solid #FF9933","background":"#001A3A"}}>
-          <div className="viewer-monument-img-strip"
-            style={{"position":"relative","minHeight":"165px","backgroundColor":"#001A3A","backgroundImage":"linear-gradient(180deg, rgba(0, 25, 60, 0.55) 0%, rgba(10, 18, 38, 0.95) 100%), url('/images/monument-view-bg.jpg'), url('images/monument-view-bg.jpg')","backgroundPosition":"center 30%","backgroundSize":"cover","backgroundRepeat":"no-repeat","display":"flex","flexDirection":"column","justifyContent":"space-between","padding":"18px 20px","color":"#ffffff"}}>
-            <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","flexWrap":"wrap","gap":"8px"}}>
-              <div
-                style={{"display":"inline-flex","alignItems":"center","gap":"6px","background":"rgba(255, 153, 51, 0.35)","border":"1.5px solid #FF9933","padding":"4px 12px","borderRadius":"20px","fontSize":"11px","fontWeight":"800","color":"#FFEDD5","textShadow":"0 1px 3px rgba(0,0,0,0.8)","backdropFilter":"blur(6px)"}}>
-                <span>🇮🇳</span> <span id="detailViewerReviewTitle">Public Community Inspection</span>
-              </div>
-              <span id="detailViewerReviewModePill"
-                style={{"fontSize":"11px","background":"rgba(0, 0, 0, 0.55)","border":"1px solid rgba(255,255,255,0.35)","color":"#ffffff","padding":"3px 10px","borderRadius":"14px","fontWeight":"800","textShadow":"0 1px 2px rgba(0,0,0,0.8)"}}>
-                🌐 Community Viewer Mode
-              </span>
-            </div>
-            <div style={{"marginTop":"14px"}}>
-              <div id="detailViewerInspTitle"
-                style={{"fontSize":"16px","fontWeight":"900","color":"#ffffff !important","textShadow":"0 2px 6px rgba(0,0,0,0.9)","letterSpacing":"0.3px"}}>
-                JanSetu Citizen Civic Inspection Platform
-              </div>
-              <div id="detailViewerInspDesc"
-                style={{"fontSize":"12px","color":"#E2E8F0 !important","textShadow":"0 1px 4px rgba(0,0,0,0.9)","marginTop":"4px","fontWeight":"500"}}>
-                This grievance was submitted by a fellow citizen. You can track real-time progress and register your
-                community support.
-              </div>
+      {/* Header Bar */}
+      <div className="detail-modal-header-clean">
+        <div style={{"display":"flex","gap":"14px","alignItems":"flex-start","flex":"1","minWidth":"0"}}>
+          <div className="detail-cat-square" id="detailCatSquare">🏥</div>
+          <div style={{"flex":"1","minWidth":"0"}}>
+            <h3 className="detail-title-h3" id="detailTitle">hospital</h3>
+            <div className="detail-meta-chip-list">
+              <span>Report ID: <strong id="detailId" style={{"color":"#1E40AF","fontWeight":"800"}}>JH-2026-625506</strong></span>
+              <span>•</span>
+              <span id="detailStatusBadge" className="detail-status-pill">🟢 Open • In Progress</span>
+              <span>•</span>
+              <span>📍 <span id="detailHeaderLoc">Ranchi, Jharkhand</span></span>
+              <span>•</span>
+              <span>📅 <span id="detailTimeAgo">Reported 1 day ago</span></span>
+              <span>•</span>
+              <span>📁 <span id="detailCategoryBadge">Healthcare</span></span>
             </div>
           </div>
-          {/* Submitter identification stripe */}
-          <div
-            style={{"background":"#FFFDF9","borderTop":"1.5px solid #FED7AA","padding":"12px 18px","display":"flex","alignItems":"center","justifyContent":"space-between","flexWrap":"wrap","gap":"10px"}}>
-            <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
-              <div id="viewerSubmitterAvatar"
-                style={{"width":"38px","height":"38px","borderRadius":"50%","background":"linear-gradient(135deg, #FF9933 0%, #ea580c 100%)","color":"#fff","display":"flex","alignItems":"center","justifyContent":"center","fontSize":"16px","fontWeight":"900","boxShadow":"0 2px 6px rgba(255,153,51,0.35)"}}>
-                C
+        </div>
+
+        {/* Right Header Controls: Submitter Support Card, Share, Close */}
+        <div style={{"display":"flex","alignItems":"center","gap":"10px","flexShrink":"0"}}>
+          <div className="detail-submitter-support-card" id="detailSubmitterSupportCard">
+            <div style={{"fontSize":"11px","fontWeight":"800","color":"#B45309","display":"flex","alignItems":"center","justifyContent":"flex-end","gap":"4px"}}>
+              👑 <span id="detailAuthorHeaderBadge">Primary Submitter</span>
+            </div>
+            <div style={{"fontSize":"11px","fontWeight":"700","color":"#1E293B","marginTop":"2px"}}>
+              👥 <span id="detailSupportCountText">1 Citizen Support</span>
+            </div>
+          </div>
+
+          <button type="button" className="btn-detail-share-clean" onClick={() => { shareCurrentReport() }} title="Share Grievance">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            <span>Share</span>
+          </button>
+
+          <button type="button" className="modal-close-btn" onClick={() => { closeModal('detailModal') }}
+            style={{"width":"30px","height":"30px","background":"#F1F5F9","border":"1px solid #CBD5E1","borderRadius":"50%","display":"flex","alignItems":"center","justifyContent":"center","cursor":"pointer","fontSize":"13px"}} title="Close">✕</button>
+        </div>
+      </div>
+
+      {/* 5-Tab Navigation Bar */}
+      <div className="detail-tabs-clean-row">
+        <button type="button" className="detail-tab-pill active" id="detailTabBtn_overview" onClick={() => { switchDetailTab('overview') }}>📋 Overview</button>
+        <button type="button" className="detail-tab-pill" id="detailTabBtn_progress" onClick={() => { switchDetailTab('progress') }}>📊 Progress</button>
+        <button type="button" className="detail-tab-pill" id="detailTabBtn_verification" onClick={() => { switchDetailTab('verification') }}>🛡️ Verification</button>
+        <button type="button" className="detail-tab-pill" id="detailTabBtn_evidence" onClick={() => { switchDetailTab('evidence') }}>🖼️ Evidence</button>
+        <button type="button" className="detail-tab-pill" id="detailTabBtn_discussion" onClick={() => { switchDetailTab('discussion') }}>💬 Discussion</button>
+      </div>
+
+      {/* ============================================================
+          TAB 1: OVERVIEW (2-COLUMN RESPONSIVE BODY)
+          ============================================================ */}
+      <div className="detail-tab-view active" id="tabView_overview">
+        <div className="detail-2col-container">
+
+          {/* LEFT COLUMN: Problem Statement, Stepper, 3 Stakeholder Cards */}
+          <div style={{"display":"flex","flexDirection":"column","gap":"12px"}}>
+
+            {/* 1. Problem Statement Card */}
+            <div className="detail-white-box">
+              <div className="detail-box-head">
+                <span className="detail-box-title">
+                  <span style={{"color":"#EA580C","fontSize":"16px"}}>📄</span>
+                  <span style={{"fontSize":"14px","fontWeight":"800"}}>Problem Statement</span>
+                </span>
               </div>
-              <div>
-                <div
-                  style={{"fontSize":"13.5px","fontWeight":"800","color":"#0F172A","display":"flex","alignItems":"center","gap":"6px"}}>
-                  <span id="viewerSubmitterName">👤 Submitter: Citizen</span>
-                  <span id="detailViewerAuthorRoleBadge"
-                    style={{"fontSize":"10.5px","fontWeight":"700","color":"#C2410C","background":"#FFEDD5","border":"1px solid #FDBA74","padding":"2px 8px","borderRadius":"10px"}}>Primary
-                    Submitter</span>
+              <div id="detailDescription" className="detail-description-large">
+                near hospital needs renovation
+              </div>
+            </div>
+
+            {/* 2. Progress Timeline Card */}
+            <div className="detail-white-box">
+              <div className="detail-box-head">
+                <span className="detail-box-title">
+                  <span style={{"color":"#0284C7","fontSize":"16px"}}>📊</span>
+                  <span style={{"fontSize":"14px","fontWeight":"800"}}>Progress Timeline</span>
+                </span>
+                <a href="javascript:void(0)" id="detailLinkFullHistory" onClick={() => { switchDetailTab('progress') }}
+                  style={{"fontSize":"11.5px","fontWeight":"700","color":"#2563EB","textDecoration":"none","display":"inline-flex","alignItems":"center","gap":"4px"}}>
+                  View Full History →
+                </a>
+              </div>
+
+              {/* 5-Step Stepper with Animated Progress Flow Line & Bhuk-Bhak Current Node */}
+              <div className="detail-stepper-track" id="detailModalStepperTrack">
+                <div className="detail-stepper-track-progress" id="detailStepperProgressFill" style={{"width":"45%"}}></div>
+                {/* Step 1: Submitted */}
+                <div className="detail-step-node">
+                  <div className="detail-step-circle done" id="dStepCirc1">✓</div>
+                  <div style={{"fontSize":"11px","fontWeight":"800","color":"#0F172A"}}>Submitted</div>
+                  <div style={{"fontSize":"9.5px","color":"#64748B","marginTop":"1px"}} id="dStepDate1">11 Sept 2026</div>
+                  <div style={{"fontSize":"9px","color":"#94A3B8"}} id="dStepTime1">02:10 am</div>
                 </div>
-                <div style={{"fontSize":"11.5px","color":"#64748B","marginTop":"2px"}} id="viewerSubmitterLoc">📍 Jharkhand ·
-                  📅 Recently</div>
+                {/* Step 2: Admin Verified */}
+                <div className="detail-step-node">
+                  <div className="detail-step-circle pending" id="dStepCirc2">⏳</div>
+                  <div style={{"fontSize":"11px","fontWeight":"800","color":"#0F172A"}}>Admin Verified</div>
+                  <div style={{"fontSize":"9.5px","color":"#64748B","marginTop":"1px"}} id="dStepDate2">11 Sept 2026</div>
+                  <div style={{"fontSize":"9px","color":"#94A3B8"}} id="dStepTime2">02:13 am</div>
+                </div>
+                {/* Step 3: Team Working */}
+                <div className="detail-step-node">
+                  <div className="detail-step-circle pending" id="dStepCirc3">3</div>
+                  <div style={{"fontSize":"11px","fontWeight":"800","color":"#0F172A"}}>Team Working</div>
+                  <div style={{"fontSize":"9.5px","color":"#64748B","marginTop":"1px"}} id="dStepDate3">Pending</div>
+                  <div style={{"fontSize":"9px","color":"#94A3B8"}} id="dStepTime3">--:--</div>
+                </div>
+                {/* Step 4: Implementation */}
+                <div className="detail-step-node">
+                  <div className="detail-step-circle pending" id="dStepCirc4">4</div>
+                  <div style={{"fontSize":"11px","fontWeight":"800","color":"#0F172A"}}>Implementation</div>
+                  <div style={{"fontSize":"9.5px","color":"#64748B","marginTop":"1px"}} id="dStepSub4">Awaiting Action</div>
+                </div>
+                {/* Step 5: Certified Closed */}
+                <div className="detail-step-node">
+                  <div className="detail-step-circle pending" id="dStepCirc5">5</div>
+                  <div style={{"fontSize":"11px","fontWeight":"800","color":"#64748B"}}>Certified Closed</div>
+                  <div style={{"fontSize":"9.5px","color":"#94A3B8","marginTop":"1px"}} id="dStepSub5">Final Step</div>
+                </div>
               </div>
             </div>
-            <div
-              style={{"fontSize":"11.5px","fontWeight":"800","color":"#059669","background":"#ECFDF5","border":"1.5px solid #A7F3D0","padding":"5px 12px","borderRadius":"8px","display":"inline-flex","alignItems":"center","gap":"4px"}}>
-              <span>✓</span> <span id="detailViewerGisBadge">GIS Geo-Verified Grievance</span>
+
+            {/* 3. Three Stakeholder Action Cards Row (Enlarged, Clickable for Daily Action Logs) */}
+            <div className="detail-stakeholder-row" id="detailStakeholderRow">
+              {/* Card 1: Administrative Review */}
+              <div className="stakeholder-card-clean" onClick={() => { openStakeholderDetails('admin') }} title="Click to view daily administrative audit history">
+                <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
+                  <span className="org-icon">🏛️</span>
+                  <div>
+                    <div className="org-title">Administrative Review</div>
+                    <div style={{"fontSize":"10px","color":"#64748B","marginTop":"1px"}}>District Collectorate</div>
+                  </div>
+                </div>
+                <div style={{"display":"flex","alignItems":"center","justifyContent":"space-between","marginTop":"6px"}}>
+                  <span className="org-badge" style={{"background":"#FEF3C7","color":"#B45309","border":"1px solid #FDE68A"}} id="stakeholderBadgeAdmin">
+                    ⏳ Verification Pending
+                  </span>
+                  <span style={{"color":"#2563EB","fontSize":"12px","fontWeight":"800"}}>View Log ›</span>
+                </div>
+              </div>
+
+              {/* Card 2: University Taskforce */}
+              <div className="stakeholder-card-clean" onClick={() => { openStakeholderDetails('university') }} title="Click to view university engineering team actions">
+                <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
+                  <span className="org-icon">🎓</span>
+                  <div>
+                    <div className="org-title">University Taskforce</div>
+                    <div style={{"fontSize":"10px","color":"#64748B","marginTop":"1px"}}>Field Engineering Team</div>
+                  </div>
+                </div>
+                <div style={{"display":"flex","alignItems":"center","justifyContent":"space-between","marginTop":"6px"}}>
+                  <span className="org-badge" style={{"background":"#EFF6FF","color":"#1D4ED8","border":"1px solid #BFDBFE"}} id="stakeholderBadgeUniv">
+                    🟡 Field Survey
+                  </span>
+                  <span style={{"color":"#2563EB","fontSize":"12px","fontWeight":"800"}}>View Log ›</span>
+                </div>
+              </div>
+
+              {/* Card 3: Industry Partner Action */}
+              <div className="stakeholder-card-clean" onClick={() => { openStakeholderDetails('industry') }} title="Click to view industry CSR and material dispatch history">
+                <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
+                  <span className="org-icon">🤝</span>
+                  <div>
+                    <div className="org-title">Industry Partner Action</div>
+                    <div style={{"fontSize":"10px","color":"#64748B","marginTop":"1px"}}>CSR &amp; Resource Delivery</div>
+                  </div>
+                </div>
+                <div style={{"display":"flex","alignItems":"center","justifyContent":"space-between","marginTop":"6px"}}>
+                  <span className="org-badge" style={{"background":"#F0FDF4","color":"#15803D","border":"1px solid #BBF7D0"}} id="stakeholderBadgeInd">
+                    Supplies In Progress
+                  </span>
+                  <span style={{"color":"#2563EB","fontSize":"12px","fontWeight":"800"}}>View Log ›</span>
+                </div>
+              </div>
             </div>
+
           </div>
-        </div>
 
-        {/* Main Author Header Banner (Only active for Main Post Karne Wala Citizen) */}
-        <div id="detailAuthorHeaderBanner"
-          style={{"display":"none","background":"linear-gradient(135deg, #EFF6FF 0%, #F0FDF4 100%)","border":"1.5px solid #BFDBFE","borderRadius":"14px","padding":"12px 18px","marginBottom":"12px","alignItems":"center","justifyContent":"space-between","flexWrap":"wrap","gap":"8px"}}>
-          <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
-            <span style={{"fontSize":"24px"}}>👑</span>
-            <div>
-              <div id="detailAuthorHeaderTitle" style={{"fontSize":"13.5px","fontWeight":"800","color":"#1E3A8A"}}>Your
-                Submitted Grievance</div>
-              <div id="detailAuthorHeaderSub" style={{"fontSize":"11.5px","color":"#475569","marginTop":"2px"}}>You are the
-                primary author of this grievance. Official acknowledgment slip and controls are available below.</div>
-            </div>
-          </div>
-          <span id="detailAuthorHeaderBadge"
-            style={{"fontSize":"11.5px","fontWeight":"800","color":"#1E40AF","background":"#DBEAFE","padding":"4px 12px","borderRadius":"14px","border":"1px solid #93C5FD"}}>
-            👤 Primary Submitter
-          </span>
-        </div>
+          {/* RIGHT COLUMN: Location Details, Before & After, Citizen Video Evidence */}
+          <div style={{"display":"flex","flexDirection":"column","gap":"12px"}}>
 
-        {/* Accent Divider Line for Community Viewer Mode */}
-        <div id="detailViewerAccentLine"
-          style={{"height":"3px","background":"linear-gradient(90deg, #FF9933 0%, #FFFFFF 50%, #138808 100%)","borderRadius":"2px","marginBottom":"14px","display":"none"}}>
-        </div>
-
-        {/* Prominent Live Community Solidarity & Support Counter Card (Front-and-Center Feedback) */}
-        <div id="detailModalSupportCard"
-          style={{"background":"linear-gradient(135deg, #F0FDF4 0%, #EFF6FF 100%)","border":"1.5px solid #86EFAC","borderRadius":"14px","padding":"12px 18px","marginBottom":"14px","display":"flex","alignItems":"center","justifyContent":"space-between","flexWrap":"wrap","gap":"10px","boxShadow":"0 4px 14px rgba(16, 185, 129, 0.08)","transition":"all 0.25s ease"}}>
-          <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
-            <div
-              style={{"width":"42px","height":"42px","borderRadius":"12px","background":"#DCFCE7","border":"1.5px solid #86EFAC","display":"flex","alignItems":"center","justifyContent":"center","fontSize":"20px","flexShrink":"0"}}>
-              👥
-            </div>
-            <div>
-              <div style={{"display":"flex","alignItems":"center","gap":"8px","flexWrap":"wrap"}}>
-                <span id="detailModalSupportCount" style={{"fontSize":"15px","fontWeight":"900","color":"#166534"}}>
-                  1 नागरिक इस समस्या से प्रभावित हैं
+            {/* 1. Location Details Card */}
+            <div className="detail-white-box">
+              <div className="detail-box-head">
+                <span className="detail-box-title">
+                  <span style={{"color":"#16A34A","fontSize":"16px"}}>📍</span>
+                  <span style={{"fontSize":"14px","fontWeight":"800"}}>Location Details</span>
                 </span>
-                <span id="detailModalSupportBadge"
-                  style={{"fontSize":"11px","fontWeight":"800","padding":"2px 9px","borderRadius":"12px","background":"#FEF3C7","color":"#B45309","border":"1px solid #FCD34D"}}>
-                  सामुदायिक समर्थन
+                <button type="button" onClick={() => { if (window.gotoCurrentReportMap) window.gotoCurrentReportMap(); }}
+                  style={{"background":"none","border":"none","color":"#2563EB","fontSize":"11.5px","fontWeight":"700","cursor":"pointer","display":"inline-flex","alignItems":"center","gap":"4px"}}>
+                  <span>🗺️ Open in Maps ↗</span>
+                </button>
+              </div>
+              <div style={{"fontSize":"12.5px","fontWeight":"700","color":"#0F172A","marginBottom":"6px"}} id="detailLocationText">
+                Ranchi, Jharkhand
+              </div>
+
+              {/* 2x2 Grid */}
+              <div className="detail-loc-grid-clean">
+                <div className="detail-loc-cell">🏛️ State: <strong id="detailLocState">Jharkhand</strong></div>
+                <div className="detail-loc-cell">🏢 District: <strong id="detailLocDistrict">Ranchi</strong></div>
+                <div className="detail-loc-cell">📍 Tehsil/Block: <strong id="detailLocTehsil">Sadar Block</strong></div>
+                <div className="detail-loc-cell">🏡 Area/Village: <strong id="detailLocVillage">Ranchi</strong></div>
+              </div>
+
+              {/* GPS Pill */}
+              <div style={{"fontSize":"10.5px","fontWeight":"700","color":"#1E40AF","background":"#EFF6FF","border":"1px solid #BFDBFE","borderRadius":"6px","padding":"4px 8px","display":"inline-flex","alignItems":"center","gap":"4px","marginTop":"2px"}} id="detailGpsPill">
+                🌐 GPS: 23.3441°N, 85.3096°E
+              </div>
+            </div>
+
+            {/* 2. Single Consolidated Ground Evidence & Media Card */}
+            <div className="detail-white-box" id="detailConsolidatedEvidenceBox">
+              <div className="detail-box-head">
+                <span className="detail-box-title">
+                  <span style={{"color":"#16A34A","fontSize":"16px"}}>🖼️</span>
+                  <span style={{"fontSize":"14px","fontWeight":"800"}} data-i18n="detail_evidence_card_title">Ground Evidence &amp; Media</span>
+                </span>
+                <span id="detailEvidenceCountBadge" style={{"fontSize":"11px","fontWeight":"800","color":"#1E40AF","background":"#EFF6FF","border":"1px solid #BFDBFE","padding":"3px 9px","borderRadius":"8px"}}>
+                  0 Files Attached
                 </span>
               </div>
-              <div id="detailModalSupportSubtext" style={{"fontSize":"11.5px","color":"#475569","marginTop":"2px"}}>
-                यदि आप भी इस समस्या से प्रभावित हैं, तो समर्थन देकर प्रशासन का ध्यान आकर्षित करें।
+
+              {/* Media Thumbnails Strip or Empty Notice */}
+              <div id="detailMediaThumbContainer" style={{"marginTop":"8px","marginBottom":"12px"}}>
+                {/* Dynamically populated thumbnail preview */}
               </div>
+
+              {/* Prominent Evidence Button */}
+              <button
+                type="button"
+                className="btn-view-evidence-prominent"
+                id="btnOpenConsolidatedEvidence"
+                onClick={() => { (window.openAllMediaEvidenceViewer || openAllMediaEvidenceViewer)() }}
+              >
+                <span>🔍</span> <span id="btnViewFullEvidenceText">View Full Grievance &amp; Evidence →</span>
+              </button>
             </div>
-          </div>
-          <div id="detailModalInlineSupportBtnSlot">
-            {/* Populated dynamically: Support Button for Viewer, or Author badge for Owner */}
-          </div>
-        </div>
 
-        <div className="detail-hero-box"
-          onClick={() => { zoomImage(document.getElementById('detailImage').src, document.getElementById('detailTitle').textContent) }}>
-          <img src="/images/water-tap.jpg" className="detail-hero-img" id="detailImage" alt="Problem Photo" />
-          <div className="zoom-hint-badge" data-i18n="badge_zoom_hint">🔍 Click to Enlarge / Zoom</div>
-        </div>
-
-        <div className="detail-meta-chip-row">
-          <span className="status-badge-in-progress" id="detailStatusBadge">Being Worked On</span>
-          <span
-            style={{"fontSize":"12px","fontWeight":"700","color":"var(--navy)","background":"#EFF6FF","padding":"4px 10px","borderRadius":"20px"}}
-            id="detailCategoryBadge">Water Management</span>
-          <span id="detailSubmitterChip"
-            style={{"fontSize":"11.5px","fontWeight":"700","color":"#C2410C","background":"#FFEDD5","border":"1px solid #FDBA74","padding":"3px 10px","borderRadius":"20px","display":"none"}}>👤
-            Submitter</span>
-          <span id="detailGisChip"
-            style={{"fontSize":"11px","fontWeight":"700","color":"#059669","background":"#ECFDF5","border":"1px solid #A7F3D0","padding":"3px 9px","borderRadius":"20px","display":"none"}}>✓
-            GIS Geo-Verified</span>
-          <span style={{"fontSize":"12px","color":"var(--gray-500)","marginLeft":"auto"}} id="detailTimeAgo">Reported 4 days
-            ago</span>
-        </div>
-
-        <div className="detail-full-description" id="detailDescription">
-          The primary piped water scheme pipeline is damaged, causing water loss and 400+ villagers without clean
-          drinking water.
-        </div>
-
-        {/* Comprehensive Live Multi-Stakeholder Progress Bar & Action Details (प्रशासन, कॉलेज, इंडस्ट्री व नागरिक) */}
-        <div className="detail-section-block"
-          style={{"background":"#ffffff","border":"1.5px solid #e2e8f0","borderRadius":"16px","padding":"18px 20px","boxShadow":"0 4px 16px rgba(0, 45, 98, 0.04)"}}>
-          <div
-            style={{"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"14px","flexWrap":"wrap","gap":"8px"}}>
-            <div>
-              <div className="detail-section-title"
-                style={{"marginBottom":"2px","fontSize":"15px","color":"var(--navy)","display":"flex","alignItems":"center","gap":"7px"}}>
-                <span>📊</span>
-                <span data-i18n="tracker_stakeholder_title" id="detailTimelineSectionTitle">LIVE PROGRESS &amp; AUDIT TRAIL</span>
-              </div>
-              <div style={{"fontSize":"11.5px","color":"var(--gray-500)"}} id="detailTimelineSectionSub">
-                Real-time audit track: Admin verification, Industry supplies &amp; University field action
-              </div>
-            </div>
-            <span id="detailReportedTimestampBadge"
-              style={{"fontSize":"11px","fontWeight":"800","color":"#002D62","background":"#EFF6FF","border":"1px solid #BFDBFE","padding":"4px 12px","borderRadius":"20px","boxShadow":"0 1px 4px rgba(0,0,0,0.04)"}}>
-              📅 Reported: 01 Sep · 10:30 AM
-            </span>
           </div>
 
-          {/* 5-Step Visual Horizontal Progress Bar with Stakeholder Badges */}
-          <div className="detail-timeline-container" id="detailModalTimelineContainer" style={{"marginBottom":"16px"}}>
-            {/* Dynamically populated 5 steps */}
-          </div>
-
-          {/* Detailed Stakeholder Action Cards: Kis Admin ne verify kiya, Kis Industry ne kya kiya, Kisko assign hua */}
-          <div id="detailStakeholderCardsGrid"
-            style={{"display":"flex","flexDirection":"column","gap":"10px","marginTop":"14px","borderTop":"1.5px dashed #cbd5e1","paddingTop":"14px"}}>
-            {/* Dynamically populated cards for Admin, Industry, University, and Citizen */}
-          </div>
-        </div>
-
-        <div className="detail-section-block">
-          <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"8px","flexWrap":"wrap","gap":"8px"}}>
-            <div className="detail-section-title" style={{"marginBottom":"0"}} data-i18n="detail_loc_title">📍 Location &amp; Ground Authority</div>
-            <button type="button" id="btnGotoLocationMap" className="btn-goto-map" onClick={() => { if (typeof window !== 'undefined' && window.gotoCurrentReportMap) window.gotoCurrentReportMap(); }}
-              style={{"background":"linear-gradient(135deg, #0284C7, #0369A1)","color":"#FFFFFF","border":"none","padding":"6px 14px","borderRadius":"8px","fontSize":"11.5px","fontWeight":"800","cursor":"pointer","display":"inline-flex","alignItems":"center","gap":"6px","boxShadow":"0 2px 6px rgba(2,132,199,0.25)","transition":"all 0.2s ease"}}>
-              <span>🗺️</span> <span data-i18n="btn_goto_map">मानचित्र पर देखें (Map View) →</span>
-            </button>
-          </div>
-          <div id="detailLocationDetailedBox" style={{"background":"#F8FAFC","border":"1px solid #E2E8F0","borderRadius":"10px","padding":"12px 14px","marginBottom":"8px"}}>
-            <div style={{"fontSize":"13.5px","color":"var(--gray-900)","lineHeight":"1.5","fontWeight":"600"}} id="detailLocationText">
-              Village Namkum, Namkum, Ranchi, Jharkhand
-            </div>
-            <div id="detailHierarchyRow" style={{"display":"flex","gap":"6px","flexWrap":"wrap","marginTop":"8px"}}>
-              {/* Dynamic Hierarchy Pills: Village, Tehsil, District, State, Coordinates */}
-            </div>
-          </div>
-          <div style={{"fontSize":"12.5px","fontWeight":"700","color":"var(--navy)","display":"flex","alignItems":"center","gap":"6px"}} id="detailAssignmentText">
-            <span>🛡️</span> Assigned Taskforce: BIT Mesra Civil &amp; Environmental Engineering Lab
-          </div>
-        </div>
-
-        <div className="detail-section-block" id="detailBaSection">
-          <div className="detail-section-title" data-i18n="detail_ba_title">🖼️ Before &amp; After Ground Evidence</div>
-          <div className="detail-ba-grid">
-            <div className="detail-ba-card" onClick={() => { zoomBeforeImage() }}>
-              <span
-                style={{"fontSize":"11px","fontWeight":"800","color":"var(--gray-600)","display":"block","marginBottom":"4px"}}
-                data-i18n="ba_before">BEFORE</span>
-              <img src="/images/water-tap.jpg" className="detail-ba-img" id="detailBeforeImg" alt="Before" />
-            </div>
-            <div className="detail-ba-card" id="detailAfterCard" onClick={() => { zoomAfterImage() }}>
-              <span
-                style={{"fontSize":"11px","fontWeight":"800","color":"var(--india-green)","display":"block","marginBottom":"4px"}}
-                data-i18n="ba_after">AFTER</span>
-              <img src="/images/water-tap.jpg" className="detail-ba-img" id="detailAfterImg"
-                style={{"filter":"brightness(1.05) saturate(1.15)"}} alt="After" />
-              <div id="detailAfterPendingNotice"
-                style={{"display":"none","height":"110px","borderRadius":"8px","background":"#f8fafc","border":"1.5px dashed #cbd5e1","flexDirection":"column","alignItems":"center","justifyContent":"center","textAlign":"center","padding":"12px","gap":"4px"}}>
-                <span style={{"fontSize":"22px"}}>⏳</span>
-                <span style={{"fontSize":"11px","fontWeight":"800","color":"var(--gray-700)"}}>Resolution in Progress</span>
-                <span style={{"fontSize":"10px","color":"var(--gray-400)"}}>After-proof will be verified &amp; uploaded upon
-                  resolution</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Citizen Video Evidence Player */}
-          <div id="detailVideoContainer" style={{"display":"none","marginTop":"14px","background":"#0F172A","borderRadius":"12px","padding":"12px","boxShadow":"0 4px 16px rgba(0,0,0,0.2)"}}>
-            <div style={{"fontSize":"12px","fontWeight":"800","color":"#F8FAFC","marginBottom":"8px","display":"flex","alignItems":"center","justifyContent":"space-between"}}>
-              <span style={{"display":"inline-flex","alignItems":"center","gap":"6px"}}>🎬 <span>Citizen Video Ground Evidence (नागरिक वीडियो साक्ष्य)</span></span>
-              <span style={{"fontSize":"10.5px","background":"#EF4444","color":"#FFF","padding":"2px 8px","borderRadius":"10px","fontWeight":"700"}}>LIVE EVIDENCE</span>
-            </div>
-            <video id="detailVideoPlayer" controls style={{"width":"100%","maxHeight":"280px","borderRadius":"8px","background":"#000","outline":"none"}} src=""></video>
-          </div>
-
-          {/* All Citizen Uploaded Photographic Proofs Gallery */}
-          <div id="detailMultiPhotoGallery" style={{"display":"none","marginTop":"14px"}}>
-            <div style={{"fontSize":"12px","fontWeight":"800","color":"#334155","marginBottom":"8px","display":"flex","alignItems":"center","gap":"6px"}}>
-              <span>📷</span> <span>All Uploaded Photographic Proofs (सभी फोटो साक्ष्य)</span>
-            </div>
-            <div id="detailGalleryPhotosGrid" style={{"display":"grid","gridTemplateColumns":"repeat(auto-fill, minmax(105px, 1fr))","gap":"8px"}}>
-              {/* Dynamic Photo Thumbnails */}
-            </div>
-          </div>
-        </div>
-
-        {/* Solved Problem Citizen Feedback Card */}
-        <div className="detail-section-block" id="detailSolvedFeedbackCard"
-          style={{"display":"none","background":"#f0fdf4","border":"1.5px solid #86efac","borderRadius":"12px","padding":"14px 16px"}}>
-          <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"8px"}}>
-            <div
-              style={{"fontSize":"13px","fontWeight":"800","color":"#166534","display":"flex","alignItems":"center","gap":"6px"}}>
-              <span>🌟</span> <span data-i18n="feedback_title">Citizen Resolution Feedback</span>
-            </div>
-            <div id="detailStarRatingWidget" style={{"display":"flex","gap":"4px","fontSize":"19px","cursor":"pointer"}}>
-              <span onClick={() => { setFeedbackRating(1) }} id="star_1">⭐</span>
-              <span onClick={() => { setFeedbackRating(2) }} id="star_2">⭐</span>
-              <span onClick={() => { setFeedbackRating(3) }} id="star_3">⭐</span>
-              <span onClick={() => { setFeedbackRating(4) }} id="star_4">⭐</span>
-              <span onClick={() => { setFeedbackRating(5) }} id="star_5">⭐</span>
-            </div>
-          </div>
-          <textarea id="detailFeedbackComment" className="form-input-control" rows="2"
-            placeholder="Tell us if you are satisfied with this ground resolution..."
-            style={{"background":"#fff","fontSize":"12px","marginBottom":"10px"}}></textarea>
-          <div style={{"display":"flex","gap":"10px","flexWrap":"wrap"}}>
-            <button type="button" className="btn-sol-yes" onClick={() => { submitSolvedFeedback() }}
-              style={{"background":"#16a34a","padding":"8px 14px","fontSize":"12px","flex":"1"}}>
-              <span data-i18n="btn_confirm_resolution">✅ Confirm Resolution</span>
-            </button>
-            <button type="button" className="btn-sol-no" onClick={() => { triggerReopenFromDetail() }}
-              style={{"padding":"8px 14px","fontSize":"12px","flex":"1"}}>
-              <span data-i18n="btn_reopen_persists">🔴 Problem Still Persists — Reopen</span>
-            </button>
-          </div>
-          {/* Supabase Free Space Action */}
-          <div style={{"marginTop":"12px","paddingTop":"10px","borderTop":"1px dashed #86efac","display":"flex","justifyContent":"space-between","alignItems":"center","flexWrap":"wrap","gap":"8px"}}>
-            <span style={{"fontSize":"11.5px","color":"#15803D","fontWeight":"600"}}>
-              ☁️ Supabase Cloud Storage
-            </span>
-            <button type="button" id="btnDetailDeleteFiles" onClick={() => { deleteProblemFiles() }}
-              style={{"background":"#FFF7ED","border":"1.5px solid #FDBA74","color":"#C2410C","padding":"6px 12px","borderRadius":"8px","fontSize":"11.5px","fontWeight":"800","cursor":"pointer","display":"inline-flex","alignItems":"center","gap":"6px"}}>
-              <span>🗑️</span> <span data-i18n="btn_delete_files">Delete Files from Supabase (Free Space)</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Distinct Persona-Based Action Footer (Author vs Dekhne Wala Citizen) */}
-        <div id="detailFooterActionContainer"
-          style={{"marginTop":"14px","paddingTop":"14px","borderTop":"1.5px solid #E2E8F0"}}>
-          {/* Populated via renderDetailFooterActions() */}
         </div>
       </div>
+
+      {/* ============================================================
+          TAB 2: PROGRESS (EXPANDED VERTICAL TIMELINE)
+          ============================================================ */}
+      <div className="detail-tab-view" id="tabView_progress">
+        <div className="detail-white-box">
+          <div className="detail-box-head">
+            <span className="detail-box-title">
+              <span style={{"color":"#0284C7","fontSize":"16px"}}>📊</span>
+              <span style={{"fontSize":"15px","fontWeight":"800"}}>Comprehensive Action &amp; Progress History</span>
+            </span>
+          </div>
+          <div id="tabProgressEventList" style={{"display":"flex","flexDirection":"column","gap":"4px"}}>
+            {/* Populated dynamically in citizenLogic.js */}
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================
+          TAB 3: VERIFICATION (ADMIN AUDIT & AUTHENTICITY)
+          ============================================================ */}
+      <div className="detail-tab-view" id="tabView_verification">
+        <div className="verification-audit-box" id="tabVerificationContent">
+          {/* Populated dynamically in citizenLogic.js */}
+        </div>
+      </div>
+
+      {/* ============================================================
+          TAB 4: EVIDENCE (HIGH-RES GALLERY & FIELD PROOFS)
+          ============================================================ */}
+      <div className="detail-tab-view" id="tabView_evidence">
+        <div className="detail-white-box">
+          <div className="detail-box-head">
+            <span className="detail-box-title">
+              <span style={{"color":"#16A34A","fontSize":"16px"}}>🖼️</span>
+              <span style={{"fontSize":"15px","fontWeight":"800"}}>Ground Evidence &amp; Geotagged Media</span>
+            </span>
+          </div>
+          <div className="evidence-gallery-grid" id="tabEvidenceGrid">
+            {/* Populated dynamically */}
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================
+          TAB 5: DISCUSSION (COMMUNITY CHAT INLINE)
+          ============================================================ */}
+      <div className="detail-tab-view" id="tabView_discussion">
+        <div className="tab-discussion-box">
+          <div className="detail-box-head">
+            <span className="detail-box-title">
+              <span style={{"color":"#7C3AED","fontSize":"16px"}}>💬</span>
+              <span style={{"fontSize":"15px","fontWeight":"800"}}>Citizen &amp; Stakeholder Discussion</span>
+            </span>
+            <button type="button" className="btn-footer-chat-clean" onClick={() => { closeModal('detailModal'); const a = typeof currentlyInspectedId !== 'undefined' ? currentlyInspectedId : ''; if (a && window.openChatModal) window.openChatModal(a); }}>
+              Open Full Chat Window ↗
+            </button>
+          </div>
+          <div id="tabDiscussionContainer" style={{"minHeight":"200px","padding":"12px 0"}}>
+            <p style={{"fontSize":"13px","color":"#64748B"}}>Join the discussion to collaborate with neighbors, local officers, and the student team working on this grievance.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================
+          STAKEHOLDER DETAIL DRAWER / POP-UP OVERLAY
+          ============================================================ */}
+      <div className="stakeholder-detail-overlay" id="stakeholderDetailOverlay" style={{"display":"none"}}>
+        <div className="stakeholder-detail-header">
+          <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
+            <span id="stkModalIcon" style={{"fontSize":"26px"}}>🏛️</span>
+            <div>
+              <h4 id="stkModalTitle" style={{"fontSize":"16px","fontWeight":"800","color":"#0F172A","margin":"0"}}>Administrative Action Log</h4>
+              <div id="stkModalSub" style={{"fontSize":"12px","color":"#64748B","marginTop":"2px"}}>Day-by-day actions taken by this organization</div>
+            </div>
+          </div>
+          <button type="button" onClick={() => { closeStakeholderDetails() }}
+            style={{"background":"#F1F5F9","border":"1px solid #CBD5E1","borderRadius":"50%","width":"32px","height":"32px","cursor":"pointer","fontSize":"14px","display":"flex","alignItems":"center","justifyContent":"center"}}>✕</button>
+        </div>
+        <div id="stkModalTimelineBody" style={{"display":"flex","flexDirection":"column","gap":"10px"}}>
+          {/* Day-by-day logs inserted dynamically */}
+        </div>
+      </div>
+
+      {/* Clean Footer Bar */}
+      <div className="detail-footer-bar-clean">
+        <div style={{"display":"flex","alignItems":"center","gap":"8px"}}>
+          <button type="button" className="btn-footer-slip-clean" id="btnDetailDownloadSlip" onClick={() => { if (window.handleDetailSlipClick) window.handleDetailSlipClick(); else if (window.openReportSlipFromDetail) window.openReportSlipFromDetail(); else if (window.openReportSlip) window.openReportSlip(currentlyInspectedId); }}>
+            <span id="detailSlipIcon">📥</span> <span id="detailSlipText">Download Official Slip</span>
+          </button>
+          <div id="detailModalDeleteBtnSlot"></div>
+          <div id="detailModalSupportBtnSlot"></div>
+        </div>
+
+        <div style={{"fontSize":"11px","color":"#64748B","fontWeight":"700","display":"flex","alignItems":"center","gap":"8px"}}>
+          <span style={{"width":"24px","height":"2px","background":"#FF9933","display":"inline-block","borderRadius":"2px"}}></span>
+          <span>Seva • Samadhan • Samriddh Bharat</span>
+          <span style={{"width":"24px","height":"2px","background":"#138808","display":"inline-block","borderRadius":"2px"}}></span>
+        </div>
+
+        <div style={{"display":"flex","alignItems":"center","gap":"8px"}}>
+          <button type="button" className="btn-footer-chat-clean" id="btnDetailChat" onClick={() => { closeModal('detailModal'); const a = typeof currentlyInspectedId !== 'undefined' ? currentlyInspectedId : ''; if (a && window.openChatModal) window.openChatModal(a); }}>
+            <span>💬</span> <span>Problem Chat</span>
+          </button>
+          <button type="button" className="btn-footer-close-clean" onClick={() => { closeModal('detailModal') }}>
+            Close
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -1382,6 +1476,41 @@ function App() {
     <button className="lightbox-close-btn" onClick={() => { closeZoomModal() }}>✕</button>
     <img src="" className="lightbox-img-full" id="lightboxImg" onClick={() => { event.stopPropagation(); }} alt="Enlarged View" />
     <div className="lightbox-caption" id="lightboxCaption" onClick={() => { event.stopPropagation(); }}>Enlarged Photo</div>
+  </div>
+
+  {/* ============================================================
+     MODAL: EVIDENCE GALLERY VIEWER (EXACT IMAGE 2 REPLICA)
+     ============================================================ */}
+  <div className="pdm-custom-gallery-overlay" id="galleryViewerModal" style={{"display":"none"}} onClick={() => { closeGalleryViewer() }}>
+    <div className="pdm-custom-gallery-card" onClick={(e) => { e.stopPropagation(); }}>
+      {/* Top Bar: Left Upper Corner Counter (1/2) & Right Upper Corner Close Button */}
+      <div className="pdm-custom-gallery-top">
+        <div className="pdm-custom-gallery-counter" id="galleryViewerCounter">1/1</div>
+        <button type="button" className="pdm-custom-gallery-close" onClick={() => { closeGalleryViewer() }} title="Close (Esc)">✕</button>
+      </div>
+
+      {/* Middle Row: < Prev Button in Left of Image, Image with Black Outline, > Next Button in Right of Image */}
+      <div className="pdm-custom-gallery-row">
+        <button type="button" className="pdm-custom-nav-btn prev" id="galleryViewerPrevBtn" onClick={() => { prevGalleryViewerPhoto() }} title="Previous Photo (<)">
+          ‹
+        </button>
+
+        <div className="pdm-custom-img-wrap">
+          <img id="galleryViewerImg" src="" alt="Evidence" className="pdm-custom-img" />
+          <video id="galleryViewerVideo" controls style={{"display":"none","maxWidth":"100%","maxHeight":"62vh","borderRadius":"10px","background":"#000000","outline":"none"}} src=""></video>
+        </div>
+
+        <button type="button" className="pdm-custom-nav-btn next" id="galleryViewerNextBtn" onClick={() => { nextGalleryViewerPhoto() }} title="Next Photo (>)">
+          ›
+        </button>
+      </div>
+
+      {/* Bottom Details */}
+      <div className="pdm-custom-gallery-footer" id="galleryViewerFooter">
+        <span id="galleryViewerTitle" className="pdm-custom-gallery-title">Field Evidence</span>
+        <span id="galleryViewerMeta" className="pdm-custom-gallery-meta">• Field Evidence · Citizen Upload</span>
+      </div>
+    </div>
   </div>
 
   {/* ============================================================
@@ -1891,153 +2020,289 @@ function App() {
   {/* ============================================================
      MODAL: CITIZEN CIVIC IDENTITY & SECURE PROFILE
      ============================================================ */}
+  {/* ============================================================
+     MODAL: CITIZEN CIVIC IDENTITY & SECURE PROFILE (IMAGE 2 REVAMP)
+     ============================================================ */}
   <div className="modal-overlay" id="profileModal">
-    <div className="modal-card-box profile-identity-modal">
+    <div className="modal-card-box profile-modal-revamp">
+      {/* Indian National Flag Tricolor Top Bar */}
       <div className="profile-tricolor-bar"></div>
 
-      {/* Hero Profile Header Banner */}
-      <div className="profile-hero-banner">
-        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"flex-start"}}>
-          <div style={{"display":"flex","alignItems":"center","gap":"14px"}}>
-            <div className="profile-avatar-large" id="profAvatarBig">R</div>
-            <div>
-              <div
-                style={{"display":"inline-flex","alignItems":"center","gap":"5px","background":"rgba(16, 185, 129, 0.2)","border":"1px solid #10B981","padding":"2px 8px","borderRadius":"12px","fontSize":"10px","fontWeight":"800","color":"#6EE7B7","marginBottom":"4px"}}>
-                <span>🛡️</span> <span data-i18n="profile_verified_badge">Verified Citizen</span>
-              </div>
-              <div style={{"fontSize":"18px","fontWeight":"900","color":"#FFFFFF","letterSpacing":"0.2px"}}
-                id="profNameHeader">Rajesh Mahto</div>
-              <div
-                style={{"fontSize":"11px","color":"#93C5FD","display":"flex","alignItems":"center","gap":"8px","marginTop":"2px"}}>
-                <span>🆔 <span data-i18n="profile_citizen_id_label">Citizen ID</span>: <strong id="profCitizenIdHeader"
-                    style={{"color":"#FFFFFF","letterSpacing":"0.5px"}}>C4819</strong></span>
-                <span>•</span>
-                <span>📍 <span id="profCityDistrictHeader">Dhanbad, Jharkhand</span></span>
-              </div>
-            </div>
-          </div>
-          <button className="modal-close-btn" onClick={() => { closeModal('profileModal') }}
-            style={{"color":"#FFFFFF","background":"rgba(255,255,255,0.15)","borderRadius":"50%","width":"28px","height":"28px","display":"flex","alignItems":"center","justifyContent":"center"}}>✕</button>
-        </div>
+      {/* Top Right Civic Watermark Tag */}
+      <div className="profile-watermark-tag">
+        <div className="watermark-title">Citizens</div>
+        <div className="watermark-sub">Build a Better Tomorrow</div>
+        <div className="watermark-bar"></div>
       </div>
 
-      {/* Profile Action Cards Body */}
-      <div className="modal-body-scroll" style={{"padding":"14px 18px","maxHeight":"520px"}}>
+      {/* Close Button */}
+      <button type="button" className="modal-close-btn" onClick={() => { closeModal('profileModal') }}
+        style={{"position":"absolute","top":"12px","right":"14px","color":"#475569","background":"#F1F5F9","border":"1px solid #CBD5E1","borderRadius":"50%","width":"28px","height":"28px","display":"flex","alignItems":"center","justifyContent":"center","fontSize":"12px","cursor":"pointer","zIndex":"5"}} title="Close">✕</button>
 
-        <div className="profile-cards-list">
-
-          {/* 1. Full Name Card */}
-          <div className="profile-card-row">
-            <div className="profile-card-info">
-              <span className="profile-card-title">👤 <span data-i18n="prof_label_name">Full Name</span></span>
-              <span className="profile-card-value" id="profDisplayName">Rajesh Mahto</span>
+      {/* Profile Hero Header */}
+      <div className="profile-hero-section">
+        <div style={{"display":"flex","alignItems":"center","gap":"14px"}}>
+          <div className="profile-avatar-wrapper" id="profAvatarBig">
+            R
+            <div className="profile-avatar-check" id="profAvatarCheckBadge">✓</div>
+          </div>
+          <div>
+            <div id="profVerifiedStatusBadge" style={{"display":"inline-flex","alignItems":"center","gap":"5px","background":"#ECFDF5","border":"1px solid #A7F3D0","padding":"2px 8px","borderRadius":"12px","fontSize":"10px","fontWeight":"800","color":"#059669","marginBottom":"3px"}}>
+              <span>🛡️</span> <span id="profVerifiedBadgeText" data-i18n="profile_verified_badge">Verified Citizen</span>
             </div>
-            <button type="button" className="btn-profile-action" onClick={() => { openChangeNameModal() }}>
+            <div style={{"fontSize":"19px","fontWeight":"800","color":"#0F172A","letterSpacing":"-0.2px","lineHeight":"1.2"}}
+              id="profNameHeader">Rajesh Mahto</div>
+            <div style={{"fontSize":"11px","color":"#475569","display":"flex","alignItems":"center","gap":"8px","marginTop":"3px","flexWrap":"wrap"}}>
+              <span>🆔 <span data-i18n="profile_citizen_id_label">Citizen ID</span>: <strong id="profCitizenIdHeader" style={{"color":"#002D62","fontWeight":"800"}}>C4819</strong></span>
+              <span>|</span>
+              <span>📍 <span id="profCityDistrictHeader">Dhanbad, Jharkhand</span></span>
+            </div>
+            <div style={{"fontSize":"10px","color":"#94A3B8","marginTop":"2px"}}>
+              Registered on JanSetu • Member since 2024
+            </div>
+          </div>
+        </div>
+        <button type="button" className="btn-profile-edit-clean" onClick={() => { openChangeNameModal() }}>
+          ✏️ <span data-i18n="btn_edit_profile">Edit Profile</span>
+        </button>
+      </div>
+
+      {/* Profile 4 Sections Body */}
+      <div className="modal-body-scroll" style={{"padding":"16px 22px 10px","maxHeight":"520px","background":"#FFFFFF"}}>
+
+        {/* 1. Personal Information */}
+        <div className="profile-block-group">
+          <div className="profile-block-head">
+            <span className="profile-block-title">👤 <span data-i18n="prof_section_personal">Personal Information</span></span>
+            <span className="profile-block-sub">Basic details used for your JanSetu account</span>
+          </div>
+          <div className="profile-row-item">
+            <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
+              <div className="profile-icon-box blue">👤</div>
+              <div>
+                <div style={{"fontSize":"9.5px","color":"#64748B","fontWeight":"700","textTransform":"uppercase"}}>Full Name</div>
+                <div style={{"fontSize":"13px","fontWeight":"800","color":"#0F172A"}} id="profDisplayName">Rajesh Mahto</div>
+              </div>
+            </div>
+            <button type="button" className="btn-profile-edit-clean" onClick={() => { openChangeNameModal() }}>
               ✏️ <span data-i18n="btn_change_name">Change Name</span>
             </button>
           </div>
-
-          {/* 2. Email Address Card */}
-          <div className="profile-card-row">
-            <div className="profile-card-info">
-              <span className="profile-card-title">✉️ <span data-i18n="prof_label_email">Email Address</span></span>
-              <div className="profile-card-value">
-                <span id="profDisplayEmail">rajesh@gmail.com</span>
-                <span
-                  style={{"fontSize":"10px","fontWeight":"800","background":"#DEF7EC","color":"#03543F","border":"1px solid #BCF0DA","padding":"2px 7px","borderRadius":"8px"}}>✓
-                  Verified</span>
-              </div>
-            </div>
-            <button type="button" className="btn-profile-action" onClick={() => { openChangeEmailModal() }}>
-              ✉️ <span data-i18n="btn_change_email">Change Email</span>
-            </button>
-          </div>
-
-          {/* 3. Mobile Number Card */}
-          <div className="profile-card-row">
-            <div className="profile-card-info">
-              <span className="profile-card-title">📱 <span data-i18n="prof_label_mobile">Mobile Number</span></span>
-              <div className="profile-card-value">
-                <span id="profDisplayPhone">+91 94311-00003</span>
-                <span
-                  style={{"fontSize":"10px","fontWeight":"800","background":"#DEF7EC","color":"#03543F","border":"1px solid #BCF0DA","padding":"2px 7px","borderRadius":"8px"}}>✓
-                  OTP Verified</span>
-              </div>
-            </div>
-            <button type="button" className="btn-profile-action" onClick={() => { openChangeMobileModal() }}>
-              📱 <span data-i18n="btn_change_mobile">Change Mobile</span>
-            </button>
-          </div>
-
-          {/* 4. Digital e-Aadhaar Identity Card */}
-          <div className="aadhaar-card-replica">
-            <div style={{"display":"flex","justifyContent":"space-between","alignItems":"flex-start","marginBottom":"8px"}}>
-              <div style={{"display":"flex","alignItems":"center","gap":"8px"}}>
-                <span style={{"fontSize":"20px"}}>🇮🇳</span>
-                <div>
-                  <div
-                    style={{"fontSize":"11px","fontWeight":"900","color":"#002D62","textTransform":"uppercase","letterSpacing":"0.3px"}}
-                    data-i18n="aadhaar_govt_title">Govt. of India</div>
-                  <div style={{"fontSize":"9.5px","color":"#B45309","fontWeight":"700"}} data-i18n="aadhaar_uidai_sub">Unique
-                    Identification Authority of India (UIDAI)</div>
-                </div>
-              </div>
-              <span
-                style={{"fontSize":"10.5px","fontWeight":"800","background":"#ECFDF5","color":"#065F46","border":"1px solid #A7F3D0","padding":"2px 8px","borderRadius":"10px","display":"inline-flex","alignItems":"center","gap":"4px"}}>
-                🛡️ <span data-i18n="aadhaar_verified_pill">Verified &amp; Linked</span>
-              </span>
-            </div>
-
-            <div
-              style={{"background":"rgba(255, 255, 255, 0.9)","border":"1px solid #E5E7EB","borderRadius":"8px","padding":"8px 12px","display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"6px"}}>
-              <div>
-                <div style={{"fontSize":"9.5px","color":"#64748B","fontWeight":"700","textTransform":"uppercase"}}
-                  data-i18n="aadhaar_num_label">Aadhaar Number</div>
-                <div className="aadhaar-number-display" id="profDisplayAadhaar">XXXX-XXXX-4819</div>
-              </div>
-              <div style={{"textAlign":"right"}}>
-                <div style={{"fontSize":"10px","color":"#059669","fontWeight":"800"}}>✓ <span
-                    data-i18n="aadhaar_biometric_active">Biometric Active</span></div>
-                <div style={{"fontSize":"9px","color":"#64748B"}}>Digital India UID</div>
-              </div>
-            </div>
-
-            <div style={{"fontSize":"9.5px","color":"#78350F","textAlign":"center","fontWeight":"600"}}
-              data-i18n="aadhaar_rights_tagline">
-              Aadhaar — Citizen's Right · JanSetu Civic Identity Protection
-            </div>
-          </div>
-
-          {/* 5. Security & Password Card */}
-          <div className="profile-card-row" style={{"background":"#FFFBEB","borderColor":"#FDE68A"}}>
-            <div className="profile-card-info">
-              <span className="profile-card-title" style={{"color":"#92400E"}}>🔐 <span data-i18n="prof_label_security">Security
-                  &amp; Password</span></span>
-              <div style={{"fontSize":"12px","fontWeight":"700","color":"#78350F","marginTop":"1px"}}
-                data-i18n="prof_security_desc">
-                Master Password + Aadhaar Multi-Factor Protected
-              </div>
-            </div>
-            <button type="button" className="btn-profile-action-sec" onClick={() => { openChangePasswordModal() }}>
-              🔐 <span data-i18n="btn_change_password">Change Password</span>
-            </button>
-          </div>
-
         </div>
 
-        {/* Footer Buttons */}
-        <div
-          style={{"padding":"12px 20px 6px","display":"flex","justifyContent":"space-between","alignItems":"center","borderTop":"1px solid #E2E8F0","marginTop":"6px"}}>
-          <button type="button" onClick={() => { handleLogout() }}
-            style={{"padding":"7px 14px","fontSize":"11.5px","fontWeight":"700","color":"#DC2626","background":"#FEF2F2","border":"1px solid #FECACA","borderRadius":"8px","cursor":"pointer"}}>
-            🚪 <span data-i18n="btn_logout">Log Out</span>
+        {/* 2. Contact Information */}
+        <div className="profile-block-group">
+          <div className="profile-block-head">
+            <span className="profile-block-title">✉️ <span data-i18n="prof_section_contact">Contact Information</span></span>
+            <span className="profile-block-sub">Used for important updates and notifications</span>
+          </div>
+
+          {/* Email Row */}
+          <div className="profile-row-item">
+            <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
+              <div className="profile-icon-box green">✉️</div>
+              <div>
+                <div style={{"fontSize":"9.5px","color":"#64748B","fontWeight":"700","textTransform":"uppercase"}}>Email Address</div>
+                <div style={{"display":"flex","alignItems":"center","gap":"8px","marginTop":"1px"}}>
+                  <span style={{"fontSize":"13px","fontWeight":"800","color":"#0F172A"}} id="profDisplayEmail">rajesh@gmail.com</span>
+                  <span style={{"fontSize":"9.5px","fontWeight":"800","background":"#ECFDF5","color":"#059669","border":"1px solid #A7F3D0","padding":"1.5px 6px","borderRadius":"6px"}}>✓ Verified</span>
+                </div>
+              </div>
+            </div>
+            <button type="button" className="btn-profile-edit-clean" onClick={() => { openChangeEmailModal() }}>
+              ✏️ <span data-i18n="btn_change_email">Change Email</span>
+            </button>
+          </div>
+
+          {/* Mobile Row */}
+          <div className="profile-row-item">
+            <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
+              <div className="profile-icon-box green">📞</div>
+              <div>
+                <div style={{"fontSize":"9.5px","color":"#64748B","fontWeight":"700","textTransform":"uppercase"}}>Mobile Number</div>
+                <div style={{"display":"flex","alignItems":"center","gap":"8px","marginTop":"1px"}}>
+                  <span style={{"fontSize":"13px","fontWeight":"800","color":"#0F172A"}} id="profDisplayPhone">+91 9431100003</span>
+                  <span style={{"fontSize":"9.5px","fontWeight":"800","background":"#ECFDF5","color":"#059669","border":"1px solid #A7F3D0","padding":"1.5px 6px","borderRadius":"6px"}}>✓ OTP Verified</span>
+                </div>
+              </div>
+            </div>
+            <button type="button" className="btn-profile-edit-clean" onClick={() => { openChangeMobileModal() }}>
+              ✏️ <span data-i18n="btn_change_mobile">Change Mobile</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Identity & Verification */}
+        <div className="profile-block-group">
+          <div className="profile-block-head">
+            <span className="profile-block-title">🛡️ <span data-i18n="prof_section_identity">Identity &amp; Verification</span></span>
+            <span className="profile-block-sub">Government verified identity</span>
+          </div>
+
+          {/* Dynamic Aadhaar Identity Block (Verified vs Unverified) */}
+          <div id="profAadhaarDynamicBox">
+            <div className="aadhaar-status-box-verified" id="profAadhaarVerifiedCard">
+              <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
+                <div style={{"width":"42px","height":"42px","display":"flex","alignItems":"center","justifyContent":"center","flexShrink":"0"}}>
+                  <svg width="40" height="40" viewBox="0 0 100 100" fill="none">
+                    <circle cx="50" cy="50" r="18" fill="#FF9933" />
+                    <circle cx="50" cy="50" r="12" fill="#FFFFFF" />
+                    <circle cx="50" cy="50" r="7" fill="#002D62" />
+                    <path d="M50 8 L50 20 M50 80 L50 92 M8 50 L20 50 M80 50 L92 50 M20 20 L29 29 M71 71 L80 80 M20 80 L29 71 M71 29 L80 20" stroke="#FF9933" strokeWidth="4" strokeLinecap="round" />
+                    <path d="M50 14 L50 19 M50 81 L50 86 M14 50 L19 50 M81 50 L86 50 M26 26 L30 30 M70 70 L74 74 M26 74 L30 70 M70 30 L74 26" stroke="#EA580C" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{"fontSize":"9.5px","color":"#475569","fontWeight":"700","textTransform":"uppercase"}}>Aadhaar Number</div>
+                  <div style={{"fontFamily":"monospace","fontSize":"15px","fontWeight":"800","color":"#0F172A","letterSpacing":"1.5px"}} id="profDisplayAadhaar">XXXX-XXXX-4819</div>
+                  <div style={{"fontSize":"9.5px","color":"#64748B","marginTop":"1px"}}>Unique Identification Authority of India (UIDAI)</div>
+                </div>
+              </div>
+              <div style={{"textAlign":"right","flexShrink":"0"}}>
+                <div style={{"fontSize":"11px","fontWeight":"800","color":"#059669","display":"flex","alignItems":"center","justifyContent":"flex-end","gap":"4px"}}>
+                  ✓ <span>Verified &amp; Linked</span>
+                </div>
+                <div style={{"fontSize":"10px","fontWeight":"700","color":"#166534","marginTop":"2px"}}>
+                  ✓ Biometric Active
+                </div>
+                <div style={{"fontSize":"9px","color":"#64748B","marginTop":"2px"}}>
+                  Digital India UID
+                </div>
+              </div>
+            </div>
+
+            {/* Unverified State Card (Displayed when citizen has not verified Aadhaar) */}
+            <div className="aadhaar-status-box-unverified" id="profAadhaarUnverifiedCard" style={{"display":"none"}}>
+              <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
+                <div style={{"width":"42px","height":"42px","display":"flex","alignItems":"center","justifyContent":"center","flexShrink":"0"}}>
+                  <svg width="40" height="40" viewBox="0 0 100 100" fill="none">
+                    <circle cx="50" cy="50" r="18" fill="#F59E0B" />
+                    <circle cx="50" cy="50" r="12" fill="#FFFFFF" />
+                    <circle cx="50" cy="50" r="7" fill="#64748B" />
+                    <path d="M50 8 L50 20 M50 80 L50 92 M8 50 L20 50 M80 50 L92 50 M20 20 L29 29 M71 71 L80 80 M20 80 L29 71 M71 29 L80 20" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{"fontSize":"9.5px","color":"#92400E","fontWeight":"700","textTransform":"uppercase"}}>Aadhaar Identity</div>
+                  <div style={{"fontFamily":"monospace","fontSize":"14px","fontWeight":"800","color":"#B45309"}} id="profDisplayAadhaarUnverified">Not Linked / Unverified</div>
+                  <div style={{"fontSize":"9.5px","color":"#78350F","marginTop":"1px"}}>Unique Identification Authority of India (UIDAI)</div>
+                </div>
+              </div>
+              <div style={{"display":"flex","flexDirection":"column","alignItems":"flex-end","gap":"6px","flexShrink":"0"}}>
+                <span style={{"fontSize":"10px","fontWeight":"800","background":"#FEF3C7","color":"#92400E","border":"1px solid #FDE68A","padding":"2px 8px","borderRadius":"6px"}}>
+                  ⚠️ Unverified
+                </span>
+                <button type="button" className="btn-verify-aadhaar-cta" onClick={() => { openVerifyAadhaarModal() }}>
+                  🔐 <span>Verify &amp; Authenticate</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Security */}
+        <div className="profile-block-group">
+          <div className="profile-block-head">
+            <span className="profile-block-title">🔒 <span data-i18n="prof_section_security">Security</span></span>
+            <span className="profile-block-sub">Keep your account secure</span>
+          </div>
+          <div className="profile-row-item">
+            <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
+              <div className="profile-icon-box orange">🔒</div>
+              <div>
+                <div style={{"fontSize":"9.5px","color":"#64748B","fontWeight":"700","textTransform":"uppercase"}}>Password</div>
+                <div style={{"fontSize":"13px","fontWeight":"800","color":"#0F172A","letterSpacing":"2px"}}>••••••••</div>
+                <div style={{"fontSize":"9.5px","color":"#64748B","marginTop":"1px"}}>Master Password + Aadhaar Multi-Factor Protected</div>
+              </div>
+            </div>
+            <button type="button" className="btn-profile-edit-clean" onClick={() => { openChangePasswordModal() }}>
+              ✏️ <span data-i18n="btn_change_password">Change Password</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Footer Buttons */}
+      <div style={{"padding":"12px 22px 14px","display":"flex","justifyContent":"space-between","alignItems":"center","borderTop":"1px solid #E2E8F0","background":"#FFFFFF"}}>
+        <button type="button" onClick={() => { handleLogout() }}
+          style={{"padding":"7px 16px","fontSize":"11.5px","fontWeight":"700","color":"#DC2626","background":"#FFFFFF","border":"1.5px solid #FECACA","borderRadius":"8px","cursor":"pointer","display":"inline-flex","alignItems":"center","gap":"6px"}}>
+          🚪 <span data-i18n="btn_logout">Log Out</span>
+        </button>
+
+        <div style={{"display":"flex","alignItems":"center","gap":"8px"}}>
+          {/* Subtle Simulation Toggle for Demo Testing */}
+          <button type="button" onClick={() => { toggleAadhaarVerificationTest() }}
+            style={{"fontSize":"10px","color":"#64748B","background":"none","border":"none","cursor":"pointer","textDecoration":"underline"}}>
+            [Toggle Aadhaar Verification Demo]
           </button>
-          <button type="button" className="btn-modal-secondary" onClick={() => { closeModal('profileModal') }}
-            style={{"padding":"7px 16px","fontSize":"11.5px"}}>
+          <button type="button" onClick={() => { closeModal('profileModal') }}
+            style={{"padding":"8px 22px","fontSize":"12px","fontWeight":"800","color":"#FFFFFF","background":"#002D62","border":"none","borderRadius":"8px","cursor":"pointer"}}>
             <span data-i18n="btn_close">Close</span>
           </button>
         </div>
+      </div>
 
+    </div>
+  </div>
+
+  {/* ============================================================
+     AADHAAR VERIFICATION & BIOMETRIC AUTHENTICATION MODAL
+     ============================================================ */}
+  <div className="modal-overlay" id="verifyAadhaarModal" style={{"display":"none","zIndex":"10010"}}>
+    <div className="modal-card-box" style={{"maxWidth":"460px","borderRadius":"18px","overflow":"hidden","boxShadow":"0 20px 60px rgba(0,45,98,0.25)"}}>
+      <div className="profile-tricolor-bar"></div>
+      <div style={{"background":"#002D62","color":"#FFFFFF","padding":"14px 18px","display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+        <div style={{"display":"flex","alignItems":"center","gap":"8px"}}>
+          <span style={{"fontSize":"20px"}}>🔐</span>
+          <div>
+            <div style={{"fontSize":"14.5px","fontWeight":"800","color":"#FFFFFF"}}>Aadhaar Verification &amp; Authentication</div>
+            <div style={{"fontSize":"10.5px","color":"#93C5FD"}}>UIDAI Official Digital Citizen Verification</div>
+          </div>
+        </div>
+        <button type="button" className="modal-close-btn" onClick={() => { closeModal('verifyAadhaarModal') }} style={{"color":"#FFFFFF","background":"rgba(255,255,255,0.2)"}}>✕</button>
+      </div>
+
+      <div className="modal-body-scroll" style={{"padding":"18px 20px"}}>
+        <div style={{"padding":"10px 12px","background":"#EFF6FF","border":"1px solid #BFDBFE","borderRadius":"8px","fontSize":"11.5px","color":"#1E40AF","marginBottom":"14px","lineHeight":"1.4"}}>
+          To establish verified citizen credentials on JanSetu, please enter your 12-digit Aadhaar Number to receive a 6-digit UIDAI OTP.
+        </div>
+
+        <div className="form-group-field" style={{"marginBottom":"12px"}}>
+          <label className="form-label-text" style={{"fontSize":"11.5px","fontWeight":"700","color":"#0F172A","display":"block","marginBottom":"4px"}}>
+            12-Digit Aadhaar Number *
+          </label>
+          <div style={{"display":"flex","gap":"8px"}}>
+            <input type="text" className="form-input-control" id="aadhaarVerifyInput"
+              placeholder="e.g. 8492 3840 4819" maxLength="14"
+              style={{"fontFamily":"monospace","letterSpacing":"1px","fontSize":"13px","fontWeight":"700","flex":"1"}} />
+            <button type="button" id="btnSendAadhaarOtp" onClick={() => { sendAadhaarOtp() }}
+              style={{"padding":"6px 12px","background":"#002D62","color":"#FFFFFF","border":"none","borderRadius":"8px","fontSize":"11px","fontWeight":"700","cursor":"pointer","whiteSpace":"nowrap"}}>
+              Send OTP
+            </button>
+          </div>
+          <div id="aadhaarOtpNotice" style={{"display":"none","fontSize":"11px","color":"#059669","fontWeight":"700","marginTop":"4px"}}>
+            ✓ OTP sent to mobile linked with Aadhaar! (Demo code: 481900)
+          </div>
+        </div>
+
+        <div className="form-group-field" id="aadhaarOtpGroup" style={{"display":"none","marginBottom":"14px"}}>
+          <label className="form-label-text" style={{"fontSize":"11.5px","fontWeight":"700","color":"#0F172A","display":"block","marginBottom":"4px"}}>
+            Enter 6-Digit UIDAI OTP *
+          </label>
+          <input type="text" className="form-input-control" id="aadhaarOtpInput"
+            placeholder="e.g. 481900" maxLength="6"
+            style={{"fontFamily":"monospace","letterSpacing":"3px","fontSize":"14px","fontWeight":"800","textAlign":"center"}} />
+        </div>
+
+        <div className="modal-footer-nav" style={{"marginTop":"16px","display":"flex","justifyContent":"flex-end","gap":"8px"}}>
+          <button type="button" className="btn-modal-secondary" onClick={() => { closeModal('verifyAadhaarModal') }}
+            style={{"padding":"7px 14px","fontSize":"11.5px","borderRadius":"8px"}}>Cancel</button>
+          <button type="button" id="btnSubmitAadhaarAuth" onClick={() => { submitAadhaarAuthentication() }}
+            style={{"padding":"7px 18px","background":"#16A34A","color":"#FFFFFF","border":"none","borderRadius":"8px","fontSize":"11.5px","fontWeight":"800","cursor":"pointer","boxShadow":"0 2px 6px rgba(22,163,74,0.3)"}}>
+            ✓ Verify &amp; Authenticate →
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -2388,33 +2653,34 @@ function App() {
     </div>
   </div>
 
+  {/* ============================================================
+     MODAL: NOTIFICATIONS & CIVIC ACTIVITY LOG (CLEAN REVAMP)
+     ============================================================ */}
   <div className="modal-overlay" id="notificationsModal">
-    <div className="modal-card-box notif-monument-modal"
-      style={{"maxWidth":"650px","borderRadius":"20px","overflow":"hidden","border":"1.5px solid #CBD5E1","boxShadow":"0 20px 48px rgba(0, 45, 98, 0.32)","padding":"0"}}>
+    <div className="modal-card-box notifications-modal-revamp"
+      style={{"maxWidth":"640px","borderRadius":"18px","overflow":"hidden","border":"1.5px solid #CBD5E1","boxShadow":"0 20px 48px rgba(0, 45, 98, 0.2)","padding":"0","background":"#FFFFFF"}}>
 
-      {/* Red Fort Monument Header Banner */}
-      <div
-        style={{"position":"relative","background":"linear-gradient(180deg, rgba(15, 23, 42, 0.65) 0%, rgba(20, 15, 10, 0.92) 100%), url('/images/red-fort-bg.png'), url('images/red-fort-bg.png'), url('/citizen/images/red-fort-bg.png'), url('/images/monument-view-bg.jpg')","backgroundSize":"cover","backgroundPosition":"center 35%","padding":"15px 18px","color":"#FFFFFF"}}>
-        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"flex-start","gap":"10px"}}>
-          <div>
-            <div
-              style={{"display":"inline-flex","alignItems":"center","gap":"5px","background":"rgba(255, 153, 51, 0.3)","border":"1px solid #FF9933","padding":"2px 8px","borderRadius":"20px","fontSize":"10px","fontWeight":"800","color":"#FFEDD5","marginBottom":"4px"}}>
-              <span>🇮🇳</span> <span data-i18n="notif_header_badge">Citizen Civic Audit &amp; Activity Log</span>
-            </div>
-            <div
-              style={{"fontSize":"15px","fontWeight":"900","color":"#FFFFFF","letterSpacing":"0.2px","display":"flex","alignItems":"center","gap":"7px"}}>
-              <span>🔔</span> <span data-i18n="modal_notifications_title">Notifications &amp; Activity Log</span>
-              <span id="notifModalTotalCountPill"
-                style={{"fontSize":"10.5px","background":"#EF4444","color":"#FFF","padding":"1px 7px","borderRadius":"10px","fontWeight":"800"}}>0</span>
-            </div>
-            <div style={{"fontSize":"11px","color":"#E2E8F0","marginTop":"2px","lineHeight":"1.35"}}
-              data-i18n="notif_header_desc">
-              Real-time track of reports, deletions, community supports, taskforce &amp; administrative actions.
-            </div>
+      {/* Top Tricolor Accent Line */}
+      <div className="profile-tricolor-bar"></div>
+
+      {/* Clean Civic Header */}
+      <div className="notif-clean-head" style={{"padding":"16px 20px 12px","background":"#FFFFFF","borderBottom":"1px solid #F1F5F9","display":"flex","justifyContent":"space-between","alignItems":"flex-start"}}>
+        <div>
+          <div style={{"display":"inline-flex","alignItems":"center","gap":"5px","background":"#EFF6FF","border":"1px solid #BFDBFE","padding":"2px 8px","borderRadius":"12px","fontSize":"10px","fontWeight":"800","color":"#1E40AF","marginBottom":"4px"}}>
+            <span>🇮🇳</span> <span data-i18n="notif_header_badge">Citizen Civic Audit &amp; Activity Log</span>
           </div>
-          <button className="modal-close-btn" onClick={() => { closeModal('notificationsModal') }}
-            style={{"background":"rgba(255,255,255,0.22)","color":"#fff","border":"1px solid rgba(255,255,255,0.45)","width":"30px","height":"30px","borderRadius":"50%","display":"flex","alignItems":"center","justifyContent":"center","fontSize":"13px","cursor":"pointer"}}>✕</button>
+          <div style={{"fontSize":"16px","fontWeight":"900","color":"#0F172A","display":"flex","alignItems":"center","gap":"8px"}}>
+            <span>🔔</span> <span data-i18n="modal_notifications_title">Notifications &amp; Activity Log</span>
+            <span id="notifModalTotalCountPill"
+              style={{"fontSize":"10.5px","background":"#EF4444","color":"#FFF","padding":"1px 7px","borderRadius":"10px","fontWeight":"800"}}>0</span>
+          </div>
+          <div style={{"fontSize":"11px","color":"#64748B","marginTop":"2px","lineHeight":"1.35"}}
+            data-i18n="notif_header_desc">
+            Real-time track of reports, deletions, community supports, taskforce &amp; administrative actions.
+          </div>
         </div>
+        <button className="modal-close-btn" onClick={() => { closeModal('notificationsModal') }}
+          style={{"background":"#F1F5F9","color":"#475569","border":"1px solid #CBD5E1","width":"28px","height":"28px","borderRadius":"50%","display":"flex","alignItems":"center","justifyContent":"center","fontSize":"12px","cursor":"pointer"}} title="Close">✕</button>
       </div>
 
       {/* Controls Bar: Category Filter Pills + Quick Date Filter & Date Picker */}
@@ -2487,7 +2753,7 @@ function App() {
 
       </div>
 
-      {/* Scrollable Notifications Container (Refined Small Typography) */}
+      {/* Scrollable Notifications Container */}
       <div className="modal-body-scroll"
         style={{"padding":"12px 16px","maxHeight":"480px","minHeight":"250px","background":"#FFFFFF"}}
         id="notificationsListContainer">

@@ -242,11 +242,93 @@ const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
 };
 
 /**
- * Duplicate Problem Detection
+ * Semantic Problem Civic Concept Clusters for Meaning Matching
+ * Captures what the citizen is expressing regardless of phrasing or sentence structure
+ */
+const CIVIC_SEMANTIC_CLUSTERS = {
+  water_pipeline: [
+    'water', 'paani', 'pani', 'pipe', 'pipeline', 'leak', 'leakage', 'phat', 'burst',
+    'tap', 'chapakal', 'handpump', 'nal', 'tank', 'peene', 'drinking', 'bahaav', 'supply',
+    'jal', 'peyjal', 'sewage', 'drainage', 'naali', 'gutter', 'drain', 'naala', 'dirty water',
+    'ganda paani', 'boring', 'waterlogging', 'overflow'
+  ],
+  road_infrastructure: [
+    'road', 'sadak', 'street', 'rasta', 'gaddha', 'gaddhe', 'pothole', 'potholes', 'crater',
+    'broken road', 'highway', 'pul', 'pulia', 'bridge', 'culvert', 'asphalt', 'tar', 'kichad',
+    'mud', 'path', 'lane', 'divider', 'ditch', 'accident', 'speed breaker'
+  ],
+  electricity_power: [
+    'bijli', 'power', 'electricity', 'light', 'current', 'voltage', 'transformer', 'pole',
+    'khamba', 'wire', 'taar', 'short circuit', 'spark', 'blackout', 'andhera', 'meter',
+    'phase', 'load shedding', 'outage', 'line'
+  ],
+  sanitation_waste: [
+    'garbage', 'kachra', 'trash', 'dustbin', 'safai', 'cleaning', 'waste', 'kuda', 'badbu',
+    'smell', 'dump', 'sanitation', 'litter', 'filth', 'dumping'
+  ],
+  healthcare_medical: [
+    'hospital', 'doctor', 'clinic', 'davai', 'medicine', 'ilaj', 'swasthya', 'health',
+    'ambulance', 'bed', 'nurse', 'dispensary', 'patient', 'treatment'
+  ],
+  education_school: [
+    'school', 'shiksha', 'teacher', 'padhai', 'student', 'vidyalaya', 'class', 'classroom',
+    'bench', 'desk', 'midday'
+  ]
+};
+
+const CIVIC_STOPWORDS = new Set([
+  'hai', 'hain', 'ka', 'ki', 'ke', 'ko', 'se', 'me', 'mein', 'par', 'tha', 'thi', 'the',
+  'aur', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'from', 'a', 'an', 'the',
+  'is', 'are', 'was', 'were', 'it', 'this', 'that', 'there', 'here', 'very', 'bahut', 'bhi',
+  'kuch', 'hoga', 'raha', 'rahi', 'rahe', 'karna', 'karo', 'problem', 'samasya', 'issue',
+  'complaint', 'please', 'help', 'kripya', 'area', 'near', 'pass'
+]);
+
+function extractInformativeTokens(text = '') {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s\u0900-\u097F]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !CIVIC_STOPWORDS.has(w));
+}
+
+function computeSemanticOverlap(textA = '', textB = '') {
+  const tokensA = extractInformativeTokens(textA);
+  const tokensB = extractInformativeTokens(textB);
+  if (tokensA.length === 0 || tokensB.length === 0) return 0;
+
+  // 1. Check shared concept clusters (meaning independent of sentence structure)
+  let sharedClusters = 0;
+  for (const clusterWords of Object.values(CIVIC_SEMANTIC_CLUSTERS)) {
+    const hasA = clusterWords.some(w => textA.toLowerCase().includes(w));
+    const hasB = clusterWords.some(w => textB.toLowerCase().includes(w));
+    if (hasA && hasB) {
+      sharedClusters++;
+    }
+  }
+
+  // 2. Token overlap ratio
+  const setB = new Set(tokensB);
+  const common = tokensA.filter(t => setB.has(t));
+  const jaccard = common.length / Math.max(1, new Set([...tokensA, ...tokensB]).size);
+
+  let score = 0;
+  if (sharedClusters > 0) {
+    score += Math.min(25, sharedClusters * 22);
+  }
+  score += Math.min(20, jaccard * 40);
+
+  return Math.min(45, score);
+}
+
+/**
+ * Duplicate Problem Detection with strict 70+ Score Threshold
+ * Matches Title semantic relevance + Description semantic intent (meaning-based)
  */
 const findSimilarChallenges = (newReport, candidateList = []) => {
-  const newCat = newReport.category || classifyChallenge(newReport.title || '', newReport.description || '').category;
-  const newText = ((newReport.title || '') + ' ' + (newReport.description || '')).toLowerCase();
+  const newTitle = (newReport.title || '').trim();
+  const newDesc = (newReport.description || newReport.desc || newTitle).trim();
+  const newCat = newReport.category || classifyChallenge(newTitle, newDesc).category;
   const newDist = (newReport.location && newReport.location.district ? newReport.location.district : '').toLowerCase();
   const newBlock = (newReport.location && newReport.location.block ? newReport.location.block : '').toLowerCase();
   const newVillage = (newReport.location && newReport.location.village ? newReport.location.village : '').toLowerCase();
@@ -255,28 +337,47 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
   const matches = [];
 
   for (const cand of candidateList) {
-    let score = 0;
-    const candCat = cand.category;
-    const candText = ((cand.title || '') + ' ' + (cand.description || '')).toLowerCase();
+    const candTitle = (cand.title || '').trim();
+    const candDesc = (cand.description || cand.desc || candTitle).trim();
+    const candCat = cand.category || '';
     const candLoc = cand.location || {};
     const candDist = (candLoc.district || '').toLowerCase();
     const candBlock = (candLoc.block || '').toLowerCase();
     const candVillage = (candLoc.village || '').toLowerCase();
 
+    // 1. Title Match (up to 35 points)
+    let titleScore = 0;
+    const cleanNewTitle = newTitle.toLowerCase().replace(/[^\w\s\u0900-\u097F]/g, ' ').trim();
+    const cleanCandTitle = candTitle.toLowerCase().replace(/[^\w\s\u0900-\u097F]/g, ' ').trim();
+
+    if (cleanNewTitle && cleanCandTitle) {
+      if (cleanNewTitle === cleanCandTitle) {
+        titleScore = 35;
+      } else if (cleanNewTitle.includes(cleanCandTitle) || cleanCandTitle.includes(cleanNewTitle)) {
+        titleScore = 32;
+      } else {
+        const titleTokensA = extractInformativeTokens(cleanNewTitle);
+        const titleTokensB = extractInformativeTokens(cleanCandTitle);
+        if (titleTokensA.length > 0 && titleTokensB.length > 0) {
+          const common = titleTokensA.filter(t => titleTokensB.includes(t));
+          const ratio = common.length / Math.max(titleTokensA.length, titleTokensB.length);
+          titleScore = Math.round(ratio * 30);
+        }
+      }
+    }
+
+    // 2. Description Semantic Intent Match (up to 45 points)
+    // Matches what the description means, independent of sentence structure
+    const descScore = computeSemanticOverlap(newDesc, candDesc);
+
+    // 3. Category Match (up to 10 points)
+    let catScore = 0;
     if (newCat && candCat && newCat.toLowerCase() === candCat.toLowerCase()) {
-      score += 40;
+      catScore = 10;
     }
 
-    if (newDist && candDist && newDist === candDist) {
-      score += 20;
-    }
-    if (newBlock && candBlock && newBlock === candBlock) {
-      score += 20;
-    }
-    if (newVillage && candVillage && newVillage === candVillage) {
-      score += 25;
-    }
-
+    // 4. Location Proximity (up to 10 points)
+    let locScore = 0;
     let distanceKm = null;
     if (newCoords && newCoords.lat && newCoords.lng && candLoc.coordinates && candLoc.coordinates.lat && candLoc.coordinates.lng) {
       distanceKm = calculateDistanceKm(
@@ -284,34 +385,34 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
         candLoc.coordinates.lat, candLoc.coordinates.lng
       );
       if (distanceKm !== null) {
-        if (distanceKm <= 2.0) score += 35;
-        else if (distanceKm <= 5.0) score += 20;
-        else if (distanceKm <= 15.0) score += 10;
+        if (distanceKm <= 2.0) locScore = 10;
+        else if (distanceKm <= 5.0) locScore = 7;
+        else if (distanceKm <= 15.0) locScore = 4;
       }
+    } else {
+      if (newVillage && candVillage && newVillage === candVillage) locScore = 10;
+      else if (newBlock && candBlock && newBlock === candBlock) locScore = 7;
+      else if (newDist && candDist && newDist === candDist) locScore = 4;
     }
 
-    const keywords = generateTags(newText);
-    let commonKwCount = 0;
-    for (const kw of keywords) {
-      if (candText.includes(kw.toLowerCase())) commonKwCount++;
-    }
-    if (keywords.length > 0) {
-      score += Math.min(30, (commonKwCount / keywords.length) * 35);
-    }
+    // Total composite similarity score (0 - 100)
+    const compositeScore = Math.min(99, Math.round(titleScore + descScore + catScore + locScore));
 
-    if (score >= 45) {
+    // STRICT THRESHOLD: Duplicate is detected ONLY if score is 70+
+    if (compositeScore >= 70) {
       matches.push({
         id: cand._id,
         challengeId: cand.challengeId || ('JH-' + cand._id.toString().slice(-6).toUpperCase()),
         title: cand.title,
+        description: cand.description || cand.desc,
         category: cand.category,
         status: cand.status,
         district: candLoc.district || 'Jharkhand',
         block: candLoc.block || '',
         village: candLoc.village || '',
         supportCount: cand.supportCount || (cand.supports ? cand.supports.length : 0),
-        distanceKm: distanceKm !== null ? distanceKm : (candBlock === newBlock ? 1.2 : 4.5),
-        similarityScore: Math.min(98, Math.round(score)),
+        distanceKm: distanceKm !== null ? distanceKm : (candBlock === newBlock ? 1.2 : 3.8),
+        similarityScore: compositeScore,
         createdAt: cand.createdAt
       });
     }

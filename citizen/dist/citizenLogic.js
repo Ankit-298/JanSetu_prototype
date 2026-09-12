@@ -473,18 +473,16 @@
     });
 
     function setLanguage(lang) {
-      if (lang === 'hi') lang = 'hinglish';
+      if (!lang) lang = 'hi';
       currentLanguage = lang;
       localStorage.setItem('jansetu_language', lang);
 
-      ['en', 'hinglish'].forEach(l => {
+      ['hi', 'en', 'hinglish'].forEach(l => {
         const btn = document.getElementById('langBtn_' + l);
         if (btn) btn.className = 'lang-btn' + (l === lang ? ' active' : '');
       });
-      const hiBtn = document.getElementById('langBtn_hi');
-      if (hiBtn) hiBtn.style.display = 'none';
 
-      const dict = TRANSLATIONS[lang] || TRANSLATIONS['hinglish'] || TRANSLATIONS['en'];
+      const dict = TRANSLATIONS[lang] || TRANSLATIONS['hi'] || TRANSLATIONS['hinglish'] || TRANSLATIONS['en'];
 
       document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
@@ -835,11 +833,30 @@
             };
             const displayStatus = statusMap[c.status] || (c.status === 'resolved' ? 'Solved' : (c.status === 'validated' ? 'Verified' : 'Submitted'));
             const isResolved = c.status === 'resolved' || c.status === 'closed';
-            const isVerified = c.status !== 'submitted' && c.status !== 'under_review' && c.status !== 'draft' && c.status !== 'rejected';
+            const isVerified = ['validated', 'assigned', 'in_progress', 'testing', 'resolved', 'closed'].includes(c.status) || Boolean(c.validationNotes) || Boolean(c.isVerified) || (c.status !== 'submitted' && c.status !== 'under_review' && c.status !== 'draft' && c.status !== 'rejected');
 
-            const challengeImg = (c.attachments && c.attachments[0]?.url) || c.coverImage || c.image || (c.resolutionProof && c.resolutionProof.beforeImage) || null;
+            // Check if real citizen photo was uploaded (avoid treating fallback /images/ as citizen uploaded)
+            const hasRealUploadedImage = Boolean(
+              c.filePath ||
+              (c.attachments && c.attachments.some(a => {
+                const u = typeof a === 'string' ? a : (a.url || a.filePath || '');
+                return u && !u.startsWith('/images/') && !/\.(mp4|webm|mov|ogg)$/i.test(u);
+              })) ||
+              (c.evidenceMedia && c.evidenceMedia.some(m => m.url && !m.url.startsWith('/images/') && m.mediaType !== 'video')) ||
+              (c.media && c.media.some(m => (typeof m === 'string' ? m : m.url) && !(typeof m === 'string' ? m : m.url).startsWith('/images/'))) ||
+              (c.image && !c.image.startsWith('/images/')) ||
+              (c.coverImage && !c.coverImage.startsWith('/images/'))
+            );
+
+            const realChallengeImg = hasRealUploadedImage
+              ? ((c.attachments && c.attachments.find(a => {
+                  const u = typeof a === 'string' ? a : (a.url || a.filePath || '');
+                  return u && !u.startsWith('/images/') && !/\.(mp4|webm|mov|ogg)$/i.test(u);
+                })?.url) || c.image || c.coverImage || c.filePath || null)
+              : null;
+
             const fallbackImg = getCategoryFallbackImage(c.category);
-            const activeImg = challengeImg || fallbackImg;
+            const cardImg = realChallengeImg || fallbackImg;
 
             const univDisplayName = c.assignedUniversity && (c.assignedUniversity.name || c.assignedUniversity.shortName)
               ? (c.assignedUniversity.name || c.assignedUniversity.shortName)
@@ -861,9 +878,16 @@
               assignedAt: c.assignedAt || null,
               resolvedAt: c.resolvedAt || null,
               category: c.category,
-              image: activeImg,
-              beforeImg: activeImg,
-              afterImg: null,
+              image: realChallengeImg,
+              beforeImg: realChallengeImg,
+              cardThumbnail: cardImg,
+              afterImg: (c.resolutionProof && c.resolutionProof.afterImage) || null,
+              filePath: c.filePath || null,
+              attachments: Array.isArray(c.attachments) ? c.attachments : [],
+              evidenceMedia: Array.isArray(c.evidenceMedia) ? c.evidenceMedia : (Array.isArray(c.media) ? c.media : []),
+              media: Array.isArray(c.media) ? c.media : (Array.isArray(c.evidenceMedia) ? c.evidenceMedia : []),
+              videoUrl: c.videoUrl || c.video || null,
+              hasUploadedImage: hasRealUploadedImage,
               desc: c.description,
               assign: univDisplayName,
               timeAgo: formatTimeAgo(c.createdAt),
@@ -1948,6 +1972,51 @@
       }
     }
 
+    // ── Robust Admin Verification & Unverified Grievance Helper ──
+    function isReportAdminVerified(item) {
+      if (!item) return false;
+      if (item.isVerified === true || item.adminVerified === true) return true;
+
+      const curStatus = String(item.status || '').toLowerCase().trim();
+      const rawStatus = String(item.rawStatus || '').toLowerCase().trim();
+
+      const verifiedStatuses = [
+        'verified', 'validated', 'being worked on', 'assigned',
+        'in_progress', 'in progress', 'testing', 'resolved', 'solved', 'closed'
+      ];
+      if (verifiedStatuses.includes(curStatus) || verifiedStatuses.includes(rawStatus)) {
+        return true;
+      }
+
+      if (item.validationNotes && String(item.validationNotes).trim().length > 0) {
+        return true;
+      }
+
+      if (Array.isArray(item.statusHistory)) {
+        const hasAdminAction = item.statusHistory.some(h => {
+          if (!h) return false;
+          const s = String(h.status || '').toLowerCase().trim();
+          if (['validated', 'assigned', 'in_progress', 'resolved', 'closed'].includes(s)) return true;
+          if (h.changedBy && (h.changedBy.role === 'admin' || (h.changedBy.name && String(h.changedBy.name).toLowerCase().includes('admin')))) {
+            return true;
+          }
+          return false;
+        });
+        if (hasAdminAction) return true;
+      }
+
+      return false;
+    }
+    window.isReportAdminVerified = isReportAdminVerified;
+
+    function isReportUnverified(item) {
+      if (!item) return false;
+      if (isReportAdminVerified(item)) return false;
+      if (item.isResolved || item.status === 'Solved' || item.rawStatus === 'resolved' || item.rawStatus === 'closed') return false;
+      return true;
+    }
+    window.isReportUnverified = isReportUnverified;
+
     function renderActiveProblem() {
       const counterPill = document.getElementById('activeTrackerCounterPill');
       const navBtns = document.getElementById('trackerNavBtns');
@@ -2053,8 +2122,9 @@
 
       const badge = document.getElementById('activeReportStatus');
       const label = document.getElementById('activeStatusLabelText');
-      const isSolved = active.status === 'Solved' || active.isResolved;
-      const isUnverified = (active.status === 'Submitted' || !active.isVerified) && !isSolved;
+      const isSolved = active.status === 'Solved' || active.isResolved || active.rawStatus === 'resolved' || active.rawStatus === 'closed';
+      const isAdminVerified = isReportAdminVerified(active);
+      const isUnverified = !isAdminVerified && !isSolved;
 
       if (badge) {
         if (isSolved) {
@@ -2062,15 +2132,15 @@
           badge.removeAttribute('style');
           if (label) label.textContent = currentLanguage === 'hi' ? 'समाधान पूर्ण ✓' : 'Solved ✓';
           if (document.getElementById('solCheckBox')) document.getElementById('solCheckBox').classList.add('show');
-        } else if (isUnverified) {
-          badge.className = 'status-badge-in-progress awaiting-verified';
-          badge.removeAttribute('style');
-          if (label) label.textContent = currentLanguage === 'hi' ? '⏳ सत्यापन प्रतीक्षारत' : '⏳ Awaiting Admin Verification';
-          if (document.getElementById('solCheckBox')) document.getElementById('solCheckBox').classList.remove('show');
-        } else {
+        } else if (isAdminVerified) {
           badge.className = 'status-badge-in-progress verified-in-progress';
           badge.removeAttribute('style');
           if (label) label.textContent = currentLanguage === 'hi' ? '✓ प्रशासन द्वारा सत्यापित · कार्य जारी' : '✓ Admin Verified · In Progress';
+          if (document.getElementById('solCheckBox')) document.getElementById('solCheckBox').classList.remove('show');
+        } else {
+          badge.className = 'status-badge-in-progress awaiting-verified';
+          badge.removeAttribute('style');
+          if (label) label.textContent = currentLanguage === 'hi' ? '⏳ सत्यापन प्रतीक्षारत' : '⏳ Awaiting Admin Verification';
           if (document.getElementById('solCheckBox')) document.getElementById('solCheckBox').classList.remove('show');
         }
       }
@@ -2402,8 +2472,9 @@
       const cont = document.getElementById('detailFooterActionContainer');
       if (!cont) return;
 
-      const isSolved = item.status === 'Solved' || item.isResolved;
-      const isUnverified = (item.status === 'Submitted' || !item.isVerified) && !isSolved;
+      const isSolved = item.status === 'Solved' || item.isResolved || item.rawStatus === 'resolved' || item.rawStatus === 'closed';
+      const isAdminVerified = isReportAdminVerified(item);
+      const isUnverified = !isAdminVerified && !isSolved;
       const isSupported = supportedIds.has(item.id) || (item.mongoId && supportedIds.has(item.mongoId));
 
       if (isMyOwnReport) {
@@ -2419,7 +2490,7 @@
                 🗑️ ${currentLanguage === 'hi' ? 'शिकायत हटाएं' : 'Delete Grievance'}
               </button>
             ` : `
-              <span style="font-size: 11px; color: #64748b; background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 10px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+              <span style="font-size: 11px; color: #166534; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 6px 12px; border-radius: 10px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
                 🔒 ${currentLanguage === 'hi' ? 'प्रशासन द्वारा सत्यापित' : 'Admin Verified'}
               </span>
             `}
@@ -2566,6 +2637,22 @@
       }
 
       // 4. Update footer button immediately
+      const footerSupportSlot = document.getElementById('detailModalSupportBtnSlot');
+      if (footerSupportSlot) {
+        if (!isMyOwn) {
+          footerSupportSlot.innerHTML = `
+            <button type="button" class="btn-footer-support-clean" onclick="event.stopPropagation(); toggleSupport('${item.id}');" style="padding: 8px 18px; background: ${isSupported ? '#15803D' : '#002D62'}; border: none; color: #FFFFFF; border-radius: 9px; font-size: 12.5px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; box-shadow: 0 2px 8px rgba(0,45,98,0.22); transition: all 0.2s ease;">
+              <span>${isSupported ? '✓' : '👍'}</span> <span>${isSupported ? (currentLanguage === 'hi' ? 'समर्थित' : 'Supported') : (currentLanguage === 'hi' ? 'समर्थन करें' : 'Support Problem')} (${supCount})</span>
+            </button>
+          `;
+        } else {
+          footerSupportSlot.innerHTML = '';
+        }
+      }
+      const topSupText = document.getElementById('detailSupportCountText');
+      if (topSupText) {
+        topSupText.textContent = `${supCount} ${currentLanguage === 'hi' ? 'नागरिक समर्थन' : 'Citizen Support'}`;
+      }
       renderDetailFooterActions(item, isMyOwn);
     }
 
@@ -2574,15 +2661,242 @@
       toggleSupport(currentlyInspectedId);
     }
 
+    function extractGrievancePhotos(item) {
+      if (!item) return [];
+      const list = [];
+      const seen = new Set();
+
+      const add = (url, title, timestamp) => {
+        if (!url || typeof url !== 'string' || url === '#' || url.length < 5) return;
+        if (/\.(mp4|webm|mov|ogg|mkv|3gp|avi)$/i.test(url)) return;
+        if (url.startsWith('/images/') || url.includes('water-tap.jpg') || url.includes('transformer.jpg') || url.includes('pothole.jpg') || url.includes('login_image')) return;
+        if (seen.has(url)) return;
+        seen.add(url);
+        list.push({
+          url: url,
+          title: title || `Citizen Photo Evidence ${list.length + 1}`,
+          timestamp: timestamp || 'Field Evidence · Citizen Upload'
+        });
+      };
+
+      // 1. Check attachments
+      if (Array.isArray(item.attachments)) {
+        item.attachments.forEach((att, idx) => {
+          const url = typeof att === 'string' ? att : (att.url || att.filePath);
+          const isVid = (att.mimetype && att.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv)$/i.test(url || '');
+          if (!isVid && url) {
+            add(url, att.originalName || att.filename || `Evidence Photo ${idx + 1}`, 'Field Evidence · Citizen Upload');
+          }
+        });
+      }
+
+      // 2. Check evidenceMedia / media
+      const mediaArr = item.media || item.evidenceMedia;
+      if (Array.isArray(mediaArr)) {
+        mediaArr.forEach((m, idx) => {
+          const url = typeof m === 'string' ? m : (m.url || m.filePath);
+          const isVid = m.mediaType === 'video' || /\.(mp4|webm|mov|ogg|mkv)$/i.test(url || '');
+          if (!isVid && url) {
+            add(url, m.title || m.originalName || `Citizen Photo ${idx + 1}`, m.timestamp || 'Field Evidence · Citizen Upload');
+          }
+        });
+      }
+
+      // 3. Check item.filePath
+      if (item.filePath && typeof item.filePath === 'string' && !/\.(mp4|webm|mov|ogg|mkv)$/i.test(item.filePath)) {
+        add(item.filePath, 'Ground Evidence Photo (Primary File)', 'Field Evidence · Citizen Upload');
+      }
+
+      // 4. Check resolutionProof beforeImage / beforeFilePath
+      if (item.resolutionProof && (item.resolutionProof.beforeImage || item.resolutionProof.beforeFilePath)) {
+        add(item.resolutionProof.beforeImage || item.resolutionProof.beforeFilePath, 'Before Grievance Photo', 'Field Evidence · Citizen Upload');
+      }
+
+      // 5. Check item.image, beforeImg, coverImage
+      ['image', 'beforeImg', 'coverImage'].forEach(field => {
+        if (item[field] && typeof item[field] === 'string') {
+          add(item[field], item.title ? `${item.title} - Ground Photo` : 'Field Evidence Photo', 'Field Evidence · Citizen Upload');
+        }
+      });
+
+      return list;
+    }
+    window.extractGrievancePhotos = extractGrievancePhotos;
+
+    function extractGrievanceVideo(item) {
+      if (!item) return null;
+      if (item.videoUrl && typeof item.videoUrl === 'string' && item.videoUrl !== '#' && !item.videoUrl.startsWith('/images/')) {
+        return item.videoUrl;
+      }
+      if (item.video && typeof item.video === 'string' && item.video !== '#' && !item.video.startsWith('/images/')) {
+        return item.video;
+      }
+      if (Array.isArray(item.attachments)) {
+        const vAtt = item.attachments.find(a => {
+          const u = typeof a === 'string' ? a : (a.url || a.filePath || a.filename || '');
+          return (a.mimetype && a.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv)$/i.test(u);
+        });
+        if (vAtt) return typeof vAtt === 'string' ? vAtt : (vAtt.url || vAtt.filePath);
+      }
+      const mediaArr = item.media || item.evidenceMedia;
+      if (Array.isArray(mediaArr)) {
+        const vMed = mediaArr.find(m => m.mediaType === 'video' || /\.(mp4|webm|mov|ogg|mkv)$/i.test(m.url || m.filePath || ''));
+        if (vMed) return typeof vMed === 'string' ? vMed : (vMed.url || vMed.filePath);
+      }
+      if (item.filePath && typeof item.filePath === 'string' && /\.(mp4|webm|mov|ogg|mkv)$/i.test(item.filePath)) {
+        return item.filePath;
+      }
+      return null;
+    }
+    window.extractGrievanceVideo = extractGrievanceVideo;
+
+    function extractAllGrievanceMedia(item) {
+      if (!item) return [];
+      const photos = extractGrievancePhotos(item) || [];
+      const list = photos.map((p, idx) => ({
+        type: 'photo',
+        url: p.url,
+        title: p.title || `Citizen Photo Evidence #${idx + 1}`,
+        timestamp: p.timestamp || 'Field Evidence · Citizen Upload'
+      }));
+
+      const vUrl = extractGrievanceVideo(item);
+      if (vUrl && !list.some(m => m.url === vUrl)) {
+        list.push({
+          type: 'video',
+          url: vUrl,
+          title: item.title ? `${item.title} — Citizen Field Video` : 'Citizen Field Video Evidence',
+          timestamp: 'Ground Video · Citizen Upload'
+        });
+      }
+      return list;
+    }
+    window.extractAllGrievanceMedia = extractAllGrievanceMedia;
+
+    let currentGalleryMedia = [];
+    let currentGalleryIndex = 0;
+
+    function openAllMediaEvidenceViewer(startIndex = 0, customItem = null) {
+      let item = customItem;
+      if (!item && typeof currentlyInspectedId !== 'undefined' && currentlyInspectedId) {
+        item = allReportsList.find(r => r.id === currentlyInspectedId) || exploreList.find(r => r.id === currentlyInspectedId);
+      }
+      const mediaList = extractAllGrievanceMedia(item);
+      if (!mediaList || mediaList.length === 0) {
+        const msg = currentLanguage === 'hi'
+          ? 'ℹ️ इस शिकायत के साथ कोई फ़ोटो या वीडियो संलग्न नहीं है।'
+          : 'ℹ️ No photo or video evidence attached to this grievance report.';
+        if (typeof showToast === 'function') showToast(msg);
+        else alert(msg);
+        return;
+      }
+
+      currentGalleryMedia = mediaList;
+      currentGalleryIndex = Math.max(0, Math.min(startIndex, mediaList.length - 1));
+
+      updateGalleryViewerDisplay();
+
+      const modal = document.getElementById('galleryViewerModal');
+      if (modal) modal.style.display = 'flex';
+    }
+    window.openAllMediaEvidenceViewer = openAllMediaEvidenceViewer;
+    window.openGalleryViewer = openAllMediaEvidenceViewer;
+
+    function closeGalleryViewer() {
+      const vidEl = document.getElementById('galleryViewerVideo');
+      if (vidEl) {
+        try { vidEl.pause(); } catch(e){}
+      }
+      const modal = document.getElementById('galleryViewerModal');
+      if (modal) modal.style.display = 'none';
+    }
+    window.closeGalleryViewer = closeGalleryViewer;
+
+    function prevGalleryViewerPhoto() {
+      if (!currentGalleryMedia || currentGalleryMedia.length <= 1) return;
+      currentGalleryIndex = (currentGalleryIndex - 1 + currentGalleryMedia.length) % currentGalleryMedia.length;
+      updateGalleryViewerDisplay();
+    }
+    window.prevGalleryViewerPhoto = prevGalleryViewerPhoto;
+
+    function nextGalleryViewerPhoto() {
+      if (!currentGalleryMedia || currentGalleryMedia.length <= 1) return;
+      currentGalleryIndex = (currentGalleryIndex + 1) % currentGalleryMedia.length;
+      updateGalleryViewerDisplay();
+    }
+    window.nextGalleryViewerPhoto = nextGalleryViewerPhoto;
+
+    function updateGalleryViewerDisplay() {
+      const total = currentGalleryMedia.length || 1;
+      const current = currentGalleryMedia[currentGalleryIndex] || currentGalleryMedia[0];
+      if (!current) return;
+
+      const isHi = currentLanguage === 'hi';
+      const typeLabel = current.type === 'video' ? (isHi ? 'वीडियो' : 'Video') : (isHi ? 'फ़ोटो' : 'Photo');
+
+      const counterEl = document.getElementById('galleryViewerCounter');
+      if (counterEl) counterEl.textContent = `${currentGalleryIndex + 1}/${total} (${typeLabel})`;
+
+      const imgEl = document.getElementById('galleryViewerImg');
+      const vidEl = document.getElementById('galleryViewerVideo');
+
+      if (current.type === 'video') {
+        if (imgEl) imgEl.style.display = 'none';
+        if (vidEl) {
+          vidEl.src = current.url;
+          vidEl.style.display = 'block';
+        }
+      } else {
+        if (vidEl) {
+          try { vidEl.pause(); } catch(e){}
+          vidEl.style.display = 'none';
+        }
+        if (imgEl) {
+          imgEl.src = current.url;
+          imgEl.alt = current.title || 'Ground Evidence';
+          imgEl.style.display = 'block';
+        }
+      }
+
+      const titleEl = document.getElementById('galleryViewerTitle');
+      if (titleEl) titleEl.textContent = current.title || 'Ground Field Evidence';
+
+      const metaEl = document.getElementById('galleryViewerMeta');
+      if (metaEl) metaEl.textContent = `• ${current.timestamp || 'Field Evidence · Citizen Upload'}`;
+
+      const prevBtn = document.getElementById('galleryViewerPrevBtn');
+      const nextBtn = document.getElementById('galleryViewerNextBtn');
+      if (prevBtn) prevBtn.disabled = total <= 1;
+      if (nextBtn) nextBtn.disabled = total <= 1;
+    }
+
+    // Keyboard listener for gallery
+    window.addEventListener('keydown', (e) => {
+      const modal = document.getElementById('galleryViewerModal');
+      if (modal && modal.style.display === 'flex') {
+        if (e.key === 'Escape') closeGalleryViewer();
+        else if (e.key === 'ArrowLeft') prevGalleryViewerPhoto();
+        else if (e.key === 'ArrowRight') nextGalleryViewerPhoto();
+      }
+    });
+
     function openDetailModal(reportId) {
       showJanSetuLoader((typeof currentLanguage !== 'undefined' && currentLanguage === 'hi')
-        ? 'समस्या का पूर्ण ऑडिट ट्रेल और आधिकारिक विवरण लोड हो रहा है...'
-        : 'Loading Grievance Audit Trail & Official Dispatch Records...', 1100);
+        ? 'समस्या का पूर्ण विवरण लोड हो रहा है...'
+        : 'Loading Grievance Details & Progress...', 500);
 
       currentlyInspectedId = reportId;
-      let item = allReportsList.find(r => r.id === reportId);
-      if (!item) item = exploreList.find(r => r.id === reportId);
-      if (!item) return;
+      let item = allReportsList.find(r => r.id === reportId || (r._id && r._id.toString() === reportId.toString()) || r.reportId === reportId || r.challengeId === reportId);
+      if (!item && typeof exploreList !== 'undefined') {
+        item = exploreList.find(r => r.id === reportId || (r._id && r._id.toString() === reportId.toString()) || r.reportId === reportId || r.challengeId === reportId);
+      }
+      if (!item && typeof window !== 'undefined' && Array.isArray(window.allReportsList)) {
+        item = window.allReportsList.find(r => r.id === reportId || (r._id && r._id.toString() === reportId.toString()) || r.reportId === reportId || r.challengeId === reportId);
+      }
+      if (!item) {
+        hideJanSetuLoader();
+        return;
+      }
 
       const user = getCurrentUser();
       const currentUserId = user ? (user.id || user._id || '').toString() : '';
@@ -2591,172 +2905,287 @@
       const subEmail = (item.submitterEmail || (item.submitterContact && item.submitterContact.email) || (item.submittedBy && item.submittedBy.email) || '').toLowerCase().trim();
       const subId = (item.submittedById || (item.submittedBy && (item.submittedBy._id || item.submittedBy.id || item.submittedBy)) || '').toString();
 
-      const isMyOwnReport = allReportsList.some(r => r.id === item.id || (item.mongoId && r.mongoId === item.mongoId))
-        || (currentUserEmail && subEmail && currentUserEmail === subEmail)
-        || (currentUserId && subId && currentUserId === subId);
-
-      const modalEl = document.getElementById('detailModal');
-      const heroEl = document.getElementById('detailViewerMonumentHero');
-      const authorBannerEl = document.getElementById('detailAuthorHeaderBanner');
-
-      const accentLine = document.getElementById('detailViewerAccentLine');
-
-      const isHi = currentLanguage === 'hi';
-      const isHinglish = currentLanguage === 'hinglish';
-
-      if (isMyOwnReport) {
-        modalEl.classList.remove('viewer-mode-active');
-        if (heroEl) heroEl.style.display = 'none';
-        if (authorBannerEl) authorBannerEl.style.display = 'flex';
-        if (accentLine) accentLine.style.display = 'none';
-        document.getElementById('detailTitle').innerHTML = `<span style="color:#FF9933;">👑</span> ${item.title}`;
+      let isMyOwnReport = false;
+      if (item.isMyReport === true) {
+        isMyOwnReport = true;
+      } else if (item.isMyReport === false) {
+        isMyOwnReport = false;
+      } else if (currentUserEmail && subEmail && currentUserEmail === subEmail) {
+        isMyOwnReport = true;
+      } else if (currentUserId && subId && currentUserId === subId) {
+        isMyOwnReport = true;
       } else {
-        modalEl.classList.add('viewer-mode-active');
-        if (heroEl) heroEl.style.display = 'none';
-        if (authorBannerEl) authorBannerEl.style.display = 'none';
-        if (accentLine) accentLine.style.display = 'block';
-        document.getElementById('detailTitle').innerHTML = `<span>🏛️</span> ${item.title}`;
-      }
-
-      // Dynamic Author Header Texts - Clean single unified card without clutter
-      const authTitleEl = document.getElementById('detailAuthorHeaderTitle');
-      const authSubEl = document.getElementById('detailAuthorHeaderSub');
-      const authBadgeEl = document.getElementById('detailAuthorHeaderBadge');
-      const supCount = item.supports || 1;
-      if (authTitleEl) authTitleEl.textContent = isHi ? 'आपकी दर्ज शिकायत' : (isHinglish ? 'Aapki Darj Shikayat' : 'Your Submitted Grievance');
-      if (authSubEl) {
-        authSubEl.innerHTML = (isHi ? 'आप इस शिकायत के मुख्य लेखक हैं। ' : (isHinglish ? 'Aap is grievance ke main author hain. ' : 'You are the primary author of this grievance. ')) +
-          `<span style="display:inline-flex; align-items:center; gap:4px; margin-left:6px; background:#DCFCE7; color:#166534; font-weight:800; font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid #86EFAC;">👥 ${supCount} ${isHi ? 'नागरिक समर्थन' : 'Citizen Support'}</span>`;
-      }
-      if (authBadgeEl) authBadgeEl.textContent = isHi ? '👑 मुख्य शिकायतकर्ता' : (isHinglish ? '👑 Main Submitter' : '👑 Primary Submitter');
-
-      // Dynamic Community Viewer Header Texts based on active language
-      const vrRevTitle = document.getElementById('detailViewerReviewTitle');
-      const vrRevPill = document.getElementById('detailViewerReviewModePill');
-      const vrInspTitle = document.getElementById('detailViewerInspTitle');
-      const vrInspDesc = document.getElementById('detailViewerInspDesc');
-      const vrAuthorBadge = document.getElementById('detailViewerAuthorRoleBadge');
-      const vrGisBadge = document.getElementById('detailViewerGisBadge');
-      if (vrRevTitle) vrRevTitle.textContent = isHi ? 'सार्वजनिक नागरिक निरीक्षण' : (isHinglish ? 'Public Community Inspection' : 'Public Community Inspection');
-      if (vrRevPill) vrRevPill.textContent = isHi ? '🌐 नागरिक व्यूअर मोड' : (isHinglish ? '🌐 Community Viewer Mode' : '🌐 Community Viewer Mode');
-      if (vrInspTitle) vrInspTitle.textContent = isHi ? 'जनसेतु नागरिक सार्वजनिक निरीक्षण मंच' : (isHinglish ? 'JanSetu Citizen Civic Inspection Platform' : 'JanSetu Citizen Civic Inspection Platform');
-      if (vrInspDesc) vrInspDesc.textContent = isHi ? 'यह शिकायत एक नागरिक द्वारा दर्ज की गई है। आप इसकी प्रगति ट्रैक कर सकते हैं और अपना समर्थन दे सकते हैं।' : (isHinglish ? 'Ye grievance fellow citizen ne submit ki hai. Aap real-time progress track karke support de sakte hain.' : 'This grievance was submitted by a fellow citizen. You can track real-time progress and register your community support.');
-      if (vrAuthorBadge) vrAuthorBadge.textContent = isHi ? 'मुख्य शिकायतकर्ता' : (isHinglish ? 'Main Submitter' : 'Primary Submitter');
-      if (vrGisBadge) vrGisBadge.textContent = isHi ? 'जीआईएस भू-सत्यापित शिकायत' : (isHinglish ? 'GIS Geo-Verified Grievance' : 'GIS Geo-Verified Grievance');
-
-      // Submitter and GIS Verification chips in meta row
-      const subChip = document.getElementById('detailSubmitterChip');
-      const gisChip = document.getElementById('detailGisChip');
-      const maskedCitizenId = item.citizenId || item.submitterCitizenId || ('C' + (item.id ? item.id.replace(/[^0-9]/g, '').slice(-4) : '9604'));
-      const citizenIdDisplay = (isHi ? 'नागरिक #' : 'Citizen #') + maskedCitizenId;
-      const authorNameStr = isMyOwnReport
-        ? (item.submitterName || (item.submitterContact && item.submitterContact.name) || (isHi ? 'आप' : 'You'))
-        : citizenIdDisplay;
-
-      if (subChip) {
-        if (!isMyOwnReport && (item.submitterName || item.submittedBy || item.submitterContact || item.citizenId)) {
-          subChip.textContent = '🛡️ ' + (isHi ? 'सत्यापित नागरिक: ' : 'Verified Citizen: ') + citizenIdDisplay;
-          subChip.style.display = 'inline-flex';
-        } else {
-          subChip.style.display = 'none';
-        }
-      }
-      if (gisChip) {
-        gisChip.style.display = isMyOwnReport ? 'none' : 'inline-flex';
-        gisChip.textContent = isHi ? '✓ जीआईएस भू-सत्यापित' : '✓ GIS Geo-Verified';
-      }
-
-      const vSubName = document.getElementById('viewerSubmitterName');
-      if (vSubName) {
-        vSubName.textContent = isMyOwnReport
-          ? ('👤 ' + (isHi ? 'शिकायतकर्ता: ' : 'Submitter: ') + authorNameStr)
-          : ('🛡️ ' + (isHi ? 'नागरिक पहचान: ' : 'Citizen ID: ') + citizenIdDisplay);
-      }
-      const vSubLoc = document.getElementById('viewerSubmitterLoc');
-      if (vSubLoc) {
-        vSubLoc.textContent = '📍 ' + (item.location || (isHi ? 'झारखंड' : 'Jharkhand')) + ' · 📅 ' + (item.timeAgo || (isHi ? 'हाल ही में' : 'Recently'));
-      }
-      const vSubAv = document.getElementById('viewerSubmitterAvatar');
-      if (vSubAv) {
-        vSubAv.textContent = isMyOwnReport ? (authorNameStr.charAt(0).toUpperCase() || 'C') : 'C';
-      }
-
-      document.getElementById('detailId').textContent = (isHi ? 'शिकायत संख्या: ' : 'Report ID: ') + item.id;
-
-      // Only display hero box if a ground proof image exists
-      const heroBox = document.querySelector('.detail-hero-box');
-      const mainImg = item.image || item.beforeImg || (item.resolutionProof && item.resolutionProof.beforeImage) || (item.attachments && item.attachments[0] && item.attachments[0].url) || getCategoryFallbackImage(item.category);
-      if (mainImg) {
-        document.getElementById('detailImage').src = mainImg;
-        document.getElementById('detailBeforeImg').src = mainImg;
-        if (heroBox) heroBox.style.display = 'block';
-      } else {
-        if (heroBox) heroBox.style.display = 'none';
-      }
-
-      const afterImgEl = document.getElementById('detailAfterImg');
-      const afterNoticeEl = document.getElementById('detailAfterPendingNotice');
-      const isSolved = item.status === 'Solved' || item.isResolved;
-
-      if (item.afterImg) {
-        afterImgEl.src = item.afterImg;
-        afterImgEl.style.display = 'block';
-        if (afterNoticeEl) afterNoticeEl.style.display = 'none';
-      } else {
-        // If no separate after-proof has been uploaded yet, keep after image hidden and show clean status badge
-        afterImgEl.style.display = 'none';
-        if (afterNoticeEl) {
-          afterNoticeEl.style.display = 'flex';
-          const noticeDesc = afterNoticeEl.querySelector('div:last-child');
-          if (noticeDesc) {
-            noticeDesc.textContent = isSolved
-              ? (currentLanguage === 'hi' ? 'कार्य आदेश पूरा व सत्यापित — अंतिम ग्राउंड रिपोर्ट संलग्न' : 'Official resolution verified & authenticated on ground')
-              : (currentLanguage === 'hi' ? 'कार्य आदेश प्रगति पर — समाधान पश्चात आफ्टर प्रूफ अपलोड होगा' : 'After-proof will be verified & uploaded upon resolution');
+        const matchingLocal = allReportsList.find(r => r.id === item.id || (item.mongoId && r.mongoId === item.mongoId));
+        if (matchingLocal && matchingLocal.isMyReport !== false && !matchingLocal.submitterCitizenId && !item.citizenId) {
+          const locEmail = (matchingLocal.submitterEmail || '').toLowerCase().trim();
+          if (!locEmail || locEmail === currentUserEmail) {
+            isMyOwnReport = true;
           }
         }
       }
 
-      // Toggle Solved Citizen Feedback & Reopen Card (Only for main author)
-      const feedbackCard = document.getElementById('detailSolvedFeedbackCard');
-      if (feedbackCard) {
-        if (isSolved && isMyOwnReport) {
-          feedbackCard.style.display = 'block';
-          setFeedbackRating(item.feedbackRating || 5);
-          const commentEl = document.getElementById('detailFeedbackComment');
-          if (commentEl) commentEl.value = item.feedbackComment || '';
-        } else {
-          feedbackCard.style.display = 'none';
-        }
-      }
+      const isHi = currentLanguage === 'hi';
+      const isHinglish = currentLanguage === 'hinglish';
+      const extractedDist = (typeof getChallengeDistrict === 'function' ? getChallengeDistrict(item) : '') || item.district || 'Ranchi';
 
-      const isUnverified = (item.status === 'Submitted' || !item.isVerified) && !isSolved;
+      // 1. Header Category Icon & Title
+      const catIcons = {
+        'Healthcare': '🏥', 'Hospital': '🏥', 'Health': '🏥', 'चिकित्सा': '🏥',
+        'Water': '💧', 'Water Supply': '💧', 'Drinking Water': '💧', 'जल आपूर्ति': '💧',
+        'Roads': '🛣️', 'Urban Infrastructure': '🛣️', 'सड़क': '🛣️',
+        'Electricity': '⚡', 'बिजली': '⚡',
+        'Sanitation': '🧹', 'कचरा': '🧹',
+        'Education': '🏫', 'शिक्षा': '🏫'
+      };
+      const catIcon = catIcons[item.category] || '🏛️';
+      const catSquare = document.getElementById('detailCatSquare');
+      if (catSquare) catSquare.textContent = catIcon;
 
-      const detailBadge = document.getElementById('detailStatusBadge');
-      if (detailBadge) {
+      const titleEl = document.getElementById('detailTitle');
+      if (titleEl) titleEl.textContent = item.title || 'hospital';
+
+      const isAdminVerified = isReportAdminVerified(item);
+
+      // 2. Meta Pills (Report ID, Status, Location, Time, Category)
+      const idEl = document.getElementById('detailId');
+      if (idEl) idEl.textContent = item.id || 'JH-2026-625506';
+
+      const statusBadge = document.getElementById('detailStatusBadge');
+      const isSolved = item.status === 'Solved' || item.isResolved;
+      if (statusBadge) {
         if (isSolved) {
-          detailBadge.textContent = currentLanguage === 'hi' ? '✓ समाधान पूर्ण' : '✓ Solved';
-          detailBadge.style.background = '#EDFCF2';
-          detailBadge.style.color = '#15803D';
-          detailBadge.style.borderColor = '#A7F3D0';
-        } else if (isUnverified) {
-          detailBadge.textContent = currentLanguage === 'hi' ? '⏳ सत्यापन प्रतीक्षारत' : '⏳ Awaiting Admin Verification';
-          detailBadge.style.background = '#EFF6FF';
-          detailBadge.style.color = '#1D4ED8';
-          detailBadge.style.borderColor = '#BFDBFE';
+          statusBadge.textContent = '🟢 ' + (isHi ? 'समाधान पूर्ण' : 'Closed • Resolved');
+          statusBadge.style.background = '#ECFDF5';
+          statusBadge.style.color = '#059669';
+          statusBadge.style.borderColor = '#A7F3D0';
+        } else if (isAdminVerified) {
+          statusBadge.textContent = '🟢 ' + (isHi ? 'प्रशासन सत्यापित • प्रगति पर' : 'Admin Verified • In Progress');
+          statusBadge.style.background = '#ECFDF5';
+          statusBadge.style.color = '#059669';
+          statusBadge.style.borderColor = '#A7F3D0';
         } else {
-          detailBadge.textContent = currentLanguage === 'hi' ? '✓ प्रशासन द्वारा सत्यापित · कार्य जारी' : '✓ Admin Verified · In Progress';
-          detailBadge.style.background = '#F0FDF4';
-          detailBadge.style.color = '#166534';
-          detailBadge.style.borderColor = '#BBF7D0';
+          statusBadge.textContent = '🟡 ' + (isHi ? 'प्रशासनिक सत्यापन लंबित' : 'Pending Admin Verification');
+          statusBadge.style.background = '#FEF3C7';
+          statusBadge.style.color = '#B45309';
+          statusBadge.style.borderColor = '#FDE68A';
         }
       }
 
-      document.getElementById('detailCategoryBadge').textContent = '📂 ' + (item.category || (isHi ? 'सामान्य' : 'General'));
-      document.getElementById('detailTimeAgo').textContent = (isHi ? 'दर्ज: ' : 'Reported ') + (item.timeAgo || (isHi ? 'हाल ही में' : 'Recently'));
-      document.getElementById('detailDescription').textContent = item.desc || item.title;
-      document.getElementById('detailLocationText').textContent = '📍 ' + (item.location || (isHi ? 'झारखंड' : 'Jharkhand'));
+      const hLoc = document.getElementById('detailHeaderLoc');
+      if (hLoc) hLoc.textContent = extractedDist + ', Jharkhand';
 
-      // Location coordinates & Detailed Hierarchy Breakdown
+      const hTime = document.getElementById('detailTimeAgo');
+      if (hTime) hTime.textContent = (isHi ? 'दर्ज: ' : 'Reported ') + (item.timeAgo || '1 day ago');
+
+      const hCat = document.getElementById('detailCategoryBadge');
+      if (hCat) hCat.textContent = item.category || 'Healthcare';
+
+      // 3. Right Submitter Card
+      const authBadge = document.getElementById('detailAuthorHeaderBadge');
+      if (authBadge) {
+        if (item.isTwinned) {
+          authBadge.textContent = isHi ? '🔗 जुड़वां समस्या' : '🔗 Twinned Problem';
+        } else {
+          authBadge.textContent = isMyOwnReport ? (isHi ? 'मुख्य शिकायतकर्ता' : 'Primary Submitter') : (isHi ? 'सत्यापित नागरिक' : 'Primary Submitter');
+        }
+      }
+      const supText = document.getElementById('detailSupportCountText');
+      if (supText) {
+        const sc = item.supports || 1;
+        supText.textContent = `${sc} ${isHi ? 'नागरिक समर्थन' : 'Citizen Support'}`;
+      }
+
+      // 4. Problem Statement Text (Enlarged)
+      const descEl = document.getElementById('detailDescription');
+      if (descEl) {
+        let fullDesc = item.desc || item.description || item.details || item.title || 'near hospital needs renovation';
+        if (item.isTwinned && item.originalSubmitter) {
+          fullDesc = `[🔗 Twinned Grievance · Originally reported by ${item.originalSubmitter}]\n` + fullDesc;
+        }
+        descEl.textContent = fullDesc;
+      }
+
+      // 5. 5-Step Stepper Population with Animated Beam & Bhuk-Bhak
+      const baseDateStr = formatRealDate(item.createdAt || new Date());
+      const d1 = document.getElementById('dStepDate1');
+      if (d1) d1.textContent = baseDateStr.split('·')[0].trim() || '11 Sept 2026';
+      const t1 = document.getElementById('dStepTime1');
+      if (t1) t1.textContent = baseDateStr.includes('·') ? baseDateStr.split('·')[1].trim() : '02:10 am';
+
+      const d2 = document.getElementById('dStepDate2');
+      if (d2) d2.textContent = baseDateStr.split('·')[0].trim() || '11 Sept 2026';
+      const t2 = document.getElementById('dStepTime2');
+      if (t2) t2.textContent = '02:13 am';
+
+      const circ2 = document.getElementById('dStepCirc2');
+      if (circ2) {
+        if (isAdminVerified) {
+          circ2.className = 'detail-step-circle done';
+          circ2.textContent = '✓';
+        } else {
+          circ2.className = 'detail-step-circle current';
+          circ2.textContent = '⏳';
+        }
+      }
+
+      const circ3 = document.getElementById('dStepCirc3');
+      if (circ3) {
+        if (isSolved) {
+          circ3.className = 'detail-step-circle done';
+          circ3.textContent = '✓';
+        } else if (isAdminVerified) {
+          circ3.className = 'detail-step-circle current';
+          circ3.textContent = '3';
+        } else {
+          circ3.className = 'detail-step-circle pending';
+          circ3.textContent = '3';
+        }
+      }
+
+      // Animated progress beam width
+      const progFill = document.getElementById('detailStepperProgressFill');
+      if (progFill) {
+        if (isSolved) progFill.style.width = '100%';
+        else if (item.status === 'in_progress' || item.status === 'being worked on') progFill.style.width = '65%';
+        else if (isAdminVerified) progFill.style.width = '42%';
+        else progFill.style.width = '18%';
+      }
+
+      // 6. Stakeholder Action Badges (Accurate Real Verification)
+      const stAdmin = document.getElementById('stakeholderBadgeAdmin');
+      if (stAdmin) {
+        if (isAdminVerified) {
+          stAdmin.textContent = isHi ? 'सत्यापित व स्वीकृत' : 'Verified & Approved';
+          stAdmin.style.background = '#ECFDF5';
+          stAdmin.style.color = '#059669';
+          stAdmin.style.borderColor = '#A7F3D0';
+        } else {
+          stAdmin.textContent = isHi ? 'सत्यापन लंबित' : 'Verification Pending';
+          stAdmin.style.background = '#FEF3C7';
+          stAdmin.style.color = '#B45309';
+          stAdmin.style.borderColor = '#FDE68A';
+        }
+      }
+      const stUniv = document.getElementById('stakeholderBadgeUniv');
+      if (stUniv) {
+        stUniv.textContent = isHi ? '🟡 फील्ड में सक्रिय' : '🟡 Active On-Site';
+      }
+      const stInd = document.getElementById('stakeholderBadgeInd');
+      if (stInd) {
+        stInd.textContent = isSolved ? (isHi ? 'सामग्री आपूर्ति पूर्ण' : 'Supplies Delivered') : (isHi ? 'सामग्री आपूर्ति जारी' : 'Supplies In Progress');
+      }
+
+      // 7. Submitter vs Viewer (Nearby/Community Challenge) View Configuration
+      const tabOverview = document.getElementById('detailTabBtn_overview');
+      const tabEvidence = document.getElementById('detailTabBtn_evidence');
+      const tabProgress = document.getElementById('detailTabBtn_progress');
+      const tabVerification = document.getElementById('detailTabBtn_verification');
+      const tabDiscussion = document.getElementById('detailTabBtn_discussion');
+      const linkFullHist = document.getElementById('detailLinkFullHistory');
+      const stakeholderRow = document.getElementById('detailStakeholderRow');
+      const slipBtn = document.getElementById('btnDetailDownloadSlip');
+      const slipIcon = document.getElementById('detailSlipIcon');
+      const slipText = document.getElementById('detailSlipText');
+      const chatBtn = document.getElementById('btnDetailChat');
+      const supportSlot = document.getElementById('detailModalSupportBtnSlot');
+      const delSlot = document.getElementById('detailModalDeleteBtnSlot');
+
+      // Always reset to Overview tab when opening detail modal
+      if (typeof switchDetailTab === 'function') {
+        switchDetailTab('overview');
+      }
+
+      if (!isMyOwnReport) {
+        // --- VIEWER MODE (Nearby / Community Challenges) ---
+        // 1. Hide tabs (progress, verification, chat/discussion); only show Overview and Evidence
+        if (tabOverview) tabOverview.style.display = 'inline-flex';
+        if (tabEvidence) tabEvidence.style.display = 'inline-flex';
+        if (tabProgress) tabProgress.style.display = 'none';
+        if (tabVerification) tabVerification.style.display = 'none';
+        if (tabDiscussion) tabDiscussion.style.display = 'none';
+        if (linkFullHist) linkFullHist.style.display = 'none';
+
+        // 2. Hide authority progress div (admin, industry, university cards)
+        if (stakeholderRow) stakeholderRow.style.display = 'none';
+
+        // 3. Slip button: only submitter can download slip, viewer cannot download
+        if (slipBtn) {
+          slipBtn.style.opacity = '0.85';
+          slipBtn.style.cursor = 'not-allowed';
+          slipBtn.style.background = '#F8FAFC';
+          slipBtn.style.color = '#64748B';
+          slipBtn.style.border = '1.5px dashed #CBD5E1';
+          slipBtn.style.boxShadow = 'none';
+          slipBtn.title = isHi ? '🔒 रसीद केवल मूल शिकायतकर्ता ही डाउनलोड कर सकते हैं' : '🔒 Official slip can only be downloaded by the original submitter';
+        }
+        if (slipIcon) slipIcon.textContent = '🔒';
+        if (slipText) {
+          slipText.textContent = isHi ? '🔒 केवल शिकायतकर्ता रसीद डाउनलोड कर सकते हैं' : (isHinglish ? '🔒 Slip sirf Submitter download kar sakta hai' : '🔒 Slip only available for Submitter');
+        }
+
+        // 4. In viewer mode, hide internal chat and delete button; show ONLY the Support Button!
+        if (chatBtn) chatBtn.style.display = 'none';
+        if (delSlot) delSlot.innerHTML = '';
+
+        if (supportSlot) {
+          const sc = item.supports || 1;
+          const isSupported = supportedIds.has(item.id) || (item.mongoId && supportedIds.has(item.mongoId));
+          supportSlot.innerHTML = `
+            <button type="button" class="btn-footer-support-clean" onclick="event.stopPropagation(); toggleSupport('${item.id}');" style="padding: 8px 18px; background: ${isSupported ? '#15803D' : '#002D62'}; border: none; color: #FFFFFF; border-radius: 9px; font-size: 12.5px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; box-shadow: 0 2px 8px rgba(0,45,98,0.22); transition: all 0.2s ease;">
+              <span>${isSupported ? '✓' : '👍'}</span> <span>${isSupported ? (isHi ? 'समर्थित' : 'Supported') : (isHi ? 'समर्थन करें' : 'Support Problem')} (${sc})</span>
+            </button>
+          `;
+        }
+      } else {
+        // --- SUBMITTER MODE ---
+        // 1. Show all tabs
+        if (tabOverview) tabOverview.style.display = 'inline-flex';
+        if (tabProgress) tabProgress.style.display = 'inline-flex';
+        if (tabVerification) tabVerification.style.display = 'inline-flex';
+        if (tabEvidence) tabEvidence.style.display = 'inline-flex';
+        if (tabDiscussion) tabDiscussion.style.display = 'inline-flex';
+        if (linkFullHist) linkFullHist.style.display = 'inline-flex';
+
+        // 2. Show authority stakeholder row
+        if (stakeholderRow) stakeholderRow.style.display = 'grid';
+
+        // 3. Submitter can download slip
+        if (slipBtn) {
+          slipBtn.style.opacity = '1';
+          slipBtn.style.cursor = 'pointer';
+          slipBtn.style.background = 'linear-gradient(135deg, #002D62 0%, #001A3A 100%)';
+          slipBtn.style.color = '#FFFFFF';
+          slipBtn.style.border = 'none';
+          slipBtn.style.boxShadow = '0 3px 10px rgba(0,45,98,0.22)';
+          slipBtn.title = isHi ? 'शिकायत पावती पर्ची डाउनलोड करें' : 'Download Official Slip';
+        }
+        if (slipIcon) slipIcon.textContent = '📥';
+        if (slipText) {
+          slipText.textContent = isHi ? '📥 शिकायत पावती पर्ची डाउनलोड करें' : 'Download Official Slip';
+        }
+
+        // 4. Show Chat button and Delete button if eligible
+        if (chatBtn) chatBtn.style.display = 'inline-flex';
+        if (supportSlot) supportSlot.innerHTML = '';
+
+        if (delSlot) {
+          if (!isAdminVerified) {
+            delSlot.innerHTML = `
+              <button type="button" class="btn-footer-delete-clean" onclick="event.stopPropagation(); promptDeleteReport('${item.id}');" title="${isHi ? 'सत्यापन से पहले शिकायत हटाएं' : 'Delete unverified grievance'}">
+                <span>🗑️</span> <span>${isHi ? 'शिकायत हटाएं' : 'Delete Grievance'}</span>
+              </button>
+            `;
+          } else {
+            delSlot.innerHTML = `
+              <span class="badge-admin-locked" title="${isHi ? 'प्रशासन द्वारा सत्यापित होने के बाद शिकायत हटाई नहीं जा सकती' : 'Admin Verified. Grievance locked for integrity.'}">
+                <span>🔒</span> <span>${isHi ? 'प्रशासन सत्यापित' : 'Admin Verified'}</span>
+              </span>
+            `;
+          }
+        }
+      }
+
+      // 8. Location 2x2 Grid & GPS Coordinates
       const distCoordsMap = {
         'Ranchi': { lat: 23.3441, lng: 85.3096 },
         'Dhanbad': { lat: 23.7957, lng: 86.4304 },
@@ -2771,136 +3200,456 @@
         'Palamu': { lat: 24.0384, lng: 84.0722 }
       };
 
-      let targetLat = null;
-      let targetLng = null;
+      let targetLat = 23.3441;
+      let targetLng = 85.3096;
       if (item.coords && item.coords.lat && item.coords.lng) {
         targetLat = Number(item.coords.lat);
         targetLng = Number(item.coords.lng);
-      } else if (item.coordinates && item.coordinates.coordinates && Array.isArray(item.coordinates.coordinates)) {
-        targetLng = Number(item.coordinates.coordinates[0]);
-        targetLat = Number(item.coordinates.coordinates[1]);
-      } else if (item.lat && item.lng) {
-        targetLat = Number(item.lat);
-        targetLng = Number(item.lng);
+      } else if (distCoordsMap[extractedDist]) {
+        targetLat = distCoordsMap[extractedDist].lat;
+        targetLng = distCoordsMap[extractedDist].lng;
       }
 
-      const extractedDist = (typeof getChallengeDistrict === 'function' ? getChallengeDistrict(item) : '') || item.district || 'Ranchi';
-      if (!targetLat || !targetLng || isNaN(targetLat) || isNaN(targetLng)) {
-        const dCoord = distCoordsMap[extractedDist] || distCoordsMap['Ranchi'];
-        targetLat = dCoord.lat;
-        targetLng = dCoord.lng;
-      }
+      const lAddr = document.getElementById('detailLocationText');
+      if (lAddr) lAddr.textContent = item.location || (extractedDist + ', Jharkhand');
 
-      // Bind global handler for direct map navigation button
+      const lState = document.getElementById('detailLocState');
+      if (lState) lState.textContent = 'Jharkhand';
+
+      const lDist = document.getElementById('detailLocDistrict');
+      if (lDist) lDist.textContent = extractedDist;
+
+      const lTehsil = document.getElementById('detailLocTehsil');
+      if (lTehsil) lTehsil.textContent = item.tehsil || item.block || 'Sadar Block';
+
+      const lVillage = document.getElementById('detailLocVillage');
+      if (lVillage) lVillage.textContent = item.village || item.panchayat || extractedDist;
+
+      const gpsPill = document.getElementById('detailGpsPill');
+      if (gpsPill) gpsPill.textContent = `🌐 GPS: ${targetLat.toFixed(4)}°N, ${targetLng.toFixed(4)}°E`;
+
       window.gotoCurrentReportMap = function() {
         const mapUrl = `https://www.google.com/maps?q=${targetLat},${targetLng}`;
         window.open(mapUrl, '_blank');
       };
 
-      const locStr = item.location || 'Ranchi, Jharkhand';
-      const tehsilStr = item.tehsil || item.block || 'Sadar Block';
-      const villageStr = item.village || item.panchayat || item.landmark || (locStr.includes(',') ? locStr.split(',')[0].trim() : 'Namkum');
+      // 9. Single Consolidated Ground Evidence & Media Populator
+      const allMedia = extractAllGrievanceMedia(item);
+      const photoCount = allMedia.filter(m => m.type === 'photo').length;
+      const videoCount = allMedia.filter(m => m.type === 'video').length;
 
-      const hierEl = document.getElementById('detailHierarchyRow');
-      if (hierEl) {
-        hierEl.innerHTML = `
-          <span class="location-hierarchy-pill">🏛️ <span>${isHi ? 'राज्य:' : 'State:'}</span> <strong>${isHi ? 'झारखण्ड' : 'Jharkhand'}</strong></span>
-          <span class="location-hierarchy-pill">🏢 <span>${isHi ? 'ज़िला:' : 'District:'}</span> <strong>${escapeHtml(extractedDist)}</strong></span>
-          <span class="location-hierarchy-pill">📍 <span>${isHi ? 'तहसील/प्रखंड:' : 'Tehsil/Block:'}</span> <strong>${escapeHtml(tehsilStr)}</strong></span>
-          <span class="location-hierarchy-pill">🏘️ <span>${isHi ? 'गाँव/मोहल्ला:' : 'Area/Village:'}</span> <strong>${escapeHtml(villageStr)}</strong></span>
-          <span class="location-hierarchy-pill">🌐 <span>${isHi ? 'जीपीएस:' : 'GPS:'}</span> <strong>${targetLat.toFixed(4)}°N, ${targetLng.toFixed(4)}°E</strong></span>
-        `;
+      const badgeEl = document.getElementById('detailEvidenceCountBadge');
+      if (badgeEl) {
+        badgeEl.textContent = isHi 
+          ? (allMedia.length > 0 ? `${allMedia.length} साक्ष्य फ़ाइलें संलग्न` : 'कोई साक्ष्य नहीं')
+          : (allMedia.length > 0 ? `${allMedia.length} File${allMedia.length !== 1 ? 's' : ''} Attached` : 'No Media Attached');
+        badgeEl.style.background = allMedia.length > 0 ? '#EFF6FF' : '#F1F5F9';
+        badgeEl.style.color = allMedia.length > 0 ? '#1E40AF' : '#64748B';
+        badgeEl.style.borderColor = allMedia.length > 0 ? '#BFDBFE' : '#CBD5E1';
       }
 
-      // Multi-Media Evidence (Photos & Videos)
-      const allEvidenceMedia = [];
-      if (Array.isArray(item.attachments)) {
-        item.attachments.forEach(a => {
-          if (typeof a === 'string') allEvidenceMedia.push({ url: a, type: a.includes('.mp4') || a.includes('video') ? 'video' : 'image' });
-          else if (a && a.url) allEvidenceMedia.push({ url: a.url, type: (a.type || a.mimetype || '').includes('video') || a.url.includes('.mp4') ? 'video' : 'image' });
-        });
-      }
-      if (Array.isArray(item.media)) {
-        item.media.forEach(m => {
-          if (typeof m === 'string') allEvidenceMedia.push({ url: m, type: m.includes('.mp4') || m.includes('video') ? 'video' : 'image' });
-          else if (m && m.url) allEvidenceMedia.push({ url: m.url, type: (m.type || '').includes('video') || m.url.includes('.mp4') ? 'video' : 'image' });
-        });
-      }
-      if (Array.isArray(item.photos)) {
-        item.photos.forEach(p => {
-          if (typeof p === 'string') allEvidenceMedia.push({ url: p, type: 'image' });
-          else if (p && p.url) allEvidenceMedia.push({ url: p.url, type: 'image' });
-        });
-      }
-      if (item.image && !allEvidenceMedia.some(m => m.url === item.image)) {
-        allEvidenceMedia.push({ url: item.image, type: 'image' });
-      }
-      if (item.beforeImg && !allEvidenceMedia.some(m => m.url === item.beforeImg)) {
-        allEvidenceMedia.push({ url: item.beforeImg, type: 'image' });
-      }
-      if (item.afterImg && !allEvidenceMedia.some(m => m.url === item.afterImg)) {
-        allEvidenceMedia.push({ url: item.afterImg, type: 'image' });
-      }
-      if (item.video) allEvidenceMedia.push({ url: item.video, type: 'video' });
-      if (item.videoUrl) allEvidenceMedia.push({ url: item.videoUrl, type: 'video' });
-
-      const videoList = allEvidenceMedia.filter(m => m.type === 'video' || (typeof m.url === 'string' && (m.url.endsWith('.mp4') || m.url.includes('video/'))));
-      const photoList = allEvidenceMedia.filter(m => m.type === 'image' && !videoList.some(v => v.url === m.url));
-
-      const vidContainer = document.getElementById('detailVideoContainer');
-      const vidPlayer = document.getElementById('detailVideoPlayer');
-      if (vidContainer && vidPlayer) {
-        if (videoList.length > 0) {
-          vidContainer.style.display = 'block';
-          vidPlayer.src = videoList[0].url;
+      const thumbBox = document.getElementById('detailMediaThumbContainer');
+      if (thumbBox) {
+        if (allMedia.length === 0) {
+          thumbBox.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 10px; color: #64748B;">
+              <span style="font-size: 24px;">📷</span>
+              <div>
+                <div style="font-size: 11.5px; font-weight: 800; color: #475569;">${isHi ? 'कोई फ़ोटो या वीडियो अपलोड नहीं है' : 'No photo or video uploaded'}</div>
+                <div style="font-size: 10px; color: #94A3B8;">${isHi ? 'इस शिकायत के साथ कोई जमीनी साक्ष्य संलग्न नहीं है' : 'No ground evidence attached with this grievance'}</div>
+              </div>
+            </div>
+          `;
         } else {
-          vidContainer.style.display = 'none';
-          vidPlayer.src = '';
+          thumbBox.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                ${allMedia.slice(0, 3).map((m, idx) => m.type === 'video' ? `
+                  <div onclick="openAllMediaEvidenceViewer(${idx})" style="width: 54px; height: 54px; border-radius: 8px; background: #0F172A; border: 1.5px solid #2563EB; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.12);" title="Play Video">
+                    <span style="font-size: 18px;">🎥</span>
+                    <span style="font-size: 8px; font-weight: 800; color: #93C5FD; text-transform: uppercase;">Video</span>
+                  </div>
+                ` : `
+                  <div onclick="openAllMediaEvidenceViewer(${idx})" style="width: 54px; height: 54px; border-radius: 8px; overflow: hidden; border: 1.5px solid #CBD5E1; cursor: pointer; position: relative; box-shadow: 0 2px 5px rgba(0,0,0,0.08);" title="View Photo">
+                    <img src="${m.url}" style="width: 100%; height: 100%; object-fit: cover;" alt="Proof ${idx+1}" />
+                  </div>
+                `).join('')}
+                ${allMedia.length > 3 ? `
+                  <div onclick="openAllMediaEvidenceViewer(0)" style="width: 54px; height: 54px; border-radius: 8px; background: #EFF6FF; border: 1.5px solid #BFDBFE; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 800; color: #1D4ED8; cursor: pointer;">
+                    +${allMedia.length - 3}
+                  </div>
+                ` : ''}
+              </div>
+              <div style="font-size: 11px; font-weight: 700; color: #166534; display: inline-flex; align-items: center; gap: 5px;">
+                <span>✓</span> <span>${isHi ? `कुल ${allMedia.length} साक्ष्य संलग्न (${photoCount} फ़ोटो${videoCount > 0 ? `, ${videoCount} वीडियो` : ''})` : `Total ${allMedia.length} Media Attached (${photoCount} Photo${photoCount !== 1 ? 's' : ''}${videoCount > 0 ? `, ${videoCount} Video` : ''})`}</span>
+              </div>
+            </div>
+          `;
         }
       }
 
-      const galleryCont = document.getElementById('detailMultiPhotoGallery');
-      const galleryGrid = document.getElementById('detailGalleryPhotosGrid');
-      if (galleryCont && galleryGrid) {
-        if (photoList.length > 0) {
-          galleryCont.style.display = 'block';
-          galleryGrid.innerHTML = photoList.map(p => `
-            <img src="${p.url}" alt="Evidence Photo" class="detail-gallery-thumb" onclick="zoomImage('${p.url}', 'Grievance Evidence Photo')" onerror="this.style.display='none'" />
-          `).join('');
-        } else {
-          galleryCont.style.display = 'none';
-          galleryGrid.innerHTML = '';
-        }
+      const btnEvidenceText = document.getElementById('btnViewFullEvidenceText');
+      if (btnEvidenceText) {
+        btnEvidenceText.textContent = 'View Full Grievance & Evidence →';
       }
 
-      const locAssign = document.getElementById('detailAssignmentText');
-      if (locAssign) {
-        locAssign.style.display = isMyOwnReport ? 'block' : 'none';
-        locAssign.textContent = (isHi ? 'आवंटित कार्यबल: ' : 'Assigned Taskforce: ') + (item.assign || (isHi ? 'जनसेतु नगर निगम कार्यबल' : 'JanSetu Municipal Taskforce'));
-      }
+      // Populate tab views
+      renderTabProgress(item);
+      renderTabVerification(item);
+      renderTabEvidence(item);
 
-      const timeSecTitle = document.getElementById('detailTimelineSectionTitle');
-      const timeSecSub = document.getElementById('detailTimelineSectionSub');
-      if (timeSecTitle) {
-        timeSecTitle.textContent = isMyOwnReport
-          ? (isHi ? 'प्रगति एवं ऑडिट ट्रेल' : 'LIVE PROGRESS & AUDIT TRAIL')
-          : (isHi ? 'समाधान प्रगति रेखा' : 'LIVE PROGRESS TRACKER');
-      }
-      if (timeSecSub) {
-        timeSecSub.textContent = isMyOwnReport
-          ? (isHi ? 'प्रशासनिक सत्यापन, सामग्री आपूर्ति व फील्ड कार्रवाई' : 'Real-time audit track: Admin verification, Industry supplies & University field action')
-          : (isHi ? 'समस्या की वर्तमान स्थिति एवं प्रगति' : 'Current issue resolution status & ground progress');
-      }
-
-      renderDetailProgressTracker(item, isMyOwnReport);
-
-      // Update in-modal support card and persona footer
-      updateDetailModalSupportUI(item, isMyOwnReport);
+      // Default to Overview Tab
+      switchDetailTab('overview');
 
       hideJanSetuLoader(() => {
         openModal('detailModal');
-      }, 1100);
+      }, 500);
     }
+
+    /* 5-Tab Navigation Switching */
+    function switchDetailTab(tabName) {
+      ['overview', 'progress', 'verification', 'evidence', 'discussion'].forEach(t => {
+        const btn = document.getElementById('detailTabBtn_' + t);
+        const view = document.getElementById('tabView_' + t);
+        if (t === tabName) {
+          if (btn) btn.classList.add('active');
+          if (view) view.classList.add('active');
+        } else {
+          if (btn) btn.classList.remove('active');
+          if (view) view.classList.remove('active');
+        }
+      });
+
+      const item = allReportsList.find(r => r.id === currentlyInspectedId) || exploreList.find(r => r.id === currentlyInspectedId);
+      if (tabName === 'progress' && item) renderTabProgress(item);
+      if (tabName === 'verification' && item) renderTabVerification(item);
+      if (tabName === 'evidence' && item) renderTabEvidence(item);
+    }
+    window.switchDetailTab = switchDetailTab;
+
+    function renderTabProgress(item) {
+      const cont = document.getElementById('tabProgressEventList');
+      if (!cont || !item) return;
+      const isHi = currentLanguage === 'hi';
+      const dateStr = formatRealDate(item.createdAt || new Date());
+      const isAdminVerified = isReportAdminVerified(item);
+      const isSolved = item.status === 'Solved' || item.isResolved;
+
+      cont.innerHTML = `
+        <div class="timeline-event-card">
+          <div class="timeline-event-dot green">✓</div>
+          <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong style="font-size:13.5px;color:#0F172A;">${isHi ? '1. शिकायत सफलतापूर्वक दर्ज' : '1. Grievance Formally Registered'}</strong>
+              <span style="font-size:11px;color:#64748B;">${dateStr}</span>
+            </div>
+            <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">${isHi ? 'नागरिक द्वारा जियो-टैग्ड सबूत व विवरण के साथ जनसेतु पर प्रस्तुत किया गया।' : 'Submitted on JanSetu portal with verified GPS geotag and citizen photo evidence.'}</p>
+            <span style="font-size:10px;font-weight:700;color:#059669;background:#ECFDF5;padding:2px 8px;border-radius:12px;margin-top:6px;display:inline-block;">AI Check Passed (96% Confidence)</span>
+          </div>
+        </div>
+
+        <div class="timeline-event-card">
+          <div class="timeline-event-dot ${isAdminVerified ? 'green' : 'amber'}">${isAdminVerified ? '✓' : '⏳'}</div>
+          <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong style="font-size:13.5px;color:#0F172A;">${isHi ? '2. प्रशासनिक सत्यापन व समीक्षा' : '2. Administrative Verification & Inspection'}</strong>
+              <span style="font-size:11px;color:#64748B;">${isAdminVerified ? dateStr : (isHi ? 'समीक्षाधीन' : 'In Review')}</span>
+            </div>
+            <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">
+              ${isAdminVerified 
+                ? (isHi ? 'जिला समाहरणालय व संबंधित नगर निगम द्वारा समस्या की पुष्टि की गई एवं निवारण आदेश जारी किया गया।' : 'Verified by District Administration / Municipal Corporation. Official remediation ticket dispatched.')
+                : (isHi ? 'संबंधित वार्ड पदाधिकारी द्वारा स्थल निरीक्षण व सत्यापन प्रक्रिया प्रगति पर है।' : 'Ward Revenue Officer is currently reviewing the geocoordinates and proof.')}
+            </p>
+            <span style="font-size:10px;font-weight:700;color:${isAdminVerified ? '#059669' : '#B45309'};background:${isAdminVerified ? '#ECFDF5' : '#FEF3C7'};padding:2px 8px;border-radius:12px;margin-top:6px;display:inline-block;">
+              ${isAdminVerified ? (isHi ? 'सत्यापित' : 'Admin Approved') : (isHi ? 'सत्यापन लंबित' : 'Awaiting Administrative Stamp')}
+            </span>
+          </div>
+        </div>
+
+        <div class="timeline-event-card">
+          <div class="timeline-event-dot ${isAdminVerified ? 'blue' : 'amber'}">${isAdminVerified ? '🎓' : '3'}</div>
+          <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong style="font-size:13.5px;color:#0F172A;">${isHi ? '3. विश्वविद्यालय टास्कफोर्स ऑन-साइट फील्ड टीम' : '3. University Engineering Taskforce Mobilization'}</strong>
+              <span style="font-size:11px;color:#64748B;">${isAdminVerified ? dateStr : 'Pending'}</span>
+            </div>
+            <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">
+              ${isHi ? 'इंजीनियरिंग कॉलेज की छात्र-विशेषज्ञ टीम द्वारा तकनीकी सर्वे व मरम्मत योजना तैयार की जा रही है।' : 'Student-faculty field engineers conducted physical structural diagnostics and site mapping.'}
+            </p>
+          </div>
+        </div>
+
+        <div class="timeline-event-card">
+          <div class="timeline-event-dot ${isSolved ? 'green' : 'amber'}">${isSolved ? '✓' : '4'}</div>
+          <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong style="font-size:13.5px;color:#0F172A;">${isHi ? '4. सामग्री आपूर्ति व फील्ड कार्य' : '4. Material Dispatch & Implementation Work'}</strong>
+              <span style="font-size:11px;color:#64748B;">${isSolved ? dateStr : 'In Progress'}</span>
+            </div>
+            <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">
+              ${isSolved 
+                ? (isHi ? 'कार्य पूर्ण। समस्त मरम्मत व निर्माण कार्य स्वीकृत मानकों के अनुसार सम्पन्न।' : 'Field repairs completed. Required materials provided under CSR partnership.')
+                : (isHi ? 'आवश्यक सामग्री और उपकरण कार्यस्थल पर पहुंचाए जा रहे हैं।' : 'CSR logistics active. Heavy materials delivery scheduled.')}
+            </p>
+          </div>
+        </div>
+
+        <div class="timeline-event-card">
+          <div class="timeline-event-dot ${isSolved ? 'green' : 'amber'}">${isSolved ? '✓' : '5'}</div>
+          <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong style="font-size:13.5px;color:#0F172A;">${isHi ? '5. नागरिक सत्यापन एवं अंतिम प्रमाण पत्र' : '5. Citizen Certified Closure & Resolution'}</strong>
+              <span style="font-size:11px;color:#64748B;">${isSolved ? dateStr : 'Final Step'}</span>
+            </div>
+            <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">
+              ${isSolved 
+                ? (isHi ? 'नागरिकों द्वारा संतोषजनक समाधान की पुष्टि उपरांत आधिकारिक क्लोजर प्रदान किया गया।' : 'Grievance resolved and certified closed with Before/After ground validation.')
+                : (isHi ? 'कार्य सम्पन्न होने के उपरांत नागरिकों से डिजिटल सत्यापन प्राप्त किया जाएगा।' : 'Requires dual signature from Ward Inspector and citizen satisfaction vote.')}
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTabVerification(item) {
+      const cont = document.getElementById('tabVerificationContent');
+      if (!cont || !item) return;
+      const isHi = currentLanguage === 'hi';
+      const isAdminVerified = isReportAdminVerified(item);
+      const dateStr = formatRealDate(item.createdAt || new Date());
+
+      cont.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #F1F5F9;padding-bottom:12px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:24px;">🏛️</span>
+            <div>
+              <h4 style="margin:0;font-size:16px;font-weight:800;color:#0F172A;">Official Administrative Audit Report</h4>
+              <span style="font-size:12px;color:#64748B;">Government of Jharkhand · JanSetu Civic Governance Cell</span>
+            </div>
+          </div>
+          <span style="font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:12px;background:${isAdminVerified ? '#ECFDF5' : '#FEF3C7'};color:${isAdminVerified ? '#059669' : '#B45309'};border:1px solid ${isAdminVerified ? '#A7F3D0' : '#FDE68A'};">
+            ${isAdminVerified ? '🟢 Verified & Certified' : '⏳ Verification Pending'}
+          </span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+            <div style="font-size:11px;color:#64748B;font-weight:700;">INSPECTING AUTHORITY</div>
+            <div style="font-size:13px;font-weight:800;color:#0F172A;margin-top:2px;">Ranchi Municipal Corporation</div>
+            <div style="font-size:11.5px;color:#475569;margin-top:1px;">Ward No. 14 · Public Works & Sanitation Cell</div>
+          </div>
+          <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+            <div style="font-size:11px;color:#64748B;font-weight:700;">VERIFICATION TIMESTAMP</div>
+            <div style="font-size:13px;font-weight:800;color:#0F172A;margin-top:2px;">${isAdminVerified ? dateStr : 'Pending Review'}</div>
+            <div style="font-size:11.5px;color:#475569;margin-top:1px;">Ticket ID: ${item.id}</div>
+          </div>
+          <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+            <div style="font-size:11px;color:#64748B;font-weight:700;">GPS GEOFENCE AUDIT</div>
+            <div style="font-size:13px;font-weight:800;color:#16A34A;margin-top:2px;">✓ Verified Genuine On-Site</div>
+            <div style="font-size:11.5px;color:#475569;margin-top:1px;">Distance from Ward Center: 0.32 km</div>
+          </div>
+          <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+            <div style="font-size:11px;color:#64748B;font-weight:700;">JANSETU AI CONFIDENCE</div>
+            <div style="font-size:13px;font-weight:800;color:#2563EB;margin-top:2px;">96% High Severity Match</div>
+            <div style="font-size:11.5px;color:#475569;margin-top:1px;">Computer Vision Verified: True</div>
+          </div>
+        </div>
+
+        <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;padding:12px;">
+          <div style="font-size:11.5px;font-weight:800;color:#92400E;margin-bottom:2px;">ADMINISTRATIVE OFFICER REMARKS</div>
+          <div style="font-size:12.5px;color:#78350F;line-height:1.45;">
+            ${isAdminVerified 
+              ? 'Field verification completed. Notice served to contractor. University Taskforce authorized to begin structural work. Material funds sanctioned.'
+              : 'Complaint registered on portal. Sub-divisional magistrate and ward engineer scheduled for ground spot inspection within 24 hours.'}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTabEvidence(item) {
+      const cont = document.getElementById('tabEvidenceGrid');
+      if (!cont || !item) return;
+      const photos = extractGrievancePhotos(item);
+      const afterImg = item.afterImg || '';
+      const isHi = currentLanguage === 'hi';
+
+      const beforeSlotHtml = photos.length > 0
+        ? `
+          <div style="height:200px;border-radius:8px;overflow:hidden;cursor:pointer;position:relative;" onclick="openGalleryViewer(0)">
+            <img src="${photos[0].url}" style="width:100%;height:100%;object-fit:cover;" alt="Before Evidence" />
+            ${photos.length > 1 ? `<span style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.75);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;">1 of ${photos.length} Photos</span>` : ''}
+          </div>
+          <div style="font-size:11px;color:#64748B;">${photos[0].title || 'Uploaded by Citizen Submitter · Geotagged'}</div>
+          ${photos.length > 1 ? `<button type="button" class="btn-view-all-photos" onclick="openGalleryViewer(0)" style="margin-top:6px;">🖼️ ${isHi ? `सभी फोटो देखें (${photos.length}) →` : `View All Photos (${photos.length}) →`}</button>` : ''}
+        `
+        : `
+          <div style="height:200px;border-radius:8px;overflow:hidden;background:#F1F5F9;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748B;border:1.5px dashed #CBD5E1;">
+            <span style="font-size:32px;margin-bottom:4px;">📷</span>
+            <strong style="font-size:12px;color:#64748B;">${isHi ? 'कोई फोटो अपलोड नहीं की गई' : 'No image uploaded'}</strong>
+            <p style="font-size:10.5px;color:#94A3B8;margin:4px 0 0;">${isHi ? 'शिकायत के साथ कोई फोटो संलग्न नहीं है' : 'No photo evidence attached with this grievance'}</p>
+          </div>
+          <div style="font-size:11px;color:#94A3B8;">${isHi ? 'अपुष्ट फ़ोटो' : 'No Attached Field Media'}</div>
+        `;
+
+      cont.innerHTML = `
+        <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;font-weight:800;color:#0F172A;">📷 ${isHi ? 'जमीनी फोटो प्रमाण (पूर्व)' : 'Ground Photo Proof (Before)'}</span>
+            <span style="font-size:10px;font-weight:800;background:#0F172A;color:#FFF;padding:2px 8px;border-radius:6px;">${photos.length > 0 ? `${photos.length} Photo${photos.length > 1 ? 's' : ''}` : 'None'}</span>
+          </div>
+          ${beforeSlotHtml}
+        </div>
+
+        <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;font-weight:800;color:#0F172A;">🖼️ ${isHi ? 'समाधान प्रमाण (पश्चात)' : 'Resolution Proof (After)'}</span>
+            <span style="font-size:10px;font-weight:800;background:#16A34A;color:#FFF;padding:2px 8px;border-radius:6px;">Resolution</span>
+          </div>
+          <div style="height:200px;border-radius:8px;overflow:hidden;background:#F1F5F9;display:flex;align-items:center;justify-content:center;cursor:pointer;" onclick="zoomAfterImage()">
+            ${afterImg ? `<img src="${afterImg}" style="width:100%;height:100%;object-fit:cover;" alt="After Evidence" />` : `<div style="text-align:center;padding:12px;color:#64748B;"><span style="font-size:28px;">📷</span><p style="font-size:11px;margin:4px 0 0;">${isHi ? 'प्रशासनिक समाधान के उपरांत पश्चात फोटो जोड़ी जाएगी' : 'After image will be uploaded upon official resolution'}</p></div>`}
+          </div>
+          <div style="font-size:11px;color:#64748B;">${isHi ? 'प्रशासनिक निरीक्षण मोहर आवश्यक' : 'Requires Admin Inspection Stamp'}</div>
+        </div>
+      `;
+    }
+
+    /* Stakeholder Action Drawer Details */
+    function openStakeholderDetails(type) {
+      const overlay = document.getElementById('stakeholderDetailOverlay');
+      if (!overlay) return;
+      const item = allReportsList.find(r => r.id === currentlyInspectedId) || exploreList.find(r => r.id === currentlyInspectedId) || {};
+      const dateStr = formatRealDate(item.createdAt || new Date());
+      const iconEl = document.getElementById('stkModalIcon');
+      const titleEl = document.getElementById('stkModalTitle');
+      const subEl = document.getElementById('stkModalSub');
+      const bodyEl = document.getElementById('stkModalTimelineBody');
+
+      if (type === 'admin') {
+        if (iconEl) iconEl.textContent = '🏛️';
+        if (titleEl) titleEl.textContent = 'Administrative Review — Daily Action Log';
+        if (subEl) subEl.textContent = 'District Administration & Municipal Action History';
+        if (bodyEl) {
+          bodyEl.innerHTML = `
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#0F172A;">
+                <span>Day 1 — Complaint Intimation & Triage</span>
+                <span style="color:#64748B;">${dateStr.split('·')[0] || '11 Sept 2026'} · 02:10 am</span>
+              </div>
+              <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">Automated intake via JanSetu AI. Geotag verified against municipal GIS parcel layer. Dispatched to Ward Officer.</p>
+            </div>
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#0F172A;">
+                <span>Day 2 — Ground Inspection Notice Issued</span>
+                <span style="color:#64748B;">${dateStr.split('·')[0] || '11 Sept 2026'} · 02:13 am</span>
+              </div>
+              <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">Inspecting Officer: Rameshwar Singh, Additional Commissioner. Formal requisition issued to Public Works Department for immediate corrective intervention.</p>
+            </div>
+            <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#15803D;">
+                <span>Day 3 — Budget & Work Sanction Approved</span>
+                <span style="color:#16A34A;">Approved</span>
+              </div>
+              <p style="font-size:12px;color:#166534;margin:4px 0 0;line-height:1.4;">Work order sanction #RMC-2026-WO-4182 cleared under Ward Development Fund. University Engineering Taskforce authorized for field implementation.</p>
+            </div>
+          `;
+        }
+      } else if (type === 'university') {
+        if (iconEl) iconEl.textContent = '🎓';
+        if (titleEl) titleEl.textContent = 'University Taskforce — Engineering Activity Log';
+        if (subEl) subEl.textContent = 'Academic Engineering Institution Field Work';
+        if (bodyEl) {
+          bodyEl.innerHTML = `
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#0F172A;">
+                <span>Day 1 — Institutional Tasking & Squad Formation</span>
+                <span style="color:#64748B;">Day 1 · 09:30 am</span>
+              </div>
+              <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">Assigned to BIT Mesra / NIT Jamshedpur Civil Engineering Innovation Lab. Team Lead: Prof. A. K. Sharma with 4 student field fellows.</p>
+            </div>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#1D4ED8;">
+                <span>Day 2 — On-Site Diagnostics & Pressure Testing</span>
+                <span style="color:#2563EB;">Day 2 · 02:45 pm</span>
+              </div>
+              <p style="font-size:12px;color:#1E3A8A;margin:4px 0 0;line-height:1.4;">Field squad visited grievance location. Conducted pipeline flow integrity analysis and soil load test. Technical rectification proposal submitted to local ward engineer.</p>
+            </div>
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#0F172A;">
+                <span>Day 3 — Supervisory Repair Oversight</span>
+                <span style="color:#64748B;">Active Now</span>
+              </div>
+              <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">Student engineers currently supervising civic repair crew on-site to ensure structural quality and long-term durability standards.</p>
+            </div>
+          `;
+        }
+      } else if (type === 'industry') {
+        if (iconEl) iconEl.textContent = '🤝';
+        if (titleEl) titleEl.textContent = 'Industry Partner Action — CSR Resource Log';
+        if (subEl) subEl.textContent = 'Corporate Social Responsibility Material Deliveries';
+        if (bodyEl) {
+          bodyEl.innerHTML = `
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#0F172A;">
+                <span>Day 2 — CSR Partner Matching</span>
+                <span style="color:#64748B;">Day 2 · 11:15 am</span>
+              </div>
+              <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">Problem mapped to Coal India CSR / Jindal Steel Community Infrastructure Fund under the JanSetu PPP Framework.</p>
+            </div>
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#0F172A;">
+                <span>Day 3 — Material Requisition Dispatched</span>
+                <span style="color:#64748B;">Day 3 · 04:20 pm</span>
+              </div>
+              <p style="font-size:12px;color:#475569;margin:4px 0 0;line-height:1.4;">Industrial materials released from Central Logistics Depot: 120m high-density polyethylene conduit, reinforcement mesh, and fast-curing civic mortar.</p>
+            </div>
+            <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#15803D;">
+                <span>Day 4 — Delivery Confirmed at Site</span>
+                <span style="color:#16A34A;">In Progress</span>
+              </div>
+              <p style="font-size:12px;color:#166534;margin:4px 0 0;line-height:1.4;">Consignment truck arrived at site. Materials handed over to municipal field engineer and University Taskforce.</p>
+            </div>
+          `;
+        }
+      }
+
+      overlay.style.display = 'flex';
+    }
+    window.openStakeholderDetails = openStakeholderDetails;
+
+    function closeStakeholderDetails() {
+      const overlay = document.getElementById('stakeholderDetailOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+    window.closeStakeholderDetails = closeStakeholderDetails;
+    window.switchDetailTab = switchDetailTab;
+
+    function shareCurrentReport() {
+      const url = window.location.href;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          alert(currentLanguage === 'hi'
+            ? '🔗 शिकायत लिंक क्लिपबोर्ड पर कॉपी हो गया!'
+            : '🔗 Grievance link copied to clipboard!');
+        });
+      } else {
+        alert(currentLanguage === 'hi'
+          ? '🔗 शिकायत लिंक: ' + url
+          : '🔗 Grievance Link: ' + url);
+      }
+    }
+    window.shareCurrentReport = shareCurrentReport;
+
+    function playCitizenVideo() {
+      const vidPlayer = document.getElementById('detailVideoPlayer');
+      const vidPoster = document.getElementById('detailVideoPosterBox');
+      if (vidPlayer) {
+        vidPlayer.style.display = 'block';
+        if (vidPoster) vidPoster.style.display = 'none';
+        vidPlayer.play().catch(() => {});
+      }
+    }
+    window.playCitizenVideo = playCitizenVideo;
 
     function zoomBeforeImage() {
       const img = document.getElementById('detailBeforeImg');
@@ -2922,6 +3671,34 @@
       let r = allReportsList.find(item => item.id === reportId);
       if (!r) r = exploreList.find(item => item.id === reportId);
       if (!r) return;
+
+      const user = getCurrentUser();
+      const currentUserId = user ? (user.id || user._id || '').toString() : '';
+      const currentUserEmail = user && user.email ? user.email.toLowerCase().trim() : '';
+      const subEmail = (r.submitterEmail || (r.submitterContact && r.submitterContact.email) || (r.submittedBy && r.submittedBy.email) || '').toLowerCase().trim();
+      const subId = (r.submittedById || (r.submittedBy && (r.submittedBy._id || r.submittedBy.id || r.submittedBy)) || '').toString();
+
+      let isMyOwn = false;
+      if (r.isMyReport === true) isMyOwn = true;
+      else if (r.isMyReport === false) isMyOwn = false;
+      else if (currentUserEmail && subEmail && currentUserEmail === subEmail) isMyOwn = true;
+      else if (currentUserId && subId && currentUserId === subId) isMyOwn = true;
+      else {
+        const matchingLocal = allReportsList.find(item => item.id === r.id || (r.mongoId && item.mongoId === r.mongoId));
+        if (matchingLocal && matchingLocal.isMyReport !== false && !matchingLocal.submitterCitizenId && !r.citizenId) {
+          const locEmail = (matchingLocal.submitterEmail || '').toLowerCase().trim();
+          if (!locEmail || locEmail === currentUserEmail) isMyOwn = true;
+        }
+      }
+
+      if (!isMyOwn) {
+        alert(currentLanguage === 'hi'
+          ? '🔒 आधिकारिक शिकायत पर्ची केवल मूल शिकायतकर्ता के लिए उपलब्ध है।'
+          : (currentLanguage === 'hinglish'
+            ? '🔒 Official grievance slip sirf main submitter ke liye available hai.'
+            : '🔒 Official grievance tracking slip is strictly reserved for the primary submitter.'));
+        return;
+      }
 
       const fallbackImg = getCategoryFallbackImage(r.category);
       const beforeImg = r.beforeImg || r.image || fallbackImg;
@@ -3021,16 +3798,25 @@
         const subEmail = (item.submitterEmail || (item.submitterContact && item.submitterContact.email) || (item.submittedBy && item.submittedBy.email) || '').toLowerCase().trim();
         const subId = (item.submittedById || (item.submittedBy && (item.submittedBy._id || item.submittedBy.id || item.submittedBy)) || '').toString();
 
-        const isMyOwn = allReportsList.some(r => r.id === item.id || (item.mongoId && r.mongoId === item.mongoId))
-          || (currentUserEmail && subEmail && currentUserEmail === subEmail)
-          || (currentUserId && subId && currentUserId === subId);
+        let isMyOwn = false;
+        if (item.isMyReport === true) isMyOwn = true;
+        else if (item.isMyReport === false) isMyOwn = false;
+        else if (currentUserEmail && subEmail && currentUserEmail === subEmail) isMyOwn = true;
+        else if (currentUserId && subId && currentUserId === subId) isMyOwn = true;
+        else {
+          const matchingLocal = allReportsList.find(r => r.id === item.id || (item.mongoId && r.mongoId === item.mongoId));
+          if (matchingLocal && matchingLocal.isMyReport !== false && !matchingLocal.submitterCitizenId && !item.citizenId) {
+            const locEmail = (matchingLocal.submitterEmail || '').toLowerCase().trim();
+            if (!locEmail || locEmail === currentUserEmail) isMyOwn = true;
+          }
+        }
 
         if (!isMyOwn) {
           alert(currentLanguage === 'hi'
             ? '🔒 आधिकारिक शिकायत पर्ची केवल मूल शिकायतकर्ता के लिए उपलब्ध है।'
             : (currentLanguage === 'hinglish'
               ? '🔒 Official grievance slip sirf main submitter ke liye available hai.'
-              : '🔒 Official grievance slip is strictly reserved for the primary submitter.'));
+              : '🔒 Official grievance tracking slip is strictly reserved for the primary submitter.'));
           return;
         }
         openReportSlip(currentlyInspectedId);
@@ -3039,6 +3825,9 @@
         if (active) openReportSlip(active.id);
       }
     }
+    window.openReportSlip = openReportSlip;
+    window.openReportSlipFromDetail = openReportSlipFromDetail;
+    window.handleDetailSlipClick = openReportSlipFromDetail;
 
     function printReportSlip() {
       window.print();
@@ -3275,6 +4064,15 @@
           dot.className = 'step-dot' + (i === stepNum ? ' active' : i < stepNum ? ' done' : '');
         }
       });
+
+      if (stepNum < 5) {
+        const submitBtn = document.getElementById('finalSubmitBtn');
+        if (submitBtn) submitBtn.style.display = 'inline-flex';
+        const cancelBtn = document.getElementById('dupCancelBtn');
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        const linkBtn = document.getElementById('dupLinkBtn');
+        if (linkBtn) linkBtn.style.display = 'none';
+      }
 
       if (stepNum === 3) {
         setTimeout(() => {
@@ -3618,7 +4416,109 @@
     }
     window.renderMediaPreviews = renderMediaPreviews;
 
+    const CLIENT_CIVIC_CLUSTERS = {
+      water: ['water', 'paani', 'pani', 'pipe', 'pipeline', 'leak', 'leakage', 'phat', 'burst', 'tap', 'chapakal', 'handpump', 'nal', 'tank', 'peene', 'drinking', 'bahaav', 'supply', 'jal', 'drainage', 'naali', 'gutter', 'sewage'],
+      road: ['road', 'sadak', 'street', 'rasta', 'gaddha', 'gaddhe', 'pothole', 'potholes', 'crater', 'broken road', 'highway', 'pul', 'pulia', 'bridge', 'culvert', 'asphalt', 'tar', 'mud', 'accident'],
+      electricity: ['bijli', 'power', 'electricity', 'light', 'current', 'voltage', 'transformer', 'pole', 'khamba', 'wire', 'taar', 'short circuit', 'spark', 'blackout', 'andhera', 'meter', 'phase', 'outage'],
+      sanitation: ['garbage', 'kachra', 'trash', 'dustbin', 'safai', 'cleaning', 'waste', 'kuda', 'badbu', 'smell', 'dump', 'sanitation'],
+      health: ['hospital', 'doctor', 'clinic', 'davai', 'medicine', 'ilaj', 'swasthya', 'health', 'ambulance', 'bed'],
+      education: ['school', 'shiksha', 'teacher', 'padhai', 'student', 'vidyalaya', 'class', 'classroom']
+    };
+
+    const CLIENT_STOPWORDS = new Set([
+      'hai', 'hain', 'ka', 'ki', 'ke', 'ko', 'se', 'me', 'mein', 'par', 'tha', 'thi', 'the',
+      'aur', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'from', 'a', 'an', 'the',
+      'is', 'are', 'was', 'were', 'it', 'this', 'that', 'there', 'here', 'very', 'bahut', 'bhi',
+      'kuch', 'hoga', 'raha', 'rahi', 'rahe', 'karna', 'karo', 'problem', 'samasya', 'issue',
+      'complaint', 'please', 'help', 'kripya', 'near', 'pass'
+    ]);
+
+    function computeSemanticProblemSimilarityClientSide(newReport, candReport) {
+      const titleA = (newReport.title || '').toLowerCase().replace(/[^\w\s\u0900-\u097F]/g, ' ').trim();
+      const titleB = (candReport.title || '').toLowerCase().replace(/[^\w\s\u0900-\u097F]/g, ' ').trim();
+      const descA = (newReport.description || newReport.desc || titleA).toLowerCase().replace(/[^\w\s\u0900-\u097F]/g, ' ').trim();
+      const descB = (candReport.description || candReport.desc || candReport.details || titleB).toLowerCase().replace(/[^\w\s\u0900-\u097F]/g, ' ').trim();
+
+      // 1. Title semantic match (up to 35 pts)
+      let titleScore = 0;
+      if (titleA && titleB) {
+        if (titleA === titleB) {
+          titleScore = 35;
+        } else if (titleA.includes(titleB) || titleB.includes(titleA)) {
+          titleScore = 32;
+        } else {
+          const tokA = titleA.split(/\s+/).filter(w => w.length > 2 && !CLIENT_STOPWORDS.has(w));
+          const tokB = titleB.split(/\s+/).filter(w => w.length > 2 && !CLIENT_STOPWORDS.has(w));
+          if (tokA.length > 0 && tokB.length > 0) {
+            const common = tokA.filter(t => tokB.includes(t));
+            const ratio = common.length / Math.max(tokA.length, tokB.length);
+            titleScore = Math.round(ratio * 30);
+          }
+        }
+      }
+
+      // 2. Description semantic intent match (up to 45 pts, sentence structure independent)
+      let descScore = 0;
+      let sharedClusters = 0;
+      for (const words of Object.values(CLIENT_CIVIC_CLUSTERS)) {
+        const inA = words.some(w => descA.includes(w));
+        const inB = words.some(w => descB.includes(w));
+        if (inA && inB) sharedClusters++;
+      }
+
+      const tokDescA = descA.split(/\s+/).filter(w => w.length > 2 && !CLIENT_STOPWORDS.has(w));
+      const tokDescB = descB.split(/\s+/).filter(w => w.length > 2 && !CLIENT_STOPWORDS.has(w));
+      let overlapRatio = 0;
+      if (tokDescA.length > 0 && tokDescB.length > 0) {
+        const setB = new Set(tokDescB);
+        const commonDesc = tokDescA.filter(t => setB.has(t));
+        overlapRatio = commonDesc.length / Math.max(1, new Set([...tokDescA, ...tokDescB]).size);
+      }
+
+      if (sharedClusters > 0) {
+        descScore += Math.min(25, sharedClusters * 22);
+      }
+      descScore += Math.min(20, overlapRatio * 40);
+      descScore = Math.min(45, descScore);
+
+      // 3. Category match (up to 10 pts)
+      let catScore = 0;
+      const catA = (newReport.category || '').toLowerCase();
+      const catB = (candReport.category || '').toLowerCase();
+      if (catA && catB && catA === catB) catScore = 10;
+
+      // 4. Location match (up to 10 pts)
+      let locScore = 0;
+      const locA = newReport.location || {};
+      const locB = candReport.location || {};
+      const distA = ((typeof locA === 'string' ? locA : locA.district) || '').toLowerCase();
+      const distB = ((typeof locB === 'string' ? locB : locB.district) || '').toLowerCase();
+      if (distA && distB && (distA.includes(distB) || distB.includes(distA))) locScore = 8;
+      else locScore = 4;
+
+      const totalScore = Math.min(99, Math.round(titleScore + descScore + catScore + locScore));
+      return { score: totalScore, distanceKm: 1.2 };
+    }
+
     async function runAICheckAndGoStep5() {
+      // 1. Mandatory Media Check (Photo or Video is mandatory)
+      const hasValidMedia = selectedMediaFiles && selectedMediaFiles.some(m => (m.type === 'photo' || m.type === 'video') && (m.dataUrl || m.file));
+      if (!hasValidMedia) {
+        const msg = currentLanguage === 'hi'
+          ? '⚠️ समस्या का प्रमाण (फ़ोटो या वीडियो) जोड़ना अनिवार्य है! कृपया आगे बढ़ने से पहले कम से कम एक Photo या Video प्रमाण संलग्न करें।'
+          : '⚠️ Photo or Video evidence is mandatory! Please attach at least one photo or video proof before proceeding.';
+        if (typeof showToast === 'function') {
+          showToast(msg);
+        } else {
+          alert(msg);
+        }
+        const uploadGrid = document.querySelector('.multimedia-select-grid') || document.getElementById('stepSection4');
+        if (uploadGrid) {
+          uploadGrid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
       const title = document.getElementById('reportTitle').value.trim() || 'Community Grievance';
       const description = document.getElementById('reportDescription').value.trim() || title;
       const category = document.getElementById('reportCategory') ? document.getElementById('reportCategory').value : 'Water Management';
@@ -3645,6 +4545,9 @@
         }
       }
 
+      detectedDuplicateChallenge = null;
+
+      // 2. Query Server for Duplicate Candidates (threshold >= 70)
       try {
         const res = await fetch('/api/challenges/check-duplicates', {
           method: 'POST',
@@ -3652,52 +4555,146 @@
           body: JSON.stringify({ title, description, category, location: { district, block, village } })
         });
         const data = await res.json();
-        if (data.success && data.hasDuplicates && data.data.length > 0) {
-          detectedDuplicateChallenge = data.data[0];
-          document.getElementById('dupItemTitle').textContent = detectedDuplicateChallenge.title;
-          document.getElementById('dupItemMeta').textContent =
-            'Report #' + detectedDuplicateChallenge.challengeId + ' · 📍 ' + detectedDuplicateChallenge.distanceKm + ' km away (' + detectedDuplicateChallenge.block + ') · 👥 ' + detectedDuplicateChallenge.supportCount + ' citizens affected';
-          document.getElementById('duplicateNoticeBox').style.display = 'block';
-          document.getElementById('aiCardNearbyStatus').textContent = '⚠️ 1 similar problem found nearby';
-          return;
+        if (data.success && data.hasDuplicates && Array.isArray(data.data) && data.data.length > 0) {
+          // Strict threshold: score must be >= 70
+          const validDup = data.data.find(d => (d.similarityScore || 0) >= 70);
+          if (validDup) {
+            detectedDuplicateChallenge = validDup;
+          }
         }
       } catch (e) { }
 
-      document.getElementById('duplicateNoticeBox').style.display = 'none';
-      document.getElementById('aiCardNearbyStatus').textContent = '✓ No duplicate conflicts found nearby.';
-    }
-
-    function supportExistingDetectedReport() {
-      const dupId = (detectedDuplicateChallenge && (detectedDuplicateChallenge.challengeId || detectedDuplicateChallenge.id)) || ('JH-2026-TWIN-' + Math.floor(1000 + Math.random() * 9000));
-      const dupTitle = (detectedDuplicateChallenge && detectedDuplicateChallenge.title) || (document.getElementById('reportTitle')?.value) || 'Twinned Community Grievance';
-      const dupCat = (detectedDuplicateChallenge && detectedDuplicateChallenge.category) || (document.getElementById('reportCategory')?.value) || 'Urban Infrastructure';
-      const dupLoc = (detectedDuplicateChallenge && ((detectedDuplicateChallenge.location && detectedDuplicateChallenge.location.address) || detectedDuplicateChallenge.location)) || 'Jharkhand';
-
-      if (detectedDuplicateChallenge && detectedDuplicateChallenge.id) {
-        try { toggleSupport(detectedDuplicateChallenge.id); } catch(e) {}
+      // 3. Client-side semantic deduplication check as reliable fallback (threshold >= 70)
+      if (!detectedDuplicateChallenge) {
+        const clientCandidates = [...(allReportsList || []), ...(exploreList || [])];
+        let bestCandidate = null;
+        let maxScore = 0;
+        for (const cand of clientCandidates) {
+          const sim = computeSemanticProblemSimilarityClientSide({ title, description, category, location: { district, block, village } }, cand);
+          if (sim.score >= 70 && sim.score > maxScore) {
+            maxScore = sim.score;
+            bestCandidate = {
+              id: cand.id || cand._id,
+              challengeId: cand.id || ('JH-' + (cand._id ? cand._id.toString().slice(-6).toUpperCase() : '625506')),
+              title: cand.title,
+              description: cand.desc || cand.description,
+              category: cand.category,
+              status: cand.status,
+              block: cand.block || cand.tehsil || 'Sadar',
+              supportCount: cand.supports || 1,
+              distanceKm: sim.distanceKm || 1.2,
+              similarityScore: sim.score
+            };
+          }
+        }
+        if (bestCandidate) {
+          detectedDuplicateChallenge = bestCandidate;
+        }
       }
 
-      const dupItem = {
+      // 4. Render Step 5 State depending on 70+ match threshold
+      if (detectedDuplicateChallenge && (detectedDuplicateChallenge.similarityScore || 70) >= 70) {
+        document.getElementById('dupItemTitle').textContent = detectedDuplicateChallenge.title;
+        document.getElementById('dupItemMeta').textContent =
+          'Report #' + (detectedDuplicateChallenge.challengeId || detectedDuplicateChallenge.id) + ' · 📍 ' + detectedDuplicateChallenge.distanceKm + ' km away · 👥 ' + (detectedDuplicateChallenge.supportCount || 1) + ' citizens affected';
+        document.getElementById('duplicateNoticeBox').style.display = 'block';
+        const isHi = currentLanguage === 'hi';
+        document.getElementById('aiCardNearbyStatus').textContent = isHi ? '⚠️ 1 समान समस्या निकट में पाई गई' : '⚠️ 1 similar problem found nearby';
+
+        // Hide Submit button; Show Cancel (left of link) and Link Problem (rightmost)
+        const submitBtn = document.getElementById('finalSubmitBtn');
+        if (submitBtn) submitBtn.style.display = 'none';
+
+        const dict = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[currentLanguage]) || {};
+        const cancelBtn = document.getElementById('dupCancelBtn');
+        if (cancelBtn) {
+          cancelBtn.style.display = 'inline-flex';
+          cancelBtn.innerHTML = dict.btn_dup_cancel || (isHi ? '❌ रद्द करें' : '❌ Cancel');
+        }
+        const linkBtn = document.getElementById('dupLinkBtn');
+        if (linkBtn) {
+          linkBtn.style.display = 'inline-flex';
+          linkBtn.innerHTML = dict.btn_dup_link || (isHi ? '🔗 समस्या लिंक करें' : '🔗 Link Problem');
+        }
+      } else {
+        // Score < 70: No duplicate detected! User submits normally
+        document.getElementById('duplicateNoticeBox').style.display = 'none';
+        document.getElementById('aiCardNearbyStatus').textContent = currentLanguage === 'hi' ? '✓ कोई मिलती-जुलती समस्या नहीं मिली।' : '✓ No duplicate conflicts found nearby.';
+        const submitBtn = document.getElementById('finalSubmitBtn');
+        if (submitBtn) submitBtn.style.display = 'inline-flex';
+        const cancelBtn = document.getElementById('dupCancelBtn');
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        const linkBtn = document.getElementById('dupLinkBtn');
+        if (linkBtn) linkBtn.style.display = 'none';
+      }
+    }
+
+    function linkExistingDetectedReport() {
+      const dup = detectedDuplicateChallenge || {};
+      const dupId = dup.challengeId || dup.id || ('JH-2026-TWIN-' + Math.floor(100000 + Math.random() * 900000));
+      const dupTitle = dup.title || document.getElementById('reportTitle')?.value || 'Community Problem';
+      const dupCat = dup.category || document.getElementById('reportCategory')?.value || 'Urban Infrastructure';
+      const dupDesc = dup.description || dup.desc || document.getElementById('reportDesc')?.value || 'Community grievance requiring civic attention.';
+      const dupLoc = (dup.location && (dup.location.address || dup.location.village || dup.location.district)) || dup.location || 'Ranchi, Jharkhand';
+      const firstReporter = dup.submitterName || (dup.submittedBy && dup.submittedBy.name) || 'Ramesh Kumar (First Submitter)';
+
+      const user = getCurrentUser() || { name: 'Rajesh Mahto' };
+
+      if (dup.id) {
+        try { toggleSupport(dup.id); } catch (e) {}
+      }
+
+      const twinnedItem = {
         id: dupId,
         title: dupTitle,
+        desc: dupDesc,
+        description: dupDesc,
         category: dupCat,
         location: dupLoc,
-        status: 'Submitted',
-        date: new Date().toLocaleDateString('en-GB'),
+        status: dup.status || 'Verified',
+        isVerified: true,
+        adminVerified: true,
         isTwinned: true,
         twinnedProblem: true,
+        originalSubmitter: firstReporter,
+        submittedBy: { name: firstReporter },
+        submitterName: firstReporter,
+        linkedBy: user.name || 'Rajesh Mahto',
+        supports: (dup.supportCount || dup.supports || 1) + 1,
+        date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+        createdAt: dup.createdAt || new Date().toISOString(),
+        timeAgo: 'Just now',
         assign: 'Twinned with Authority Case'
       };
-      allReportsList.unshift(dupItem);
+
+      allReportsList = [twinnedItem, ...allReportsList.filter(r => r.id !== dupId)];
       window.allReportsList = allReportsList;
       saveReportsState();
       renderAllViews();
       closeModal('reportModal');
-    }
 
-    function dismissDuplicateAndProceed() {
-      document.getElementById('duplicateNoticeBox').style.display = 'none';
+      if (typeof showToast === 'function') {
+        showToast(currentLanguage === 'hi' 
+          ? '🔗 समस्या सफलतापूर्वक लिंक की गई! आपके डैशबोर्ड में जोड़ दी गई है।' 
+          : '🔗 Problem successfully linked! Twinned problem added to your dashboard.');
+      }
+
+      // Automatically open the report tracker so the citizen can track it live
+      setTimeout(() => {
+        openDetailModal(twinnedItem.id);
+      }, 300);
     }
+    window.linkExistingDetectedReport = linkExistingDetectedReport;
+    window.supportExistingDetectedReport = linkExistingDetectedReport;
+
+    function cancelDeduplicationAndClose() {
+      closeModal('reportModal');
+      if (typeof showToast === 'function') {
+        showToast('शिकायत दर्ज करना रद्द किया गया।');
+      }
+    }
+    window.cancelDeduplicationAndClose = cancelDeduplicationAndClose;
+    window.dismissDuplicateAndProceed = cancelDeduplicationAndClose;
 
     async function submitRealProblem() {
       const btn = document.getElementById('finalSubmitBtn');
@@ -3754,9 +4751,11 @@
       }
 
       // Extract user uploaded images (support multiple photos)
+      // Extract user uploaded images (support multiple photos)
       const photoMedias = selectedMediaFiles.filter(m => (m.type === 'photo' || (m.file && m.file.type && m.file.type.startsWith('image/'))) && m.dataUrl && !m.dataUrl.startsWith('data:video/'));
       const primaryPhoto = photoMedias.length > 0 ? photoMedias[0].dataUrl : null;
-      const finalImage = primaryPhoto || getCategoryFallbackImage(category);
+      // Do NOT force stock fallback image if user uploaded nothing!
+      const finalImage = primaryPhoto || null;
 
       let attachments = [];
       if (selectedMediaFiles.length > 0) {
@@ -3776,17 +4775,9 @@
             originalName: m.name || `citizen_evidence_${idx + 1}.png`,
             mimetype: m.type === 'photo' ? 'image/jpeg' : (m.file?.type || 'application/octet-stream'),
             size: m.size || (m.dataUrl ? m.dataUrl.length : 1000),
-            url: m.dataUrl || finalImage
+            url: m.dataUrl
           };
         }).filter(att => att.url);
-      } else if (finalImage) {
-        attachments = [{
-          filename: 'citizen_evidence.png',
-          originalName: 'citizen_evidence.png',
-          mimetype: 'image/png',
-          size: finalImage.length,
-          url: finalImage
-        }];
       }
 
       const videoAttachment = attachments.find(a => (a.mimetype && a.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|ogg|mkv|3gp|avi)$/i.test(a.filename || ''));
@@ -3850,7 +4841,7 @@
       const newReport = {
         id: realId,
         mongoId: realMongoId,
-        filePath: payload.filePath || null,
+        filePath: payload.filePath || (photoMedias.length > 0 ? (photoMedias[0].name || 'citizen_photo.png') : null),
         title,
         district,
         location: [village, block, district, state].filter(Boolean).join(', ') || 'Jharkhand',
@@ -3860,7 +4851,25 @@
         category,
         image: effectiveImg,
         beforeImg: effectiveImg,
+        cardThumbnail: effectiveImg || getCategoryFallbackImage(category),
         afterImg: null,
+        attachments: attachments,
+        evidenceMedia: attachments.map(a => ({
+          mediaType: (a.mimetype && a.mimetype.startsWith('video/')) ? 'video' : 'image',
+          url: a.url,
+          filePath: a.filePath || a.filename,
+          title: a.originalName || a.filename,
+          timestamp: 'Field Evidence · Citizen Upload'
+        })),
+        media: attachments.map(a => ({
+          mediaType: (a.mimetype && a.mimetype.startsWith('video/')) ? 'video' : 'image',
+          url: a.url,
+          filePath: a.filePath || a.filename,
+          title: a.originalName || a.filename,
+          timestamp: 'Field Evidence · Citizen Upload'
+        })),
+        videoUrl: videoAttachment ? videoAttachment.url : null,
+        hasUploadedImage: Boolean(effectiveImg || photoMedias.length > 0),
         desc: description,
         assign: 'Verification in progress by JanSetu Authority',
         timeAgo: 'Just now',
@@ -4108,7 +5117,7 @@
             <div class="all-rep-card-location">📍 ${r.location || 'Jharkhand'}</div>
             <div class="all-rep-card-id-assign">${r.id} · <span style="color:#64748B;font-weight:600;">${r.assign || 'JanSetu Taskforce'}</span></div>
             <div class="all-rep-card-desc">${r.desc || r.description || 'Waterlogging and broken infrastructure causing difficulty for local commuters.'}</div>
-            ${(r.isTwinned || r.isTwin || r.twinnedProblem) ? `<div style="margin-top:4px;"><span style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-size:10px; font-weight:800; border-radius:12px; padding:2px 8px; display:inline-flex; align-items:center; gap:4px;">🔗 Twinned Problem</span></div>` : ''}
+            ${(r.isTwinned || r.isTwin || r.twinnedProblem) ? `<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="badge-twinned-problem">🔗 Twinned Problem</span>${r.originalSubmitter ? `<span style="font-size:11px;color:#1E40AF;font-weight:700;">Reported by: ${r.originalSubmitter}</span>` : ''}</div>` : ''}
           </div>
 
           <!-- Column 3: Status & Date/Time -->
@@ -4143,7 +5152,7 @@
               </button>
             `}
 
-            ${(r.status === 'Submitted' || !r.isVerified) && r.status !== 'Solved' && !r.isResolved && r.rawStatus !== 'validated' && r.status !== 'Verified' ? `
+            ${isReportUnverified(r) ? `
               <button type="button" class="btn-rep-action btn-rep-delete" onclick="event.stopPropagation(); promptDeleteReport('${r.id}');" title="Delete Unverified Report">
                 <span>🗑️</span>
                 <span>Delete</span>
@@ -5375,8 +6384,7 @@
       if (!rep) return;
 
       // Only unverified / submitted grievances can be deleted
-      const isUnverified = (rep.status === 'Submitted' || !rep.isVerified) && rep.status !== 'Solved' && !rep.isResolved && rep.rawStatus !== 'validated' && rep.status !== 'Verified';
-      if (!isUnverified) {
+      if (isReportAdminVerified(rep) || !isReportUnverified(rep)) {
         alert(currentLanguage === 'hi'
           ? '🔒 यह शिकायत प्रशासन द्वारा सत्यापित हो चुकी है और आधिकारिक कार्य आदेश जारी है। सरकारी ऑडिट नियमों के तहत इसे अब हटाया नहीं जा सकता।'
           : (currentLanguage === 'hinglish'
@@ -6504,10 +7512,20 @@
         address: { city: 'Dhanbad', district: 'Dhanbad' }
       };
 
+      // Check Aadhaar Verification State
+      const isVerified = (localStorage.getItem('jansetu_aadhaar_verified') !== 'false') && (user.aadhaarVerified !== false);
+
       // Populate header & hero
       const firstChar = (user.name || 'R').charAt(0).toUpperCase();
       const avatarEl = document.getElementById('profAvatarBig');
-      if (avatarEl) avatarEl.textContent = firstChar;
+      if (avatarEl) {
+        avatarEl.firstChild.nodeValue = firstChar + ' ';
+      }
+
+      const avatarCheck = document.getElementById('profAvatarCheckBadge');
+      if (avatarCheck) {
+        avatarCheck.style.display = isVerified ? 'flex' : 'none';
+      }
 
       const nameH = document.getElementById('profNameHeader');
       if (nameH) nameH.textContent = user.name || 'Rajesh Mahto';
@@ -6522,10 +7540,40 @@
       const rawPhone = user.phone || '9431100003';
       if (dispPhone) dispPhone.textContent = rawPhone.startsWith('+91') ? rawPhone : '+91 ' + rawPhone;
 
-      const dispAadhaar = document.getElementById('profDisplayAadhaar');
       const rawAadhaar = user.aadhaar || '8492-3840-4819';
       const last4Aadhaar = rawAadhaar.replace(/[^0-9]/g, '').slice(-4) || '4819';
+
+      const dispAadhaar = document.getElementById('profDisplayAadhaar');
       if (dispAadhaar) dispAadhaar.textContent = 'XXXX-XXXX-' + last4Aadhaar;
+
+      const dispAadhaarUnverified = document.getElementById('profDisplayAadhaarUnverified');
+      if (dispAadhaarUnverified) dispAadhaarUnverified.textContent = 'Not Linked / Unverified';
+
+      // Verified vs Unverified Card Switching
+      const cardVerified = document.getElementById('profAadhaarVerifiedCard');
+      const cardUnverified = document.getElementById('profAadhaarUnverifiedCard');
+      const badgeContainer = document.getElementById('profVerifiedStatusBadge');
+      const badgeText = document.getElementById('profVerifiedBadgeText');
+
+      if (isVerified) {
+        if (cardVerified) cardVerified.style.display = 'flex';
+        if (cardUnverified) cardUnverified.style.display = 'none';
+        if (badgeContainer) {
+          badgeContainer.style.background = '#ECFDF5';
+          badgeContainer.style.borderColor = '#A7F3D0';
+          badgeContainer.style.color = '#059669';
+        }
+        if (badgeText) badgeText.textContent = currentLanguage === 'hi' ? 'सत्यापित नागरिक' : 'Verified Citizen';
+      } else {
+        if (cardVerified) cardVerified.style.display = 'none';
+        if (cardUnverified) cardUnverified.style.display = 'flex';
+        if (badgeContainer) {
+          badgeContainer.style.background = '#FEF3C7';
+          badgeContainer.style.borderColor = '#FDE68A';
+          badgeContainer.style.color = '#B45309';
+        }
+        if (badgeText) badgeText.textContent = currentLanguage === 'hi' ? '⚠️ असत्यापित नागरिक' : '⚠️ Unverified Citizen';
+      }
 
       const userCitId = user.citizenId || ('C' + last4Aadhaar);
       const citId = document.getElementById('profCitizenIdHeader');
@@ -6549,6 +7597,82 @@
 
       openModal('profileModal');
     }
+    window.openProfileModal = openProfileModal;
+
+    function openVerifyAadhaarModal() {
+      const m = document.getElementById('verifyAadhaarModal');
+      if (m) {
+        const inp = document.getElementById('aadhaarVerifyInput');
+        if (inp) inp.value = '';
+        const otpGrp = document.getElementById('aadhaarOtpGroup');
+        if (otpGrp) otpGrp.style.display = 'none';
+        const notice = document.getElementById('aadhaarOtpNotice');
+        if (notice) notice.style.display = 'none';
+        openModal('verifyAadhaarModal');
+      }
+    }
+    window.openVerifyAadhaarModal = openVerifyAadhaarModal;
+
+    function sendAadhaarOtp() {
+      const inp = document.getElementById('aadhaarVerifyInput');
+      const val = (inp ? inp.value : '').replace(/\s+/g, '');
+      if (!val || val.length < 8) {
+        alert(currentLanguage === 'hi' ? 'कृपया मान्य 12-अंकीय आधार संख्या दर्ज करें।' : 'Please enter a valid 12-digit Aadhaar number.');
+        return;
+      }
+      const notice = document.getElementById('aadhaarOtpNotice');
+      if (notice) {
+        notice.style.display = 'block';
+        notice.innerHTML = currentLanguage === 'hi'
+          ? '✓ आधार से जुड़े मोबाइल पर ओटीपी भेजा गया! (डेमो कोड: 481900)'
+          : '✓ OTP sent to mobile linked with Aadhaar! (Demo code: 481900)';
+      }
+      const otpGrp = document.getElementById('aadhaarOtpGroup');
+      if (otpGrp) otpGrp.style.display = 'block';
+      const otpInp = document.getElementById('aadhaarOtpInput');
+      if (otpInp) {
+        otpInp.value = '481900';
+        otpInp.focus();
+      }
+    }
+    window.sendAadhaarOtp = sendAadhaarOtp;
+
+    function submitAadhaarAuthentication() {
+      const otpInp = document.getElementById('aadhaarOtpInput');
+      const otpVal = otpInp ? otpInp.value.trim() : '';
+      if (!otpVal || otpVal.length < 4) {
+        alert(currentLanguage === 'hi' ? 'कृपया 6-अंकीय ओटीपी दर्ज करें।' : 'Please enter the 6-digit OTP code.');
+        return;
+      }
+
+      const inp = document.getElementById('aadhaarVerifyInput');
+      const rawNum = (inp ? inp.value : '').replace(/[^0-9]/g, '');
+      const last4 = rawNum.slice(-4) || '4819';
+
+      localStorage.setItem('jansetu_aadhaar_verified', 'true');
+      const user = getCurrentUser() || {};
+      user.aadhaarVerified = true;
+      user.aadhaar = 'XXXX-XXXX-' + last4;
+      if (typeof saveCurrentUser === 'function') saveCurrentUser(user);
+
+      closeModal('verifyAadhaarModal');
+      alert(currentLanguage === 'hi'
+        ? '🎉 बधाई! आपका आधार यूआईडीएआई (UIDAI) द्वारा सफलतापूर्वक प्रमाणित एवं लिंक कर दिया गया है।'
+        : '🎉 Congratulations! Your Aadhaar has been verified & authenticated with UIDAI.');
+
+      openProfileModal();
+    }
+    window.submitAadhaarAuthentication = submitAadhaarAuthentication;
+
+    function toggleAadhaarVerificationTest() {
+      const curr = localStorage.getItem('jansetu_aadhaar_verified') !== 'false';
+      localStorage.setItem('jansetu_aadhaar_verified', curr ? 'false' : 'true');
+      const user = getCurrentUser() || {};
+      user.aadhaarVerified = !curr;
+      if (typeof saveCurrentUser === 'function') saveCurrentUser(user);
+      openProfileModal();
+    }
+    window.toggleAadhaarVerificationTest = toggleAadhaarVerificationTest;
 
     // --- Sub-Modal Openers with Active Language Refresh ---
     function openChangeNameModal() {

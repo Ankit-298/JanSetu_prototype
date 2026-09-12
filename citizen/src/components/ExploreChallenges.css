@@ -947,9 +947,47 @@
 }
 
 .action-btn-text.text-blue,
-.action-btn.active.action-comments .action-btn-text,
-.action-btn.active.action-metoo .action-btn-text {
+.action-btn.active.action-comments .action-btn-text {
   color: #2563EB;
+}
+
+/* ── "I Am Also Affected" Button: Navy Blue (Unclicked) & Green (Clicked) ── */
+.action-btn.action-metoo {
+  color: #002D62;
+  border: 1.5px solid #CBD5E1;
+  background: #F8FAFC;
+  border-radius: 20px;
+  padding: 6px 14px;
+  transition: all 0.2s ease;
+}
+
+.action-btn.action-metoo:hover:not(:disabled) {
+  background: #EFF6FF;
+  border-color: #93C5FD;
+}
+
+.action-btn-text.text-navy,
+.action-btn.action-metoo:not(.active) .action-btn-text {
+  color: #002D62;
+  font-weight: 800;
+}
+
+.action-btn.action-metoo.active {
+  color: #15803D !important;
+  border-color: #86EFAC !important;
+  background: #ECFDF5 !important;
+  box-shadow: 0 1px 4px rgba(22, 163, 74, 0.15);
+}
+
+.action-btn.action-metoo.active:hover:not(:disabled) {
+  background: #DCFCE7 !important;
+  border-color: #4ADE80 !important;
+}
+
+.action-btn-text.text-green,
+.action-btn.action-metoo.active .action-btn-text {
+  color: #15803D !important;
+  font-weight: 800;
 }
 
 .post-action-right {
