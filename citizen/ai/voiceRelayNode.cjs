@@ -266,7 +266,7 @@ function setupVoiceAgentRoutes(app) {
   // 4. Sarvam AI Text-to-Speech (Bulbul V3) Endpoint
   app.post('/api/voice-agent/tts', async (req, res) => {
     try {
-      const { text, lang = 'hi', speaker = 'meera' } = req.body;
+      const { text, lang = 'hi', speaker = 'aditya' } = req.body;
       const apiKey = process.env.SARVAM_API_KEY;
       if (!apiKey) {
         return res.status(400).json({ error: 'SARVAM_API_KEY not configured' });
@@ -285,7 +285,7 @@ function setupVoiceAgentRoutes(app) {
         body: JSON.stringify({
           inputs: [text.trim()],
           target_language_code: lang === 'en' ? 'en-IN' : 'hi-IN',
-          speaker: speaker || 'meera',
+          speaker: speaker || 'aditya',
           model: 'bulbul:v3'
         })
       });
@@ -504,6 +504,60 @@ const VOICE_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'fill_details',
+      description: 'Fill in the grievance details including English title, professional English description, and optionally priority.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short professional English title (5-8 words)' },
+          description: { type: 'string', description: 'Clean, professional English description of the civic complaint' },
+          priority: { type: 'string', enum: ['urgent', 'normal', 'high'], description: 'Urgency level explicitly confirmed by citizen' }
+        },
+        required: ['description']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_priority',
+      description: 'Set the priority of the civic complaint after citizen explicitly answers.',
+      parameters: {
+        type: 'object',
+        properties: {
+          priority: { type: 'string', enum: ['urgent', 'normal', 'high'], description: 'Urgent or normal priority' }
+        },
+        required: ['priority']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'evidence_skipped',
+      description: 'Call this when the citizen does not have a photo or video to upload, or wants to skip evidence.',
+      parameters: {
+        type: 'object',
+        properties: {
+          step: { type: 'string', enum: ['photo', 'video'], description: 'Which evidence step was skipped' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'drop_report',
+      description: 'Call this when the citizen decides to cancel/withdraw their report after a duplicate is found, instead of linking it or submitting a new one.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'link_as_twin',
       description: 'Link the user report to an existing matching grievance.',
       parameters: {
@@ -528,20 +582,55 @@ const VOICE_TOOLS = [
   }
 ];
 
-const SYSTEM_PROMPT = `Tum JanSetu AI ho — ek female voice assistant jo Jharkhand ke citizens ko civic problems report karne aur unka status track karne me madad karti hai. Hamesha Hindi ya Hinglish me baat karo, jaisa citizen bole waisa hi. Tu hamesha female persona me baat kar — "main samajh gayi", "main aapki madad karungi".
+const SYSTEM_PROMPT = `Tum JanSetu AI ho — ek helpful voice assistant (Aditya) jo Jharkhand ke citizens ko civic problems report karne aur unka status track karne me madad karta hai. Hamesha English ya Hinglish me hi baat karo, jaisa citizen bole waisa hi. Tu Aditya persona me baat kar — "main samajh gaya", "main aapki madad karunga".
 
 IMPORTANT FLOW RULES — STEP BY STEP:
-Tu hamesha EK WAQT ME EK HI SAWAAL poochegi. Citizen ke jawab ka intezaar kar, phir AGLA sawaal pooch. Kabhi bhi ek hi baar me saari jaankari mat pooch.
+Tu hamesha EK WAQT ME EK HI SAWAAL poochega. Citizen ke jawab ka intezaar kar, phir AGLA sawaal pooch. Kabhi bhi ek hi baar me saari jaankari mat pooch.
+Har step apna alag conversational turn hoga aur citizen ke response ka wait karega. Kabhi bhi do steps ya do sawaal ek saath mat pooch.
+Agar tu ek se zyada sawaal ek saath poochta hai, ye galat hai — hamesha ek hi sawaal pooch aur ruk ja.
 
 STEP-BY-STEP CONVERSATION FLOW:
 1. Pehle citizen se pooch: "Aapko kya samasya aa rahi hai? Batayiye."
-2. Jab citizen samasya bataye, confirm kar: "Theek hai, main samajh gayi. [summary]. Kya ye sahi hai?"
-3. Confirm hone ke baad, save_problem_details tool call kar sahi category ke saath.
-4. Agar priority nahi pata: "Ye kitni urgent hai — urgent, high ya normal?"
+2. Jab citizen samasya bataye, confirm kar: "Theek hai, main samajh gaya. [summary]. Kya ye sahi hai?"
+3. Confirm hone ke baad, save_problem_details tool call kar sahi category ke saath, phir bol:
+   "Category select ho gayi — [category name]. Ab thoda vistar se bataiye, poori samasya kya hai?"
+4. Jab citizen vistar se bataye, unke bole hue baat ko saaf, professional ENGLISH me
+   likh kar fill_details tool call kar (description field me) — chahe citizen Hindi/Hinglish
+   me bole, description hamesha English me store hona chahiye. Title bhi isi call me
+   auto-generate karke bhar de (chhota, 5-8 shabdon ka). Ye karne ke baad bol:
+   "Maine description likh liya hai — [title]. Check kar lijiye, sahi hai?"
+   Agar citizen "nahi" bole ya correction de, description update kar aur dobara confirm kar —
+   is confirmation ko skip mat kar.
+5. Confirm hone ke baad hi pooch: "Ye kitni urgent hai — urgent hai ya normal?"
+   Jab citizen jawab de, tabhi priority set kar aur fill_details (ya ek chhota
+   set_priority tool, agar priority ko details se alag call karna chahte ho) call kar.
+   Priority KABHI khud se guess mat kar summary se — hamesha explicitly pooch.
+6. Priority set hone ke baad advance_to_step("location") call kar aur bol:
+   "Ab location ke liye, upar daayi taraf GPS button dabaiye."
+   Jab location_captured event mile, bol: "Theek hai, location mil gayi hai." phir
+   advance_to_step("photo") call kar.
+7. Pooch: "Kya aapke paas is samasya ki photo hai?"
+   - Agar haan: advance_to_step ke through photo-upload UI khulwa, upload hone ka wait kar.
+   - Agar nahi: seedha agle step pe badh — evidence_skipped handle kar.
+8. Pooch: "Video hai kya?" — same haan/nahi logic jaisa photo ka.
+9. check_duplicate tool call kar. Agar similar problem mile:
+   "Ye samasya pehle se kisi aur ne report ki hai — [existing problem ka naam]. Kya aap
+   isko usi se link karna chahenge, ya alag se apni khud ki report submit karna chahenge,
+   ya isse cancel karna chahenge?"
+   Teen alag jawab handle kar:
+   - Link chahiye → link_as_twin tool call kar.
+   - Alag/naya rakhna hai → normal confirm_submission flow continue kar (twin mat karo).
+   - Cancel/drop chahiye → drop_report tool call kar, aur bol:
+     "Theek hai, maine ye report cancel kar di hai. Kabhi bhi phir se report kar sakte hain."
+   Agar koi similar problem nahi mila, seedha confirm_submission step pe badh.
+10. Sab kuch ho jaane ke baad pooch: "Sab sahi hai? Submit kar doon?"
+    Sirf explicit haan milne par confirm_submission tool call kar. Submission ke baad:
+    "Aapka problem number hai [tracking ID]. Aap ise My Reports me track kar sakte hain.
+    JanSetu istemal karne ke liye dhanyawad!"
 
 STRICT TOPIC GUARDRAIL:
-Tu SIRF civic problems (sadak, tooti sadak/potholes, paani/nal/pipeline, drainage/naali, kachra/safai, bijli/transformer/streetlight, health/hospital, education/school, agriculture/kisan) report karne aur unka status batane me madad karti hai.
-Agar citizen kisi aur topic pe baat kare — movie, cinema, cricket, match score, weather, politics, gossip, general chit-chat, ya kuch bhi jo civic complaint se related nahi hai — to politely mana kar aur wapas topic pe le aa. Example: "Main sirf civic problems me madad kar sakti hoon — aap koi samasya report karna chahte hain kya?" Kabhi bhi off-topic sawal ka seedha jawab mat de.
+Tu SIRF civic problems (sadak, tooti sadak/potholes, paani/nal/pipeline, drainage/naali, kachra/safai, bijli/transformer/streetlight, health/hospital, education/school, agriculture/kisan) report karne aur unka status batane me madad karta hai.
+Agar citizen kisi aur topic pe baat kare — movie, cinema, cricket, match score, weather, politics, gossip, general chit-chat, ya kuch bhi jo civic complaint se related nahi hai — to politely mana kar aur wapas topic pe le aa. Example: "Main sirf civic problems me madad kar sakta hoon — aap koi samasya report karna chahte hain kya?" Kabhi bhi off-topic sawal ka seedha jawab mat de.
 
 CATEGORY MAPPING:
 * Sadak, asphalt, divider, pothole, pul, traffic signal -> 'Urban Infrastructure'
@@ -554,8 +643,9 @@ CATEGORY MAPPING:
 
 RESPONSE RULES:
 - Hamesha BAHUT SHORT jawab de — 1 ya MAXIMUM 2 chhote sentences. Lambe paragraphs KABHI mat de.
-- Har jawab ke end me AGLE STEP ka SAWAAL zaroor pooch.
-- Natural aur friendly reh, jaise ek helpful didi/behenji.`;
+- Har jawab ke end me AGLE STEP ka EK SAWAAL zaroor pooch.
+- English me baat ho rahi ho to English me, Hinglish me ho rahi ho to friendly Hinglish me bol.
+- Natural aur friendly reh, jaise ek helpful assistant (Aditya).`;
 
 async function callSarvamConversationalLLM(session, userText) {
   const apiKey = process.env.SARVAM_API_KEY;
@@ -642,7 +732,7 @@ function setupVoiceAgentWebSocket(server) {
     }));
 
     // Greeting — JanSetu AI female persona intro
-    const greetingText = 'Hi, main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — Hindi ya English?';
+    const greetingText = 'Hi, main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — English ya Hinglish?';
     ws.send(JSON.stringify({
       type: 'agent_utterance',
       text: greetingText,
@@ -660,18 +750,20 @@ function setupVoiceAgentWebSocket(server) {
     const executeToolCall = async (toolName, args) => {
       console.log(`[VoiceAgent] Executing tool: ${toolName}`, args);
 
-      if (toolName === 'save_problem_details') {
+      if (toolName === 'save_problem_details' || toolName === 'fill_details') {
         const { title, category, description, priority } = args || {};
-        session.draft.title = title || session.draft.title || 'Civic Grievance';
-        session.draft.category = category || session.draft.category || 'Urban Infrastructure';
-        session.draft.description = description || session.draft.description || session.draft.title;
-        session.draft.priority = priority || session.draft.priority || 'high';
+        if (title) session.draft.title = title;
+        if (category) session.draft.category = category;
+        if (description) session.draft.description = description;
+        if (priority) session.draft.priority = priority;
         session.step = 'details';
 
-        safeSend({
-          type: 'select_category',
-          category: session.draft.category
-        });
+        if (session.draft.category) {
+          safeSend({
+            type: 'select_category',
+            category: session.draft.category
+          });
+        }
 
         safeSend({
           type: 'fill_details',
@@ -681,6 +773,37 @@ function setupVoiceAgentWebSocket(server) {
         });
 
         return { status: 'success', draft: session.draft };
+      }
+
+      if (toolName === 'set_priority') {
+        const { priority } = args || {};
+        if (priority) session.draft.priority = priority;
+        safeSend({
+          type: 'fill_details',
+          title: session.draft.title,
+          description: session.draft.description,
+          priority: session.draft.priority
+        });
+        return { status: 'priority_set', priority: session.draft.priority };
+      }
+
+      if (toolName === 'evidence_skipped') {
+        const skippedStep = args?.step || session.step;
+        if (skippedStep === 'photo') {
+          session.step = 'video';
+          safeSend({ type: 'advance_step', step: 'video' });
+        } else {
+          session.step = 'check';
+          safeSend({ type: 'advance_step', step: 'check' });
+        }
+        return { status: 'skipped', next: session.step };
+      }
+
+      if (toolName === 'drop_report') {
+        session.draft = null;
+        session.duplicateCandidate = null;
+        safeSend({ type: 'report_dropped' });
+        return { status: 'dropped' };
       }
 
       if (toolName === 'advance_to_step') {
@@ -693,8 +816,8 @@ function setupVoiceAgentWebSocket(server) {
       if (toolName === 'check_duplicate') {
         const lat = args?.lat || session.location.lat;
         const lng = args?.lng || session.location.lng;
-        const title = args?.title || session.draft.title;
-        const category = args?.category || session.draft.category;
+        const title = args?.title || session.draft?.title;
+        const category = args?.category || session.draft?.category;
 
         try {
           const candidates = await Challenge.find({
@@ -703,7 +826,7 @@ function setupVoiceAgentWebSocket(server) {
 
           const matches = findSimilarCitizenProblem({
             title: title || '',
-            description: session.draft.description || title || '',
+            description: session.draft?.description || title || '',
             category: category || '',
             lat: parseFloat(lat),
             lng: parseFloat(lng)
@@ -768,10 +891,10 @@ function setupVoiceAgentWebSocket(server) {
         try {
           const demoUser = await User.findOne({ role: 'citizen' });
           const newChallenge = new Challenge({
-            title: session.draft.title || 'Civic Problem Reported via Voice AI',
-            description: session.draft.description || session.draft.title || 'Reported via JanSetu Real-Time Voice AI Agent',
-            category: session.draft.category || 'Urban Infrastructure',
-            priority: session.draft.priority || 'high',
+            title: session.draft?.title || 'Civic Problem Reported via Voice AI',
+            description: session.draft?.description || session.draft?.title || 'Reported via JanSetu Real-Time Voice AI Agent',
+            category: session.draft?.category || 'Urban Infrastructure',
+            priority: session.draft?.priority || 'high',
             status: 'submitted',
             submittedBy: demoUser ? demoUser._id : null,
             submitterContact: {
@@ -920,7 +1043,7 @@ function setupVoiceAgentWebSocket(server) {
           }
         }
 
-        // 3. Location Captured Event from Client GPS
+        // 3. Location Captured Event from Client GPS (Step 6)
         else if (type === 'location_captured') {
           if (msg.location) {
             session.location = {
@@ -931,38 +1054,23 @@ function setupVoiceAgentWebSocket(server) {
             };
           }
 
-          // Trigger automatic duplicate check via tool
-          const dupRes = await executeToolCall('check_duplicate', {
-            title: session.draft.title,
-            category: session.draft.category,
-            lat: session.location.lat,
-            lng: session.location.lng
+          safeSend({
+            type: 'advance_step',
+            step: 'photo'
           });
-
-          if (dupRes.found) {
-            safeSend({
-              type: 'agent_utterance',
-              text: `Aapke ilake me isse milti julti samasya pehle se darj hai: '${dupRes.matchTitle}'. Kya aap apni report isse jodna chahte hain?`
-            });
-          } else {
-            safeSend({
-              type: 'advance_step',
-              step: 'photo'
-            });
-            safeSend({
-              type: 'agent_utterance',
-              text: 'Location mil gayi hai. Kya aapke paas samasya ki photo hai?'
-            });
-          }
+          safeSend({
+            type: 'agent_utterance',
+            text: 'Theek hai, location mil gayi hai. Kya aapke paas is samasya ki photo hai?'
+          });
         }
 
-        // 4. Photo/Video Events
+        // 4. Photo/Video Events (Step 7 & 8)
         else if (type === 'photo_uploaded') {
           if (msg.url) session.attachments.push({ type: 'image', url: msg.url });
           safeSend({ type: 'advance_step', step: 'video' });
           safeSend({
             type: 'agent_utterance',
-            text: 'Photo jud gayi hai. Kya koi video hai? Agar nahi to Skip bol sakte hain.'
+            text: 'Photo jud gayi hai. Video hai kya?'
           });
         }
 
@@ -971,26 +1079,47 @@ function setupVoiceAgentWebSocket(server) {
             session.attachments.push({ type: 'video', url: msg.url });
           }
           safeSend({ type: 'advance_step', step: 'check' });
-          safeSend({
-            type: 'agent_utterance',
-            text: 'Saari jaankari darj ho gayi hai. Kya main aapki samasya submit kar doon?'
-          });
-        }
 
-        // 5. Twin Decision from Client
-        else if (type === 'twin_decision') {
-          if (msg.decision === 'link') {
-            await executeToolCall('link_as_twin', {});
-          } else {
-            safeSend({ type: 'advance_step', step: 'photo' });
+          // Trigger duplicate check at Step 9
+          const dupRes = await executeToolCall('check_duplicate', {
+            title: session.draft?.title,
+            category: session.draft?.category,
+            lat: session.location.lat,
+            lng: session.location.lng
+          });
+
+          if (dupRes && dupRes.found) {
+            safeSend({
+              type: 'duplicate_found',
+              match: session.duplicateCandidate
+            });
             safeSend({
               type: 'agent_utterance',
-              text: 'Theek hai, ise nayi samasya ke roop me darj karte hain. Kripya photo upload karein.'
+              text: `Ye samasya pehle se kisi aur ne report ki hai — ${dupRes.matchTitle}. Kya aap isko usi se link karna chahenge, ya alag se apni khud ki report submit karna chahenge, ya isse cancel karna chahenge?`
+            });
+          } else {
+            safeSend({
+              type: 'agent_utterance',
+              text: 'Saari jaankari darj ho gayi hai. Sab sahi hai? Submit kar doon?'
             });
           }
         }
 
-        // 6. Confirm Final Submission
+        // 5. Twin Decision from Client (Step 9)
+        else if (type === 'twin_decision') {
+          if (msg.decision === 'link') {
+            await executeToolCall('link_as_twin', {});
+          } else if (msg.decision === 'drop' || msg.decision === 'cancel') {
+            await executeToolCall('drop_report', {});
+          } else {
+            safeSend({
+              type: 'agent_utterance',
+              text: 'Theek hai, ise alag naye report ke roop me submit karte hain. Sab sahi hai? Submit kar doon?'
+            });
+          }
+        }
+
+        // 6. Confirm Final Submission (Step 10)
         else if (type === 'confirm_submission') {
           await executeToolCall('confirm_submission', {});
         }

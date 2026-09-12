@@ -273,12 +273,10 @@ function App() {
                   style={{"display":"inline-flex","alignItems":"center","gap":"6px","background":"rgba(255,255,255,0.92)","border":"1px solid rgba(255,153,51,0.4)","borderRadius":"20px","padding":"3px 10px","fontSize":"11px","fontWeight":"800","color":"#002D62","boxShadow":"0 2px 6px rgba(255,153,51,0.15)"}}>
                   <span style={{"fontSize":"14px"}}>🇮🇳</span><span data-i18n="satyameva_tag">सत्यमेव जयते · झारखण्ड</span>
                 </div>
-                {/* 🌐 Tri-Language Switcher (Pure English / Pure Hindi / Hinglish) */}
+                {/* 🌐 Language Switcher (English / Hinglish) */}
                 <div className="lang-switcher-pill">
                   <button type="button" className="lang-btn" id="langBtn_en" onClick={() => { setLanguage('en') }}>English</button>
-                  <button type="button" className="lang-btn active" id="langBtn_hi"
-                    onClick={() => { setLanguage('hi') }}>हिंदी</button>
-                  <button type="button" className="lang-btn" id="langBtn_hinglish"
+                  <button type="button" className="lang-btn active" id="langBtn_hinglish"
                     onClick={() => { setLanguage('hinglish') }}>Hinglish</button>
                 </div>
 
@@ -917,7 +915,7 @@ function App() {
             <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","marginTop":"8px"}}>
               <span style={{"fontSize":"10.5px","color":"var(--gray-500)"}}>💡 Tip: Click anywhere on map or drag marker to
                 pinpoint exact issue spot.</span>
-              <button type="button" onClick={() => { autoDetectGpsLocation() }}
+              <button type="button" className="btn-gps-autodetect" id="btnGpsAutodetect" onClick={() => { autoDetectGpsLocation() }}
                 style={{"padding":"4px 10px","fontSize":"11px","background":"#EFF6FF","border":"1px solid #BFDBFE","color":"var(--navy)","borderRadius":"6px","fontWeight":"700","cursor":"pointer"}}>
                 📍 Use Current GPS
               </button>
@@ -2069,13 +2067,7 @@ function App() {
               <div className="settings-lang-desc">Standard Portal</div>
               <div className="settings-lang-check">Active ✓</div>
             </div>
-            <div className="settings-lang-card active" id="settingsLangCard_hi" onClick={() => { selectSettingsLanguage('hi') }}>
-              <span style={{"fontSize":"22px"}}>🇮🇳</span>
-              <div className="settings-lang-name">हिन्दी</div>
-              <div className="settings-lang-desc">राष्ट्रभाषा &amp; आधिकारिक</div>
-              <div className="settings-lang-check">Active ✓</div>
-            </div>
-            <div className="settings-lang-card" id="settingsLangCard_hinglish" onClick={() => { selectSettingsLanguage('hinglish') }}>
+            <div className="settings-lang-card active" id="settingsLangCard_hinglish" onClick={() => { selectSettingsLanguage('hinglish') }}>
               <span style={{"fontSize":"22px"}}>💬</span>
               <div className="settings-lang-name">Hinglish</div>
               <div className="settings-lang-desc">Easy Conversational</div>

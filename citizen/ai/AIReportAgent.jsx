@@ -16,8 +16,8 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
   const [phase, setPhase] = useState('intro_lang'); 
   // 'intro_lang' | 'assistance_choice' | 'driving_category' | 'driving_desc' | 'driving_priority' | 'driving_loc' | 'driving_photo' | 'driving_video' | 'driving_check' | 'done'
   
-  const [lang, setLang] = useState('hi');
-  const [agentSpeech, setAgentSpeech] = useState('Hi, main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge?');
+  const [lang, setLang] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('jansetu_language') === 'en' ? 'en' : 'hinglish'));
+  const [agentSpeech, setAgentSpeech] = useState('Hi, main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — English ya Hinglish?');
   const [userTranscript, setUserTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
@@ -44,6 +44,19 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
   useEffect(() => {
     isMutedRef.current = isMuted;
   }, [isMuted]);
+
+  // Sync language with top navbar language switcher
+  useEffect(() => {
+    const handleExternalLangChange = (e) => {
+      const newLang = e.detail?.lang;
+      if (newLang) {
+        const activeLang = (newLang === 'hi' || newLang === 'hinglish') ? 'hinglish' : 'en';
+        setLang(activeLang);
+      }
+    };
+    window.addEventListener('jansetu_language_changed', handleExternalLangChange);
+    return () => window.removeEventListener('jansetu_language_changed', handleExternalLangChange);
+  }, []);
 
   // Safe speak wrapper with real-time speaking / listening state transitions
   const speak = (text) => {
@@ -73,6 +86,10 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       return;
     }
 
+    try {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (e) {}
+
     const rect = el.getBoundingClientRect();
     const targetX = rect.left + rect.width / 2;
     const targetY = rect.top + rect.height / 2;
@@ -87,7 +104,11 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       setTimeout(() => {
         setCursorClicking(false);
         el.classList.remove('ai-target-highlighted');
-        try { el.click(); } catch (e) {}
+        try {
+          el.focus();
+          el.click();
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        } catch (e) {}
         if (callback) callback();
       }, 180);
     }, travelDuration);
@@ -185,41 +206,33 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       }
     }
 
-    // 3. Fill Details (Tool: save_problem_details)
+    // 3. Fill Details (Tool: save_problem_details / fill_details)
     else if (type === 'fill_details') {
       const descEl = document.getElementById('reportDescription');
       const titleEl = document.getElementById('reportTitle');
       if (descEl && msg.description) descEl.value = msg.description;
       if (titleEl && msg.title) titleEl.value = msg.title;
 
-      const prio = msg.priority || 'high';
-      const prioRadio = document.querySelector(`input[name="priorityChoice"][value="${prio}"]`);
-      const prioTarget = prioRadio ? (prioRadio.parentElement || prioRadio) : null;
-
-      if (prioTarget) {
-        animateCursorToAndClick(prioTarget, () => {
-          if (prioRadio) prioRadio.checked = true;
-          setTimeout(() => {
-            animateCursorToAndClick('#stepSection2 .btn-modal-primary', () => {
-              setPhase('driving_loc');
-              // Auto-click GPS
-              setTimeout(() => {
-                animateCursorToAndClick('.btn-gps-autodetect', () => {
-                  setTimeout(() => {
-                    sendLocationCaptured();
-                  }, 350);
-                }, 300);
-              }, 250);
-            }, 250);
+      const prio = msg.priority;
+      if (prio) {
+        const prioRadio = document.querySelector(`input[name="priorityChoice"][value="${prio}"]`);
+        const prioTarget = prioRadio ? (prioRadio.parentElement || prioRadio) : null;
+        if (prioTarget) {
+          animateCursorToAndClick(prioTarget, () => {
+            if (prioRadio) prioRadio.checked = true;
           }, 200);
-        }, 300);
+        }
       }
     }
 
     // 4. Advance Step (Tool: advance_to_step)
     else if (type === 'advance_step') {
       const step = msg.step;
-      if (step === 'photo') {
+      if (step === 'location') {
+        animateCursorToAndClick('#stepSection2 .btn-modal-primary', () => {
+          setPhase('driving_loc');
+        }, 250);
+      } else if (step === 'photo') {
         animateCursorToAndClick('#stepSection3 .btn-modal-primary', () => {
           setPhase('driving_photo');
         }, 250);
@@ -254,6 +267,17 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       const trackingId = msg.trackingId;
       speak(`Problem pehle se darj shikayat ke sath safaltapoorvak link ho gayi hai. Tracking ID hai: ${trackingId}. Dhanyawad!`);
       if (onReportSubmitted) onReportSubmitted(trackingId);
+      finishCallGracefully();
+    }
+
+    // 8. Report Dropped / Cancelled
+    else if (type === 'report_dropped') {
+      speak('Theek hai, maine ye report cancel kar di hai. Kabhi bhi phir se report kar sakte hain.');
+      const modal = document.getElementById('reportModal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+      }
       finishCallGracefully();
     }
   };
@@ -296,13 +320,38 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     }
   };
 
-  // User Utterance Handler (Forward to LLM WebSocket instead of regex tree)
+  // Helper to transition to Step 5 (AI Verification & Duplicate Check)
+  const proceedToStep5AICheck = () => {
+    setTimeout(() => {
+      animateCursorToAndClick('#stepSection4 .btn-modal-primary', () => {
+        setPhase('driving_check');
+
+        // Allow 900ms for duplicate notice or AI check to evaluate
+        setTimeout(() => {
+          const dupBox = document.getElementById('duplicateNoticeBox');
+          if (dupBox && dupBox.style.display !== 'none') {
+            const dupTitleEl = document.getElementById('dupItemTitle');
+            const dupTitle = dupTitleEl ? dupTitleEl.textContent.trim() : 'Pehle se darj shikayat';
+            speak(lang === 'en'
+              ? `A similar issue is already reported: "${dupTitle}". Would you like to link with it, submit anyway, or cancel?`
+              : `Ye samasya pehle se darj mili hai — "${dupTitle}". Kya aap isko pehle wale ke sath jodna chahenge, ya nayi report submit karein, ya cancel karein?`);
+          } else {
+            speak(lang === 'en'
+              ? 'All details are filled. Everything looks good. Should I submit this report?'
+              : 'Saari jaankari darj ho gayi hai. Sab sahi hai? Submit kar doon?');
+          }
+        }, 900);
+      }, 350);
+    }, 400);
+  };
+
+  // User Utterance Handler: Autodrive visual cursor clicking on speech across all phases
   const handleUserUtterance = (text) => {
     const current = phaseRef.current;
     console.log(`[VoiceAgent] Spoken: "${text}" at Phase: ${current}`);
     const t = text.toLowerCase();
 
-    // 1. Language Selection Phase (Click spoken card)
+    // 1. Language Selection Phase (Click spoken language card)
     if (current === 'intro_lang') {
       const isEnglish = /english|inglish|angrezi|angreji/i.test(t);
       if (isEnglish) {
@@ -310,14 +359,14 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
           handleSelectLanguage('en');
         }, 300);
       } else {
-        animateCursorToAndClick('#langCardHi', () => {
-          handleSelectLanguage('hi');
+        animateCursorToAndClick('#langCardHinglish', () => {
+          handleSelectLanguage('hinglish');
         }, 300);
       }
       return;
     }
 
-    // 2. Assistance Choice Phase
+    // 2. Assistance Choice Phase (Click Action card)
     if (current === 'assistance_choice') {
       if (/status|sthiti|track|jaanch|kya hua|progress|jh-\d+/i.test(t)) {
         animateCursorToAndClick('#actionCardStatus', () => {
@@ -331,52 +380,247 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       return;
     }
 
-    // 3. Photo Phase
-    if (current === 'driving_photo') {
-      if (/haan|yes|photo|hai|upload|dikhao/i.test(t)) {
-        animateCursorToAndClick('label.media-btn-tile', () => {
-          speak(lang === 'en' ? 'Please upload the photo.' : 'Kripya samasya ki photo upload karein.');
+    // 3. Step 1: Problem / Category Selection Phase (Click category chip & Next)
+    if (current === 'driving_category') {
+      let searchKeyword = 'water';
+      if (/sadak|road|gaddha|pothole|pul|bridge|divider|cross|asphalt/i.test(t)) {
+        searchKeyword = 'road';
+      } else if (/kooda|kachra|safai|garbage|dustbin|waste|smell|durgandh|gandagi/i.test(t)) {
+        searchKeyword = 'clean';
+      } else if (/bijli|light|power|current|transformer|wire|pole|street ?light|taar/i.test(t)) {
+        searchKeyword = 'electric';
+      } else if (/hospital|dawa|doctor|swasthya|ilaj|nurse|clinic|health/i.test(t)) {
+        searchKeyword = 'health';
+      } else if (/school|padhai|shikshak|teacher|kitab|school|college|vidyalaya/i.test(t)) {
+        searchKeyword = 'school';
+      } else if (/khet|kisan|crop|fasal|farming|krishi|agriculture|sinchai/i.test(t)) {
+        searchKeyword = 'farm';
+      } else if (/naala|drain|water|paani|leak|sewer|pipe|jal/i.test(t)) {
+        searchKeyword = 'water';
+      }
+
+      const catButtons = Array.from(document.querySelectorAll('#categoryChipsContainer .category-chip-btn'));
+      const targetBtn = catButtons.find(b => {
+        const textLower = b.textContent.toLowerCase();
+        const oc = (b.getAttribute('onclick') || '').toLowerCase();
+        return textLower.includes(searchKeyword) || oc.includes(searchKeyword);
+      }) || catButtons[0];
+
+      if (targetBtn) {
+        animateCursorToAndClick(targetBtn, () => {
+          speak(lang === 'en' 
+            ? 'Alright, category selected. Now moving forward.' 
+            : 'Theek hai, maine category chun li hai.');
+
           setTimeout(() => {
-            sendSocketMessage({ type: 'photo_uploaded', url: '/uploads/sample_voice_evidence.jpg' });
-          }, 1200);
-        }, 300);
-      } else {
-        sendSocketMessage({ type: 'evidence_skipped' });
+            animateCursorToAndClick('#stepSection1 .btn-modal-primary', () => {
+              setPhase('driving_desc');
+              setTimeout(() => {
+                speak(lang === 'en'
+                  ? 'Please describe your problem in detail — what is happening?'
+                  : 'Aap apni samasya vistaar se batayein ki kya dikkat aa rahi hai?');
+              }, 350);
+            }, 300);
+          }, 400);
+        }, 350);
       }
       return;
     }
 
-    // 4. Video Phase
+    // 4. Step 2: Problem Description Phase (Fill text & ask priority)
+    if (current === 'driving_desc') {
+      const descEl = document.getElementById('reportDescription');
+      const titleEl = document.getElementById('reportTitle');
+
+      let cleanTitle = text.length > 40 ? text.slice(0, 40) + '...' : text;
+      let cleanDesc = text;
+
+      if (/naala|water|paani|leak|sewer/i.test(t)) {
+        cleanTitle = 'नाली की रुकावट एवं जलभराव की समस्या';
+        cleanDesc = `${text} - क्षेत्र में नाली जाम होने से जलजमाव की समस्या है। कृपया शीघ्र सफाई कराई जाए।`;
+      } else if (/sadak|road|gaddha|pothole/i.test(t)) {
+        cleanTitle = 'सड़क की जर्जर स्थिति एवं गड्ढों की मरम्मत';
+        cleanDesc = `${text} - मुख्य मार्ग पर गड्ढे होने से आवागमन में भारी असुविधा हो रही है।`;
+      } else if (/kooda|kachra|safai/i.test(t)) {
+        cleanTitle = 'कचरा जमाव एवं नियमित सफाई की आवश्यकता';
+        cleanDesc = `${text} - सार्वजनिक स्थल पर कचरा पड़ा होने से दुर्गंध फैल रही है।`;
+      } else if (/bijli|light|transformer/i.test(t)) {
+        cleanTitle = 'बिजली ट्रांसफॉर्मर खराबी एवं स्ट्रीटलाइट बंद';
+        cleanDesc = `${text} - विद्युत आपूर्ति बाधित होने से क्षेत्र में समस्या हो रही है।`;
+      }
+
+      if (descEl) descEl.value = cleanDesc;
+      if (titleEl) titleEl.value = cleanTitle;
+
+      setPhase('driving_priority');
+      setTimeout(() => {
+        speak(lang === 'en'
+          ? 'What is the urgency of this problem — Urgent, High, or Normal?'
+          : 'Is samasya ki priority kya hai — Urgent, High ya Normal?');
+      }, 400);
+      return;
+    }
+
+    // 5. Step 2: Priority Selection Phase (Click priority radio, click Next, click GPS autodetect)
+    if (current === 'driving_priority') {
+      let prioValue = 'high';
+      if (/urgent|turant|emergency|bahut zaroori|jaldi/i.test(t)) prioValue = 'urgent';
+      else if (/high|bada|zyada|gambhir/i.test(t)) prioValue = 'high';
+      else if (/normal|sadharan|theek|medium|kam/i.test(t)) prioValue = 'medium';
+
+      const prioRadio = document.querySelector(`input[name="priorityChoice"][value="${prioValue}"]`) ||
+                        (prioValue === 'normal' ? document.querySelector('input[name="priorityChoice"][value="medium"]') : null) ||
+                        document.querySelector('input[name="priorityChoice"][value="high"]');
+      const prioTarget = prioRadio ? (prioRadio.parentElement || prioRadio) : null;
+
+      if (prioTarget) {
+        animateCursorToAndClick(prioTarget, () => {
+          if (prioRadio) prioRadio.checked = true;
+          speak(lang === 'en' ? 'Priority set. Now verifying location.' : 'Priority darj ho gayi hai. Ab location verify karte hain.');
+
+          setTimeout(() => {
+            animateCursorToAndClick('#stepSection2 .btn-modal-primary', () => {
+              setPhase('driving_loc');
+              setTimeout(() => {
+                speak(lang === 'en' ? 'Detecting your GPS location...' : 'Aapki GPS location detect kar rahe hain...');
+                setTimeout(() => {
+                  animateCursorToAndClick('.btn-gps-autodetect', () => {
+                    setTimeout(() => {
+                      sendLocationCaptured();
+                      speak(lang === 'en' ? 'Location captured.' : 'Theek hai, location mil gayi hai.');
+                      setTimeout(() => {
+                        animateCursorToAndClick('#stepSection3 .btn-modal-primary', () => {
+                          setPhase('driving_photo');
+                          setTimeout(() => {
+                            speak(lang === 'en'
+                              ? 'Do you have a photo of the problem?'
+                              : 'Kya aapke paas is samasya ki photo hai?');
+                          }, 350);
+                        }, 300);
+                      }, 600);
+                    }, 1000);
+                  }, 350);
+                }, 400);
+              }, 300);
+            }, 300);
+          }, 500);
+        }, 300);
+      }
+      return;
+    }
+
+    // 6. Step 3: Location Phase (User speaks during GPS step)
+    if (current === 'driving_loc') {
+      animateCursorToAndClick('.btn-gps-autodetect', () => {
+        setTimeout(() => {
+          sendLocationCaptured();
+          animateCursorToAndClick('#stepSection3 .btn-modal-primary', () => {
+            setPhase('driving_photo');
+            setTimeout(() => {
+              speak(lang === 'en' ? 'Do you have a photo of the problem?' : 'Kya aapke paas photo hai?');
+            }, 300);
+          }, 300);
+        }, 500);
+      }, 300);
+      return;
+    }
+
+    // 7. Step 4: Photo Phase (Click photo tile if haan, or advance to video)
+    if (current === 'driving_photo') {
+      if (/haan|yes|photo|hai|upload|dikhao|lelo|khicho/i.test(t)) {
+        const photoTile = document.querySelector('label.media-btn-tile');
+        animateCursorToAndClick(photoTile || '#stepSection4', () => {
+          speak(lang === 'en'
+            ? 'Please choose or take the photo.'
+            : 'Kripya samasya ki photo chunein.');
+          setTimeout(() => {
+            setPhase('driving_video');
+            speak(lang === 'en'
+              ? 'Photo attached. Do you also have a short video clip?'
+              : 'Photo jud gayi hai. Kya koi chhota video bhi hai?');
+          }, 1500);
+        }, 350);
+      } else {
+        setPhase('driving_video');
+        speak(lang === 'en'
+          ? 'No problem. Do you have a short video clip?'
+          : 'Theek hai. Kya koi chhota video hai?');
+      }
+      return;
+    }
+
+    // 8. Step 4: Video Phase (Click video tile if haan, or advance to AI check)
     if (current === 'driving_video') {
-      if (/haan|yes|video|hai|upload/i.test(t)) {
-        const videoTile = Array.from(document.querySelectorAll('label.media-btn-tile'))[1];
-        animateCursorToAndClick(videoTile || 'label.media-btn-tile', () => {
-          sendSocketMessage({ type: 'video_uploaded', url: '/uploads/sample_voice_video.mp4' });
-        }, 300);
+      if (/haan|yes|video|hai|upload|clip/i.test(t)) {
+        const videoTile = Array.from(document.querySelectorAll('label.media-btn-tile'))[1] || document.querySelector('label.media-btn-tile');
+        animateCursorToAndClick(videoTile, () => {
+          speak(lang === 'en' ? 'Proofs attached. Moving to AI check.' : 'Theek hai, saare proof mil gaye. Ab AI jaanch karte hain.');
+          proceedToStep5AICheck();
+        }, 350);
       } else {
-        sendSocketMessage({ type: 'evidence_skipped' });
+        speak(lang === 'en' ? 'Alright, moving to AI verification.' : 'Theek hai, ab aage AI jaanch karte hain.');
+        proceedToStep5AICheck();
       }
       return;
     }
 
-    // 5. Duplicate Check / Final Submit Phase
+    // 9. Step 5: Duplicate Check & Final Submit Phase
     if (current === 'driving_check') {
-      if (/haan|yes|link|jod|kardo|kar do|theek|sahi|submit/i.test(t)) {
-        const dupBox = document.getElementById('duplicateNoticeBox');
-        if (dupBox && dupBox.style.display !== 'none') {
+      const dupBox = document.getElementById('duplicateNoticeBox');
+      const isDuplicateVisible = dupBox && dupBox.style.display !== 'none';
+
+      if (isDuplicateVisible) {
+        if (/link|jod|haan|yes|support|sath|twinned/i.test(t)) {
           animateCursorToAndClick('button[data-i18n="btn_support_existing"]', () => {
-            sendSocketMessage({ type: 'twin_decision', decision: 'link' });
-          }, 300);
+            speak(lang === 'en'
+              ? 'Problem registered and linked with existing grievance. You can track it in My Reports. Thank you!'
+              : 'Problem pehle se darj shikayat ke sath safaltapoorvak link ho gayi hai. Aap ise My Reports me track kar sakte hain. Dhanyawad!');
+            finishCallGracefully();
+          }, 350);
+        } else if (/cancel|drop|hata|mat karo|band|rehne do|nahi/i.test(t) && !/report|submit|naya|alag/i.test(t)) {
+          speak(lang === 'en'
+            ? 'Okay, I have cancelled this report.'
+            : 'Theek hai, maine ye report cancel kar di hai. Kabhi bhi dubara report kar sakte hain.');
+          const modal = document.getElementById('reportModal');
+          if (modal) {
+            modal.style.display = 'none';
+            modal.classList.remove('active');
+          }
+          finishCallGracefully();
         } else {
+          animateCursorToAndClick('button[data-i18n="btn_report_anyway"]', () => {
+            setTimeout(() => {
+              animateCursorToAndClick('#finalSubmitBtn', () => {
+                speak(lang === 'en'
+                  ? 'Your new report has been submitted successfully! You can track it in My Reports. Thank you!'
+                  : 'Aapki nayi shikayat safaltapoorvak darj ho gayi hai! Aap ise My Reports me track kar sakte hain. Dhanyawad!');
+                finishCallGracefully();
+              }, 350);
+            }, 350);
+          }, 350);
+        }
+      } else {
+        if (/haan|yes|submit|kar do|kar doon|theek|sahi|bilkul|kardo/i.test(t)) {
           animateCursorToAndClick('#finalSubmitBtn', () => {
-            sendSocketMessage({ type: 'confirm_submission' });
-          }, 300);
+            speak(lang === 'en'
+              ? 'Your problem has been submitted successfully! You can check its status in My Reports. Thank you for reporting!'
+              : 'Aapki samasya safaltapoorvak darj ho gayi hai! Aap iski sthiti My Reports me dekh sakte hain. JanSetu par report karne ke liye dhanyawad!');
+            finishCallGracefully();
+          }, 350);
+        } else if (/nahi|cancel|mat|ruko/i.test(t)) {
+          speak(lang === 'en'
+            ? 'Submission paused. You can edit details or end the call.'
+            : 'Theek hai, abhi submit nahi kiya hai. Aap details edit kar sakte hain.');
+        } else {
+          speak(lang === 'en'
+            ? 'Should I submit this report now? Please say yes or submit.'
+            : 'Kya main ye shikayat submit kar doon? Kripya haan ya submit bolein.');
         }
       }
       return;
     }
 
-    // Otherwise, set processing state and forward to Sarvam LLM via WebSocket
+    // Fallback: forward to LLM if needed
     setVoiceStatus('processing');
     sendSocketMessage({
       type: 'user_utterance',
@@ -392,22 +636,38 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     }, 3500);
   };
 
-  // Step 1: Language Selection Handler
+  // Step 1: Language Selection Handler (English & Hinglish sync)
   const handleSelectLanguage = (chosenLang) => {
-    setLang(chosenLang);
-    if (typeof window !== 'undefined' && typeof window.setLanguage === 'function') {
-      try { window.setLanguage(chosenLang); } catch (e) {}
+    const activeLang = (chosenLang === 'hi' || chosenLang === 'hinglish') ? 'hinglish' : 'en';
+    setLang(activeLang);
+
+    if (typeof window !== 'undefined') {
+      try {
+        if (typeof window.setLanguage === 'function') {
+          window.setLanguage(activeLang);
+        } else {
+          localStorage.setItem('jansetu_language', activeLang);
+          ['en', 'hinglish'].forEach(l => {
+            const btn = document.getElementById('langBtn_' + l);
+            if (btn) btn.className = 'lang-btn' + (l === activeLang ? ' active' : '');
+          });
+          const hiBtn = document.getElementById('langBtn_hi');
+          if (hiBtn) hiBtn.style.display = 'none';
+        }
+      } catch (e) {}
     }
+
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (e) {}
-      recognitionRef.current.lang = chosenLang === 'en' ? 'en-IN' : 'hi-IN';
+      recognitionRef.current.lang = activeLang === 'en' ? 'en-IN' : 'hi-IN';
       try { recognitionRef.current.start(); } catch (e) {}
     }
-    sendSocketMessage({ type: 'select_language', lang: chosenLang });
+
+    sendSocketMessage({ type: 'select_language', lang: activeLang === 'en' ? 'en' : 'hi' });
     setPhase('assistance_choice');
-    const prompt = chosenLang === 'en'
+    const prompt = activeLang === 'en'
       ? 'Great! How can I help you today? You can report a new problem or check an existing one.'
-      : 'Bahut accha! Batayiye, main aapki kya madad kar sakti hoon? Aap nayi samasya report kar sakte hain ya purani shikayat ki sthiti jaanch sakte hain.';
+      : 'Bahut accha! Batayiye, main aapki kya madad kar sakta hoon? Aap nayi samasya report kar sakte hain ya purani shikayat ki sthiti jaanch sakte hain.';
     speak(prompt);
   };
 
@@ -449,7 +709,7 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
         setTimeout(() => {
           const prompt = lang === 'en'
             ? 'Please describe your problem in detail. What is happening and where?'
-            : 'Aapko kya samasya aa rahi hai? Batayiye, main sun rahi hoon.';
+            : 'Aapko kya samasya aa rahi hai? Batayiye, main sun raha hoon.';
           speak(prompt);
         }, 300);
       }, 300);
@@ -690,21 +950,21 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
                   <div className="voice-section-title-wrap">
                     <div className="voice-section-title">
                       <span className="globe-icon">🌐</span>
-                      <span>अपनी भाषा चुनें / Choose Language</span>
+                      <span>Choose Language / अपनी भाषा चुनें</span>
                     </div>
                     <div className="voice-section-subtitle">
-                      Aap bol sakte hain: "Hindi" ya "English"
+                      Aap bol sakte hain: "English" ya "Hinglish"
                     </div>
                   </div>
 
                   <div className="voice-lang-cards-grid">
-                    {/* Hindi Card with India Gate Monument Silhouette */}
+                    {/* Hinglish Card */}
                     <div
-                      id="langCardHi"
-                      className={`voice-lang-card ${lang === 'hi' ? 'selected' : ''}`}
-                      onClick={() => handleSelectLanguage('hi')}
+                      id="langCardHinglish"
+                      className={`voice-lang-card ${lang === 'hinglish' || lang === 'hi' ? 'selected' : ''}`}
+                      onClick={() => handleSelectLanguage('hinglish')}
                     >
-                      {lang === 'hi' && (
+                      {(lang === 'hinglish' || lang === 'hi') && (
                         <div className="voice-card-check-badge">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="20 6 9 17 4 12" />
@@ -715,8 +975,8 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
                       <div className="voice-lang-card-main">
                         <div className="voice-country-badge">IN</div>
                         <div className="voice-lang-texts">
-                          <div className="voice-lang-primary-title">हिंदी (Hindi)</div>
-                          <div className="voice-lang-desc">बोलकर शिकायत दर्ज करें</div>
+                          <div className="voice-lang-primary-title">Hinglish</div>
+                          <div className="voice-lang-desc">Hindi + English me baat karein</div>
                         </div>
                       </div>
 

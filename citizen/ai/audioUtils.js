@@ -120,7 +120,7 @@ async function speakText(text, langOrOnEnd, maybeOnEnd, maybeOnStart) {
       body: JSON.stringify({
         text: text.trim(),
         lang,
-        speaker: 'meera'
+        speaker: 'aditya'
       }),
       signal: controller ? controller.signal : undefined
     });
@@ -167,15 +167,15 @@ function fallbackBrowserSpeech(text, lang, onEnd, onStart) {
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
-  utterance.rate = 1.05;
-  utterance.pitch = 1.15;
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
 
-  // Prefer female Indian voice for consistent JanSetu AI persona
+  // Prefer Indian voice with natural Aditya tone
   const voices = window.speechSynthesis.getVoices();
   const langCode = lang === 'en' ? 'en' : 'hi';
-  const femaleVoice = voices.find(v => v.lang.includes(langCode) && /female|woman|heera|swati|lekha/i.test(v.name)) ||
-                      voices.find(v => v.lang.includes('IN') && /female|woman|heera|swati|lekha/i.test(v.name));
-  const matchedVoice = femaleVoice ||
+  const maleVoice = voices.find(v => v.lang.includes(langCode) && /aditya|rishi|male|pradeep|hemant|ravi/i.test(v.name)) ||
+                    voices.find(v => v.lang.includes('IN') && /aditya|rishi|male|pradeep|hemant|ravi/i.test(v.name));
+  const matchedVoice = maleVoice ||
                        voices.find(v => (lang === 'en' ? v.lang.includes('en') : v.lang.includes('hi'))) ||
                        voices.find(v => v.name.includes('India') || v.lang.includes('IN'));
 

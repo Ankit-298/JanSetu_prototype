@@ -28,7 +28,8 @@
     }
     window.formatProperAddress = formatProperAddress;
 
-    let currentLanguage = localStorage.getItem('jansetu_language') || 'hi';
+    let currentLanguage = localStorage.getItem('jansetu_language') || 'hinglish';
+    if (currentLanguage === 'hi') currentLanguage = 'hinglish';
     let quoteIndex = 0;
     let quoteTimer = null;
     let allReportsList = [];
@@ -465,15 +466,18 @@
     });
 
     function setLanguage(lang) {
+      if (lang === 'hi') lang = 'hinglish';
       currentLanguage = lang;
       localStorage.setItem('jansetu_language', lang);
 
-      ['en', 'hi', 'hinglish'].forEach(l => {
+      ['en', 'hinglish'].forEach(l => {
         const btn = document.getElementById('langBtn_' + l);
         if (btn) btn.className = 'lang-btn' + (l === lang ? ' active' : '');
       });
+      const hiBtn = document.getElementById('langBtn_hi');
+      if (hiBtn) hiBtn.style.display = 'none';
 
-      const dict = TRANSLATIONS[lang] || TRANSLATIONS['hi'];
+      const dict = TRANSLATIONS[lang] || TRANSLATIONS['hinglish'] || TRANSLATIONS['en'];
 
       document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
@@ -486,11 +490,7 @@
       });
 
       // Dynamically set page title according to selected language
-      if (lang === 'hi') {
-        document.title = 'जनसेतु — नागरिक पोर्टल';
-      } else {
-        document.title = 'JanSetu — Citizen Dashboard';
-      }
+      document.title = lang === 'en' ? 'JanSetu — Citizen Dashboard' : 'जनसेतु — नागरिक पोर्टल';
 
       const searchInp = document.getElementById('exploreSearchInput');
       if (searchInp && dict.explore_search_placeholder) {
@@ -517,7 +517,10 @@
       if (typeof updateSettingsLangCards === 'function') {
         updateSettingsLangCards(lang);
       }
+
+      window.dispatchEvent(new CustomEvent('jansetu_language_changed', { detail: { lang } }));
     }
+    window.setLanguage = setLanguage;
 
     function renderCategoryChips(lang) {
       const container = document.getElementById('categoryChipsContainer');
