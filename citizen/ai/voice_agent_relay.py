@@ -6,16 +6,42 @@ Location: citizen/ai/voice_agent_relay.py
 
 import os
 import json
-import asyncio
 import logging
-from typing import Dict, Any, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import httpx
-from dotenv import load_dotenv
+from typing import Dict, Any
 
-load_dotenv()
+try:
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+    from fastapi.middleware.cors import CORSMiddleware
+except ImportError:
+    # Safe stubs when FastAPI is not yet installed in local environment
+    class FastAPI:  # type: ignore
+        def __init__(self, *args, **kwargs): pass
+        def add_middleware(self, *args, **kwargs): pass
+        def websocket(self, path: str):
+            def decorator(func): return func
+            return decorator
+
+    class WebSocket:  # type: ignore
+        async def accept(self): pass
+        async def receive_text(self): return "{}"
+        async def send_json(self, data): pass
+
+    class WebSocketDisconnect(Exception):  # type: ignore
+        pass
+
+    class CORSMiddleware:  # type: ignore
+        pass
+
+try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    def load_dotenv(): pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("JanSetuVoiceAgent")
@@ -390,6 +416,9 @@ async def voice_agent_websocket(websocket: WebSocket):
         logger.error(f"Voice Agent Error: {e}")
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("VOICE_AGENT_PORT", 8000))
-    uvicorn.run("voice_agent_relay:app", host="0.0.0.0", port=port, reload=True)
+    try:
+        import uvicorn
+        port = int(os.getenv("VOICE_AGENT_PORT", "8000"))
+        uvicorn.run("voice_agent_relay:app", host="0.0.0.0", port=port, reload=True)
+    except ImportError:
+        logger.error("uvicorn is not installed. To run this relay, install dependencies: pip install -r requirements.txt")
