@@ -85,13 +85,21 @@ class AudioStreamer {
   }
 }
 
+let currentSpeechId = 0;
 let currentSarvamAudio = null;
+let activeAbortController = null;
 
 /**
- * Speak text in Hindi / English using Sarvam AI Bulbul V3 with browser fallback
+ * Speak text in Hindi / English using Sarvam AI Bulbul V3 with browser fallback.
+ * Strictly guarantees that only ONE voice ever plays at a time.
  */
 async function speakText(text, langOrOnEnd, maybeOnEnd, maybeOnStart) {
-  if (!text) return;
+  if (!text || !text.trim()) return;
+
+  // Immediately kill any currently playing audio or speech synthesis
+  stopSpeaking();
+
+  const thisSpeechId = ++currentSpeechId;
 
   let lang = 'hi';
   let onEnd = null;
@@ -106,12 +114,14 @@ async function speakText(text, langOrOnEnd, maybeOnEnd, maybeOnStart) {
     onStart = maybeOnEnd;
   }
 
-  // Stop any currently playing speech
-  stopSpeaking();
+  // Network fetch with dedicated AbortController
+  const controller = new AbortController();
+  activeAbortController = controller;
 
-  // Try Sarvam AI Real-Time TTS first with strict timeout
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutId = controller ? setTimeout(() => controller.abort(), 2000) : null;
+  // Generous 4000ms timeout for Sarvam AI TTS (prevents false aborts that trigger duplicate browser speech)
+  const timeoutId = setTimeout(() => {
+    try { controller.abort(); } catch (e) {}
+  }, 4000);
 
   try {
     const res = await fetch('/api/voice-agent/tts', {
@@ -122,49 +132,81 @@ async function speakText(text, langOrOnEnd, maybeOnEnd, maybeOnStart) {
         lang,
         speaker: 'aditya'
       }),
-      signal: controller ? controller.signal : undefined
+      signal: controller.signal
     });
 
-    if (timeoutId) clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
+
+    // If another speech was triggered while fetch was in flight, abort and discard!
+    if (thisSpeechId !== currentSpeechId) return;
 
     if (res.ok) {
       const data = await res.json();
+      if (thisSpeechId !== currentSpeechId) return;
+
       if (data.dataUrl) {
+        // Ensure browser speech synthesis is completely stopped
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        if (currentSarvamAudio) {
+          try { currentSarvamAudio.pause(); currentSarvamAudio.src = ''; } catch (e) {}
+          currentSarvamAudio = null;
+        }
+
         const audio = new Audio(data.dataUrl);
         currentSarvamAudio = audio;
+
         audio.onplay = () => {
-          if (onStart) onStart();
+          if (thisSpeechId === currentSpeechId && onStart) onStart();
         };
         audio.onended = () => {
-          currentSarvamAudio = null;
-          if (onEnd) onEnd();
+          if (thisSpeechId === currentSpeechId) {
+            currentSarvamAudio = null;
+            if (onEnd) onEnd();
+          }
         };
         audio.onerror = () => {
-          currentSarvamAudio = null;
-          fallbackBrowserSpeech(text, lang, onEnd, onStart);
+          if (thisSpeechId === currentSpeechId) {
+            currentSarvamAudio = null;
+            fallbackBrowserSpeech(text, lang, onEnd, onStart, thisSpeechId);
+          }
         };
-        if (onStart) onStart();
-        await audio.play();
-        return;
+
+        if (thisSpeechId === currentSpeechId) {
+          if (onStart) onStart();
+          try {
+            await audio.play();
+          } catch (playErr) {
+            if (thisSpeechId === currentSpeechId) {
+              fallbackBrowserSpeech(text, lang, onEnd, onStart, thisSpeechId);
+            }
+          }
+          return;
+        }
       }
     }
   } catch (e) {
-    if (timeoutId) clearTimeout(timeoutId);
-    // Network or server issue -> fallback to browser speech
+    clearTimeout(timeoutId);
+    // If superseded by a newer utterance or aborted, DO NOT fall back!
+    if (thisSpeechId !== currentSpeechId) return;
   }
 
-  // Fallback to browser synthesis
-  fallbackBrowserSpeech(text, lang, onEnd, onStart);
+  // Fallback to browser synthesis ONLY if this is still the active speech
+  if (thisSpeechId === currentSpeechId) {
+    fallbackBrowserSpeech(text, lang, onEnd, onStart, thisSpeechId);
+  }
 }
 
-function fallbackBrowserSpeech(text, lang, onEnd, onStart) {
+function fallbackBrowserSpeech(text, lang, onEnd, onStart, thisSpeechId) {
+  if (thisSpeechId !== currentSpeechId) return;
   if (!('speechSynthesis' in window)) {
     if (onStart) onStart();
-    if (onEnd) setTimeout(onEnd, 1500);
+    if (onEnd) setTimeout(onEnd, 1200);
     return;
   }
 
+  // Cancel any lingering queued speech synthesis
   window.speechSynthesis.cancel();
+
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
   utterance.rate = 1.0;
@@ -181,31 +223,43 @@ function fallbackBrowserSpeech(text, lang, onEnd, onStart) {
 
   if (matchedVoice) utterance.voice = matchedVoice;
 
-  if (onStart) {
-    utterance.onstart = onStart;
-  }
+  utterance.onstart = () => {
+    if (thisSpeechId === currentSpeechId && onStart) onStart();
+  };
 
-  if (onEnd) {
-    utterance.onend = onEnd;
-    utterance.onerror = onEnd;
-  }
+  utterance.onend = () => {
+    if (thisSpeechId === currentSpeechId && onEnd) onEnd();
+  };
+
+  utterance.onerror = () => {
+    if (thisSpeechId === currentSpeechId && onEnd) onEnd();
+  };
 
   window.speechSynthesis.speak(utterance);
 }
 
 /**
- * Stop any current speech synthesis
+ * Stop any current speech synthesis or audio playback immediately
  */
 function stopSpeaking() {
+  currentSpeechId++;
+
+  if (activeAbortController) {
+    try { activeAbortController.abort(); } catch (e) {}
+    activeAbortController = null;
+  }
+
   if (currentSarvamAudio) {
     try {
       currentSarvamAudio.pause();
       currentSarvamAudio.currentTime = 0;
+      currentSarvamAudio.src = '';
     } catch (e) {}
     currentSarvamAudio = null;
   }
+
   if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
+    try { window.speechSynthesis.cancel(); } catch (e) {}
   }
 }
 

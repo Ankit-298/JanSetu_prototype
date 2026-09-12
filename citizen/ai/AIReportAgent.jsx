@@ -58,18 +58,23 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     return () => window.removeEventListener('jansetu_language_changed', handleExternalLangChange);
   }, []);
 
+  const isSpeakingRef = useRef(false);
+
   // Safe speak wrapper with real-time speaking / listening state transitions
   const speak = (text) => {
     if (isMutedRef.current || !text) return;
     setAgentSpeech(text);
+    isSpeakingRef.current = true;
     setVoiceStatus('speaking');
     speakText(
       text,
       lang === 'en' ? 'en-IN' : 'hi-IN',
       () => {
+        isSpeakingRef.current = false;
         if (!isMutedRef.current) setVoiceStatus('listening');
       },
       () => {
+        isSpeakingRef.current = true;
         if (!isMutedRef.current) setVoiceStatus('speaking');
       }
     );
@@ -179,9 +184,18 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     console.log('[VoiceAgent] Received server message:', msg);
     const { type } = msg;
 
-    // 1. Agent Utterance / Spoken Output
+    // 1. Agent Utterance / Spoken Output (Prevent double-speaking during client autodrive)
     if (type === 'agent_utterance') {
-      if (msg.text) {
+      const autoDrivePhases = [
+        'driving_category',
+        'driving_desc',
+        'driving_priority',
+        'driving_loc',
+        'driving_photo',
+        'driving_video',
+        'driving_check'
+      ];
+      if (msg.text && !autoDrivePhases.includes(phaseRef.current)) {
         speak(msg.text);
       }
     }
@@ -294,15 +308,22 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       recognition.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
 
       recognition.onresult = (event) => {
+        // Prevent echo loop: If AI is actively speaking, ignore mic audio so it doesn't transcribe itself
+        if (isSpeakingRef.current) {
+          return;
+        }
+
         const lastResult = event.results[event.results.length - 1];
         const transcript = lastResult[0].transcript.trim();
+        if (!transcript) return;
+
         setUserTranscript(transcript);
 
         if (!isMutedRef.current) {
           setVoiceStatus('processing');
         }
 
-        if (lastResult.isFinal && transcript) {
+        if (lastResult.isFinal) {
           handleUserUtterance(transcript);
         }
       };

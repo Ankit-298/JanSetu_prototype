@@ -731,14 +731,6 @@ function setupVoiceAgentWebSocket(server) {
       sarvamEnabled: Boolean(process.env.SARVAM_API_KEY)
     }));
 
-    // Greeting — JanSetu AI female persona intro
-    const greetingText = 'Hi, main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — English ya Hinglish?';
-    ws.send(JSON.stringify({
-      type: 'agent_utterance',
-      text: greetingText,
-      step: 'listening'
-    }));
-
     // Helper to safely send JSON to client
     const safeSend = (payload) => {
       if (ws.readyState === ws.OPEN) {
