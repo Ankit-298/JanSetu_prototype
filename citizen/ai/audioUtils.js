@@ -167,7 +167,8 @@ async function speakText(text, langOrOnEnd, maybeOnEnd, maybeOnStart) {
         audio.onerror = () => {
           if (thisSpeechId === currentSpeechId) {
             currentSarvamAudio = null;
-            fallbackBrowserSpeech(text, lang, onEnd, onStart, thisSpeechId);
+            console.warn('[VoiceAgent] Sarvam audio playback error');
+            if (onEnd) onEnd();
           }
         };
 
@@ -176,9 +177,8 @@ async function speakText(text, langOrOnEnd, maybeOnEnd, maybeOnStart) {
           try {
             await audio.play();
           } catch (playErr) {
-            if (thisSpeechId === currentSpeechId) {
-              fallbackBrowserSpeech(text, lang, onEnd, onStart, thisSpeechId);
-            }
+            console.warn('[VoiceAgent] Audio play error:', playErr);
+            if (thisSpeechId === currentSpeechId && onEnd) onEnd();
           }
           return;
         }
@@ -186,56 +186,16 @@ async function speakText(text, langOrOnEnd, maybeOnEnd, maybeOnStart) {
     }
   } catch (e) {
     clearTimeout(timeoutId);
-    // If superseded by a newer utterance or aborted, DO NOT fall back!
-    if (thisSpeechId !== currentSpeechId) return;
-  }
-
-  // Fallback to browser synthesis ONLY if this is still the active speech
-  if (thisSpeechId === currentSpeechId) {
-    fallbackBrowserSpeech(text, lang, onEnd, onStart, thisSpeechId);
-  }
-}
-
-function fallbackBrowserSpeech(text, lang, onEnd, onStart, thisSpeechId) {
-  if (thisSpeechId !== currentSpeechId) return;
-  if (!('speechSynthesis' in window)) {
-    if (onStart) onStart();
-    if (onEnd) setTimeout(onEnd, 1200);
+    console.warn('[VoiceAgent] TTS API error:', e.message || e);
+    if (thisSpeechId === currentSpeechId && onEnd) onEnd();
     return;
   }
 
-  // Cancel any lingering queued speech synthesis
-  window.speechSynthesis.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = lang === 'en' ? 'en-IN' : 'hi-IN';
-  utterance.rate = 1.0;
-  utterance.pitch = 1.0;
-
-  // Prefer Indian voice with natural Aditya tone
-  const voices = window.speechSynthesis.getVoices();
-  const langCode = lang === 'en' ? 'en' : 'hi';
-  const maleVoice = voices.find(v => v.lang.includes(langCode) && /aditya|rishi|male|pradeep|hemant|ravi/i.test(v.name)) ||
-                    voices.find(v => v.lang.includes('IN') && /aditya|rishi|male|pradeep|hemant|ravi/i.test(v.name));
-  const matchedVoice = maleVoice ||
-                       voices.find(v => (lang === 'en' ? v.lang.includes('en') : v.lang.includes('hi'))) ||
-                       voices.find(v => v.name.includes('India') || v.lang.includes('IN'));
-
-  if (matchedVoice) utterance.voice = matchedVoice;
-
-  utterance.onstart = () => {
-    if (thisSpeechId === currentSpeechId && onStart) onStart();
-  };
-
-  utterance.onend = () => {
-    if (thisSpeechId === currentSpeechId && onEnd) onEnd();
-  };
-
-  utterance.onerror = () => {
-    if (thisSpeechId === currentSpeechId && onEnd) onEnd();
-  };
-
-  window.speechSynthesis.speak(utterance);
+  // User requirement: "demo bole hi nhi api wala hi bole"
+  // Demo browser speech synthesis is completely disabled — ONLY Sarvam API voice is allowed!
+  if (thisSpeechId === currentSpeechId && onEnd) {
+    onEnd();
+  }
 }
 
 /**
