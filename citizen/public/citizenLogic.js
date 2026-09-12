@@ -332,16 +332,6 @@
       return `${datePart} · ${timePart}`;
     }
 
-    function escapeHtml(str) {
-      if (str === null || str === undefined) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-    }
-
     /* ============================================================
        LOADER SCREEN DISABLED ON CITIZEN PORTAL (INSTANT LOAD)
        ============================================================ */
@@ -4519,6 +4509,85 @@
         return;
       }
 
+    const CLIENT_CIVIC_CLUSTERS = {
+      road_infrastructure: [
+        'road', 'sadak', 'street', 'rasta', 'gaddha', 'gaddhe', 'pothole', 'potholes', 'crater',
+        'broken road', 'highway', 'pul', 'pulia', 'bridge', 'culvert', 'asphalt', 'tar', 'kichad',
+        'mud', 'path', 'lane', 'divider', 'ditch', 'accident', 'speed breaker', 'सड़क', 'रोड',
+        'रास्ता', 'गड्ढा', 'गड्ढे', 'गड्ढों', 'टूटी', 'टूटा', 'खराब', 'दुर्घटना', 'पुल', 'पुलिया'
+      ],
+      water_pipeline: [
+        'water', 'paani', 'pani', 'pipe', 'pipeline', 'leak', 'leakage', 'phat', 'burst',
+        'tap', 'chapakal', 'handpump', 'nal', 'tank', 'peene', 'drinking', 'bahaav', 'supply',
+        'jal', 'peyjal', 'sewage', 'drainage', 'naali', 'gutter', 'drain', 'naala', 'dirty water',
+        'ganda paani', 'boring', 'waterlogging', 'overflow', 'पानी', 'जल', 'नल', 'पाइप', 'लीकेज',
+        'नाली', 'चापाकल', 'हैंडपंप', 'गंदा पानी', 'पेयजल'
+      ],
+      electricity_power: [
+        'bijli', 'power', 'electricity', 'light', 'current', 'voltage', 'transformer', 'pole',
+        'khamba', 'wire', 'taar', 'short circuit', 'spark', 'blackout', 'andhera', 'meter',
+        'phase', 'load shedding', 'outage', 'line', 'बिजली', 'ट्रांसफार्मर', 'खंभा', 'तार', 'करंट',
+        'अंधेरा', 'लाइट', 'वोल्टेज'
+      ],
+      sanitation_waste: [
+        'garbage', 'kachra', 'trash', 'dustbin', 'safai', 'cleaning', 'waste', 'kuda', 'badbu',
+        'smell', 'dump', 'sanitation', 'litter', 'filth', 'dumping', 'कचरा', 'कूड़ा', 'सफाई',
+        'कूड़ेदान', 'बदबू', 'दुर्गंध'
+      ],
+      healthcare_medical: [
+        'hospital', 'doctor', 'clinic', 'davai', 'medicine', 'ilaj', 'swasthya', 'health',
+        'ambulance', 'bed', 'nurse', 'dispensary', 'patient', 'treatment', 'अस्पताल', 'डॉक्टर',
+        'दवाई', 'इलाज', 'स्वास्थ्य', 'मरीज'
+      ]
+    };
+
+    function computeSemanticProblemSimilarityClientSide(newRep, cand) {
+      if (!newRep || !cand) return { score: 0 };
+      const tA = (newRep.title || '').toLowerCase();
+      const tB = (cand.title || '').toLowerCase();
+      const dA = (newRep.description || newRep.desc || tA).toLowerCase();
+      const dB = (cand.description || cand.desc || cand.details || tB).toLowerCase();
+
+      // 1. Title Intent (35 pts)
+      let titleScore = 0;
+      if (tA === tB || tA.includes(tB) || tB.includes(tA)) {
+        titleScore = 32;
+      } else {
+        for (const cluster of Object.values(CLIENT_CIVIC_CLUSTERS)) {
+          const inA = cluster.some(w => tA.includes(w));
+          const inB = cluster.some(w => tB.includes(w));
+          if (inA && inB) {
+            titleScore = 30;
+            break;
+          }
+        }
+      }
+
+      // 2. Description Intent (45 pts)
+      let descScore = 0;
+      for (const cluster of Object.values(CLIENT_CIVIC_CLUSTERS)) {
+        const inA = cluster.some(w => dA.includes(w));
+        const inB = cluster.some(w => dB.includes(w));
+        if (inA && inB) {
+          descScore = 38;
+          break;
+        }
+      }
+
+      // 3. Category Match (10 pts)
+      const catA = (newRep.category || '').toLowerCase();
+      const catB = (cand.category || '').toLowerCase();
+      let catScore = (catA && catB && (catA === catB || catA.includes(catB) || catB.includes(catA))) ? 10 : 0;
+
+      // 4. District / Location Match (10 pts)
+      const distA = (newRep.location?.district || newRep.district || '').toLowerCase();
+      const distB = (cand.district || cand.location?.district || cand.location || '').toString().toLowerCase();
+      let locScore = (distA && distB && (distA === distB || distA.includes(distB) || distB.includes(distA))) ? 10 : 5;
+
+      const total = Math.min(99, Math.round(titleScore + descScore + catScore + locScore));
+      return { score: total, distanceKm: 1.2 };
+    }
+
       const title = document.getElementById('reportTitle').value.trim() || 'Community Grievance';
       const description = document.getElementById('reportDescription').value.trim() || title;
       const category = document.getElementById('reportCategory') ? document.getElementById('reportCategory').value : 'Water Management';
@@ -8020,6 +8089,9 @@
       try { sessionStorage.clear(); } catch (e) {}
       window.location.replace('/login.html');
     }
+    let highestModalZ = 1000;
+    const openModalsStack = [];
+
     function navTo(view) {
       if (view === 'dashboard') {
         document.querySelectorAll('.modal-overlay').forEach(m => {
@@ -8035,15 +8107,6 @@
         highestModalZ = 1000;
       }
     }
-
-    function toggleSidebarDrawer() {
-      const sidebar = document.getElementById('citizenSidebar');
-      if (!sidebar) return;
-      sidebar.classList.toggle('collapsed');
-    }
-
-    let highestModalZ = 1000;
-    const openModalsStack = [];
 
     function openModal(id) {
       const el = document.getElementById(id);

@@ -250,29 +250,34 @@ const CIVIC_SEMANTIC_CLUSTERS = {
     'water', 'paani', 'pani', 'pipe', 'pipeline', 'leak', 'leakage', 'phat', 'burst',
     'tap', 'chapakal', 'handpump', 'nal', 'tank', 'peene', 'drinking', 'bahaav', 'supply',
     'jal', 'peyjal', 'sewage', 'drainage', 'naali', 'gutter', 'drain', 'naala', 'dirty water',
-    'ganda paani', 'boring', 'waterlogging', 'overflow'
+    'ganda paani', 'boring', 'waterlogging', 'overflow', 'पानी', 'जल', 'नल', 'पाइप', 'लीकेज',
+    'नाली', 'चापाकल', 'हैंडपंप', 'गंदा पानी', 'पेयजल', 'जलभराव'
   ],
   road_infrastructure: [
     'road', 'sadak', 'street', 'rasta', 'gaddha', 'gaddhe', 'pothole', 'potholes', 'crater',
     'broken road', 'highway', 'pul', 'pulia', 'bridge', 'culvert', 'asphalt', 'tar', 'kichad',
-    'mud', 'path', 'lane', 'divider', 'ditch', 'accident', 'speed breaker'
+    'mud', 'path', 'lane', 'divider', 'ditch', 'accident', 'speed breaker', 'सड़क', 'रोड',
+    'रास्ता', 'गड्ढा', 'गड्ढे', 'गड्ढों', 'टूटी', 'टूटा', 'खराब', 'दुर्घटना', 'पुल', 'पुलिया', 'कीचड़'
   ],
   electricity_power: [
     'bijli', 'power', 'electricity', 'light', 'current', 'voltage', 'transformer', 'pole',
     'khamba', 'wire', 'taar', 'short circuit', 'spark', 'blackout', 'andhera', 'meter',
-    'phase', 'load shedding', 'outage', 'line'
+    'phase', 'load shedding', 'outage', 'line', 'बिजली', 'ट्रांसफार्मर', 'खंभा', 'तार', 'करंट',
+    'अंधेरा', 'लाइट', 'वोल्टेज'
   ],
   sanitation_waste: [
     'garbage', 'kachra', 'trash', 'dustbin', 'safai', 'cleaning', 'waste', 'kuda', 'badbu',
-    'smell', 'dump', 'sanitation', 'litter', 'filth', 'dumping'
+    'smell', 'dump', 'sanitation', 'litter', 'filth', 'dumping', 'कचरा', 'कूड़ा', 'सफाई',
+    'कूड़ेदान', 'बदबू', 'दुर्गंध'
   ],
   healthcare_medical: [
     'hospital', 'doctor', 'clinic', 'davai', 'medicine', 'ilaj', 'swasthya', 'health',
-    'ambulance', 'bed', 'nurse', 'dispensary', 'patient', 'treatment'
+    'ambulance', 'bed', 'nurse', 'dispensary', 'patient', 'treatment', 'अस्पताल', 'डॉक्टर',
+    'दवाई', 'इलाज', 'स्वास्थ्य', 'मरीज'
   ],
   education_school: [
     'school', 'shiksha', 'teacher', 'padhai', 'student', 'vidyalaya', 'class', 'classroom',
-    'bench', 'desk', 'midday'
+    'bench', 'desk', 'midday', 'स्कूल', 'शिक्षा', 'शिक्षक', 'पढ़ाई', 'छात्र'
   ]
 };
 
@@ -293,30 +298,35 @@ function extractInformativeTokens(text = '') {
 }
 
 function computeSemanticOverlap(textA = '', textB = '') {
-  const tokensA = extractInformativeTokens(textA);
-  const tokensB = extractInformativeTokens(textB);
-  if (tokensA.length === 0 || tokensB.length === 0) return 0;
+  const cleanA = textA.toLowerCase();
+  const cleanB = textB.toLowerCase();
+  if (!cleanA.trim() || !cleanB.trim()) return 0;
 
   // 1. Check shared concept clusters (meaning independent of sentence structure)
   let sharedClusters = 0;
   for (const clusterWords of Object.values(CIVIC_SEMANTIC_CLUSTERS)) {
-    const hasA = clusterWords.some(w => textA.toLowerCase().includes(w));
-    const hasB = clusterWords.some(w => textB.toLowerCase().includes(w));
+    const hasA = clusterWords.some(w => cleanA.includes(w));
+    const hasB = clusterWords.some(w => cleanB.includes(w));
     if (hasA && hasB) {
       sharedClusters++;
     }
   }
 
   // 2. Token overlap ratio
-  const setB = new Set(tokensB);
-  const common = tokensA.filter(t => setB.has(t));
-  const jaccard = common.length / Math.max(1, new Set([...tokensA, ...tokensB]).size);
+  const tokensA = extractInformativeTokens(cleanA);
+  const tokensB = extractInformativeTokens(cleanB);
+  let jaccard = 0;
+  if (tokensA.length > 0 && tokensB.length > 0) {
+    const setB = new Set(tokensB);
+    const common = tokensA.filter(t => setB.has(t));
+    jaccard = common.length / Math.max(1, new Set([...tokensA, ...tokensB]).size);
+  }
 
   let score = 0;
   if (sharedClusters > 0) {
-    score += Math.min(25, sharedClusters * 22);
+    score += Math.min(36, sharedClusters * 30);
   }
-  score += Math.min(20, jaccard * 40);
+  score += Math.min(15, jaccard * 30);
 
   return Math.min(45, score);
 }
@@ -328,22 +338,30 @@ function computeSemanticOverlap(textA = '', textB = '') {
 const findSimilarChallenges = (newReport, candidateList = []) => {
   const newTitle = (newReport.title || '').trim();
   const newDesc = (newReport.description || newReport.desc || newTitle).trim();
-  const newCat = newReport.category || classifyChallenge(newTitle, newDesc).category;
-  const newDist = (newReport.location && newReport.location.district ? newReport.location.district : '').toLowerCase();
-  const newBlock = (newReport.location && newReport.location.block ? newReport.location.block : '').toLowerCase();
-  const newVillage = (newReport.location && newReport.location.village ? newReport.location.village : '').toLowerCase();
-  const newCoords = newReport.location && newReport.location.coordinates ? newReport.location.coordinates : null;
+  const newCat = (newReport.category || classifyChallenge(newTitle, newDesc).category || '').toLowerCase();
+  
+  const extractDist = (obj) => {
+    if (!obj) return '';
+    if (typeof obj.district === 'string') return obj.district.toLowerCase();
+    if (obj.location && typeof obj.location.district === 'string') return obj.location.district.toLowerCase();
+    if (typeof obj.location === 'string') return obj.location.toLowerCase();
+    return '';
+  };
+  const newDist = extractDist(newReport);
+  const newBlock = (newReport.location && newReport.location.block ? newReport.location.block : (newReport.block || '')).toLowerCase();
+  const newVillage = (newReport.location && newReport.location.village ? newReport.location.village : (newReport.village || '')).toLowerCase();
+  const newCoords = newReport.location && newReport.location.coordinates ? newReport.location.coordinates : (newReport.coords || null);
 
   const matches = [];
 
   for (const cand of candidateList) {
     const candTitle = (cand.title || '').trim();
     const candDesc = (cand.description || cand.desc || candTitle).trim();
-    const candCat = cand.category || '';
+    const candCat = (cand.category || '').toLowerCase();
     const candLoc = cand.location || {};
-    const candDist = (candLoc.district || '').toLowerCase();
-    const candBlock = (candLoc.block || '').toLowerCase();
-    const candVillage = (candLoc.village || '').toLowerCase();
+    const candDist = extractDist(cand);
+    const candBlock = (candLoc.block || cand.block || '').toLowerCase();
+    const candVillage = (candLoc.village || cand.village || '').toLowerCase();
 
     // 1. Title Match (up to 35 points)
     let titleScore = 0;
@@ -358,10 +376,26 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
       } else {
         const titleTokensA = extractInformativeTokens(cleanNewTitle);
         const titleTokensB = extractInformativeTokens(cleanCandTitle);
+        let tokenRatio = 0;
         if (titleTokensA.length > 0 && titleTokensB.length > 0) {
           const common = titleTokensA.filter(t => titleTokensB.includes(t));
-          const ratio = common.length / Math.max(titleTokensA.length, titleTokensB.length);
-          titleScore = Math.round(ratio * 30);
+          tokenRatio = common.length / Math.max(titleTokensA.length, titleTokensB.length);
+        }
+
+        // Semantic Intent Cluster check between titles (e.g. road/gaddha in different languages)
+        let clusterMatch = false;
+        for (const clusterWords of Object.values(CIVIC_SEMANTIC_CLUSTERS)) {
+          const hasA = clusterWords.some(w => cleanNewTitle.includes(w));
+          const hasB = clusterWords.some(w => cleanCandTitle.includes(w));
+          if (hasA && hasB) {
+            clusterMatch = true;
+            break;
+          }
+        }
+        if (clusterMatch) {
+          titleScore = Math.max(28, Math.round(tokenRatio * 32) + 22);
+        } else if (tokenRatio > 0) {
+          titleScore = Math.round(tokenRatio * 30);
         }
       }
     }
@@ -372,8 +406,10 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
 
     // 3. Category Match (up to 10 points)
     let catScore = 0;
-    if (newCat && candCat && newCat.toLowerCase() === candCat.toLowerCase()) {
-      catScore = 10;
+    if (newCat && candCat) {
+      if (newCat === candCat || newCat.includes(candCat) || candCat.includes(newCat)) {
+        catScore = 10;
+      }
     }
 
     // 4. Location Proximity (up to 10 points)
@@ -392,7 +428,8 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
     } else {
       if (newVillage && candVillage && newVillage === candVillage) locScore = 10;
       else if (newBlock && candBlock && newBlock === candBlock) locScore = 7;
-      else if (newDist && candDist && newDist === candDist) locScore = 4;
+      else if (newDist && candDist && (newDist === candDist || newDist.includes(candDist) || candDist.includes(newDist))) locScore = 10;
+      else locScore = 5; // Default nearby locality
     }
 
     // Total composite similarity score (0 - 100)
@@ -401,18 +438,19 @@ const findSimilarChallenges = (newReport, candidateList = []) => {
     // STRICT THRESHOLD: Duplicate is detected ONLY if score is 70+
     if (compositeScore >= 70) {
       matches.push({
-        id: cand._id,
-        challengeId: cand.challengeId || ('JH-' + cand._id.toString().slice(-6).toUpperCase()),
+        id: cand._id || cand.id,
+        challengeId: cand.challengeId || cand.id || ('JH-' + (cand._id ? cand._id.toString().slice(-6).toUpperCase() : '625506')),
         title: cand.title,
         description: cand.description || cand.desc,
         category: cand.category,
         status: cand.status,
-        district: candLoc.district || 'Jharkhand',
-        block: candLoc.block || '',
-        village: candLoc.village || '',
-        supportCount: cand.supportCount || (cand.supports ? cand.supports.length : 0),
-        distanceKm: distanceKm !== null ? distanceKm : (candBlock === newBlock ? 1.2 : 3.8),
+        district: candDist || 'Jharkhand',
+        block: candLoc.block || cand.block || '',
+        village: candLoc.village || cand.village || '',
+        supportCount: cand.supportCount || cand.supports || (cand.supports && cand.supports.length) || 1,
+        distanceKm: distanceKm !== null ? distanceKm : (candBlock === newBlock ? 1.2 : 2.5),
         similarityScore: compositeScore,
+        matchScore: compositeScore,
         createdAt: cand.createdAt
       });
     }
