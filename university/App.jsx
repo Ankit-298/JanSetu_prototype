@@ -480,50 +480,53 @@ function TopHeader({ notifications = [], unreadCount = 0 }) {
 
         {showNotifs && (
           <div className="notifs-dropdown animate-in">
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 700, fontSize: 13, color: '#1E293B' }}>Recent Notifications</span>
+            <div className="notifs-dropdown-header">
+              <span className="notifs-dropdown-title">
+                Recent Notifications
+                {unreadCount > 0 && <span className="notifs-dropdown-badge">{unreadCount} new</span>}
+              </span>
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllReadInHeader}
-                  style={{ background: 'none', border: 'none', color: '#2563EB', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                  className="notifs-dropdown-markall"
                 >
                   Mark all read
                 </button>
               )}
             </div>
-            {notifications.length === 0 ? (
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94A3B8', fontSize: 12 }}>
-                No notifications right now
-              </div>
-            ) : (
-              notifications.slice(0, 4).map(n => (
-                <NavLink
-                  to="/notifications"
-                  key={n._id || n.id}
-                  onClick={() => setShowNotifs(false)}
-                  style={{
-                    display: 'flex',
-                    gap: 10,
-                    padding: '10px 16px',
-                    borderBottom: '1px solid #F8FAFC',
-                    background: n.unread ? '#F0FDF4' : 'transparent',
-                    alignItems: 'flex-start',
-                    textDecoration: 'none'
-                  }}
-                >
-                  {n.unread && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', marginTop: 4, flexShrink: 0 }} />}
-                  <div style={{ paddingLeft: n.unread ? 0 : 15, flex: 1 }}>
-                    <p style={{ fontSize: 12, fontWeight: n.unread ? 600 : 500, color: '#334155', lineHeight: 1.4 }}>{n.title || n.text}</p>
-                    <p style={{ fontSize: 10, color: '#94A3B8', marginTop: 3 }}>{n.time || (n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Recent')}</p>
-                  </div>
-                </NavLink>
-              ))
-            )}
-            <div style={{ padding: '10px 16px', borderTop: '1px solid #F1F5F9', textAlign: 'center', background: '#F8FAFC' }}>
+            <div className="notifs-dropdown-list">
+              {notifications.length === 0 ? (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94A3B8', fontSize: 13, background: '#FFFFFF' }}>
+                  <Bell style={{ width: 28, height: 28, color: '#CBD5E1', margin: '0 auto 8px', display: 'block' }} />
+                  No notifications right now
+                </div>
+              ) : (
+                notifications.slice(0, 5).map(n => (
+                  <NavLink
+                    to="/notifications"
+                    key={n._id || n.id}
+                    onClick={() => setShowNotifs(false)}
+                    className={`notifs-dropdown-item ${n.unread ? 'unread' : ''}`}
+                  >
+                    {n.unread ? (
+                      <div className="notifs-dropdown-dot" />
+                    ) : (
+                      <div style={{ width: 8, height: 8, flexShrink: 0 }} />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p className="notifs-dropdown-item-title">{n.title || n.text}</p>
+                      <p className="notifs-dropdown-item-time">
+                        {n.time || (n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Recent')}
+                      </p>
+                    </div>
+                  </NavLink>
+                ))
+              )}
+            </div>
+            <div className="notifs-dropdown-footer">
               <NavLink
                 to="/notifications"
                 onClick={() => setShowNotifs(false)}
-                style={{ fontSize: 12, color: '#2563EB', fontWeight: 700, textDecoration: 'none' }}
               >
                 Open Notifications Page →
               </NavLink>

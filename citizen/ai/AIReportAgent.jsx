@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { speakText, stopSpeaking } from './audioUtils';
+import { speakText, stopSpeaking, prefetchSpeech, prewarmAudio, getAudioVolume } from './audioUtils';
 import './voiceAgent.css';
 
 /**
@@ -24,6 +24,7 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
   // Real-time voice state: 'speaking' | 'listening' | 'processing' | 'muted'
   const [voiceStatus, setVoiceStatus] = useState('speaking');
+  const [liveVolume, setLiveVolume] = useState(0);
 
   // Virtual White Dot Cursor State
   const [cursorVisible, setCursorVisible] = useState(false);
@@ -35,6 +36,7 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
   const recognitionRef = useRef(null);
   const phaseRef = useRef('intro_lang');
   const isMutedRef = useRef(false);
+  const speechDebounceRef = useRef(null);
 
   // Keep phaseRef in sync
   useEffect(() => {
@@ -44,6 +46,24 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
   useEffect(() => {
     isMutedRef.current = isMuted;
   }, [isMuted]);
+
+  // Live Audio-Waveform Sync with Aditya's voice beats
+  useEffect(() => {
+    let animId;
+    if (isCallActive && voiceStatus === 'speaking') {
+      const loop = () => {
+        const vol = getAudioVolume();
+        setLiveVolume(vol);
+        animId = requestAnimationFrame(loop);
+      };
+      animId = requestAnimationFrame(loop);
+    } else {
+      setLiveVolume(0);
+    }
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [isCallActive, voiceStatus]);
 
   // Sync language with top navbar language switcher
   useEffect(() => {
@@ -323,8 +343,18 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
           setVoiceStatus('processing');
         }
 
+        if (speechDebounceRef.current) {
+          clearTimeout(speechDebounceRef.current);
+        }
+
         if (lastResult.isFinal) {
-          handleUserUtterance(transcript);
+          // Dynamic conversational pause: 650ms for description/category to allow citizen to think/breathe, 300ms for short choices
+          const debounceMs = (phaseRef.current === 'driving_desc' || phaseRef.current === 'driving_category') ? 650 : 300;
+          speechDebounceRef.current = setTimeout(() => {
+            if (!isSpeakingRef.current) {
+              handleUserUtterance(transcript);
+            }
+          }, debounceMs);
         }
       };
 
@@ -339,6 +369,21 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     } catch (e) {
       console.warn('[VoiceAgent] Speech recognition error:', e);
     }
+  };
+
+  // Helper to reliably transition between modal steps
+  const jumpToStep = (stepNum, onComplete) => {
+    if (typeof window.goToStep === 'function') {
+      try { window.goToStep(stepNum); } catch (e) {}
+    } else {
+      [1, 2, 3, 4, 5].forEach(i => {
+        const el = document.getElementById('stepSection' + i);
+        const dot = document.getElementById('dotStep' + i);
+        if (el) el.style.display = i === stepNum ? 'block' : 'none';
+        if (dot) dot.className = 'step-dot' + (i === stepNum ? ' active' : i < stepNum ? ' done' : '');
+      });
+    }
+    if (onComplete) setTimeout(onComplete, 220);
   };
 
   // Helper to transition to Step 5 (AI Verification & Duplicate Check)
@@ -397,6 +442,237 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
         animateCursorToAndClick('#actionCardReport', () => {
           handleReportProblemAction();
         }, 300);
+      }
+      return;
+    }
+
+    // =========================================================================
+    // GLOBAL AGENT INTENT DISPATCHER: "JO BOLE WO KARE AND CLICK KARE"
+    // =========================================================================
+
+    // A. User says: "back piche karo mera description sahi nhi hai", "description galat hai", "description badlo", etc.
+    const isDescCorrection = /description.*(sahi|galat|change|badal|edit|theek|dobara|naya|nhi|nahi)|(sahi|galat|theek|nhi|nahi).*description|mera description|description sahi|problem.*(galat|badal|change)|samasya.*(galat|badal|change)|dobara.*description|edit.*description|wrong.*description/i.test(t);
+
+    if (isDescCorrection) {
+      console.log('[VoiceAgent] Handling Description Correction Command');
+      // If modal is on step 5, click Edit button
+      if (current === 'driving_check') {
+        const editBtn = document.querySelector('#stepSection5 .btn-modal-secondary') || document.querySelector('button[data-i18n="btn_edit"]');
+        animateCursorToAndClick(editBtn, () => {
+          jumpToStep(2, () => {
+            const descInput = document.getElementById('reportDescription');
+            animateCursorToAndClick(descInput, () => {
+              if (descInput) {
+                descInput.focus();
+                descInput.select();
+              }
+              setPhase('driving_desc');
+              speak(lang === 'en'
+                ? 'No problem! We are back on the description. Please tell me your problem again in detail.'
+                : 'Koi baat nahi! Hum description par wapas aa gaye hain. Kripya apni samasya dobara vistaar se batayein.');
+            }, 300);
+          });
+        }, 350);
+        return;
+      }
+
+      // If modal is on Step 3 or 4, click Back button to Step 2
+      if (current === 'driving_photo' || current === 'driving_video' || current === 'driving_loc') {
+        const backBtn = document.querySelector(`#stepSection${current === 'driving_loc' ? '3' : '4'} .btn-modal-secondary`);
+        animateCursorToAndClick(backBtn || '#reportDescription', () => {
+          jumpToStep(2, () => {
+            const descInput = document.getElementById('reportDescription');
+            animateCursorToAndClick(descInput, () => {
+              if (descInput) {
+                descInput.focus();
+                descInput.select();
+              }
+              setPhase('driving_desc');
+              speak(lang === 'en'
+                ? 'Alright, back on problem description. What would you like to write?'
+                : 'Theek hai, hum description par wapas aa gaye hain. Kripya batayein kya likhna hai.');
+            }, 300);
+          });
+        }, 300);
+        return;
+      }
+
+      // If already on Step 2 (driving_priority or driving_desc)
+      const descInput = document.getElementById('reportDescription');
+      animateCursorToAndClick(descInput, () => {
+        if (descInput) {
+          descInput.focus();
+          descInput.select();
+        }
+        setPhase('driving_desc');
+        speak(lang === 'en'
+          ? 'Understood. Please describe your problem again in detail.'
+          : 'Samajh gaya. Kripya apni samasya dobara vistaar se batayein.');
+      }, 300);
+      return;
+    }
+
+    // B. User says: "back karo", "piche jao", "wapas chalo", "previous step"
+    const isBackCommand = /^(back|piche|peechhe|peeche|wapas|previous|go back)\b|back (karo|jao|chalo|le lo|kardo)|piche (karo|jao|lo|kardo|chalo)|peeche (karo|jao|lo|kardo|chalo)|peechhe (karo|jao|lo|kardo|chalo)|wapas (karo|jao|chalo)|ek step piche|pichle (step|kadam)/i.test(t);
+
+    if (isBackCommand) {
+      console.log(`[VoiceAgent] Handling Back Command at phase: ${current}`);
+
+      // From Step 5 -> Back to Step 2 (Edit Details)
+      if (current === 'driving_check') {
+        const editBtn = document.querySelector('#stepSection5 .btn-modal-secondary') || document.querySelector('button[data-i18n="btn_edit"]');
+        animateCursorToAndClick(editBtn, () => {
+          jumpToStep(2, () => {
+            setPhase('driving_desc');
+            speak(lang === 'en'
+              ? 'Alright, we have moved back. You can edit your problem details.'
+              : 'Theek hai, hum pichle kadam par wapas aa gaye hain. Aap details badal sakte hain.');
+          });
+        }, 350);
+        return;
+      }
+
+      // From Step 4 (Video) -> Back to Photo tile
+      if (current === 'driving_video') {
+        const photoTile = document.querySelector('label.media-btn-tile');
+        animateCursorToAndClick(photoTile, () => {
+          setPhase('driving_photo');
+          speak(lang === 'en'
+            ? 'Alright, back on photo upload. Do you have a photo to attach?'
+            : 'Theek hai, hum photo wale kadam par wapas aa gaye hain. Kya aap photo jodna chahte hain?');
+        }, 300);
+        return;
+      }
+
+      // From Step 4 (Photo) -> Back to Step 3 (Location)
+      if (current === 'driving_photo') {
+        const backBtn = document.querySelector('#stepSection4 .btn-modal-secondary');
+        animateCursorToAndClick(backBtn, () => {
+          jumpToStep(3, () => {
+            setPhase('driving_loc');
+            speak(lang === 'en'
+              ? 'Alright, back on the location step.'
+              : 'Theek hai, hum location wale kadam par wapas aa gaye hain.');
+          });
+        }, 350);
+        return;
+      }
+
+      // From Step 3 (Location) -> Back to Step 2 (Problem Details)
+      if (current === 'driving_loc') {
+        const backBtn = document.querySelector('#stepSection3 .btn-modal-secondary');
+        animateCursorToAndClick(backBtn, () => {
+          jumpToStep(2, () => {
+            setPhase('driving_desc');
+            const descInput = document.getElementById('reportDescription');
+            if (descInput) descInput.focus();
+            speak(lang === 'en'
+              ? 'Alright, back to problem details. You can state your problem again.'
+              : 'Theek hai, hum description par wapas aa gaye hain. Aap apni samasya dobara bata sakte hain.');
+          });
+        }, 350);
+        return;
+      }
+
+      // From Step 2 (Priority) -> Back to Description
+      if (current === 'driving_priority') {
+        setPhase('driving_desc');
+        const descInput = document.getElementById('reportDescription');
+        animateCursorToAndClick(descInput, () => {
+          if (descInput) descInput.focus();
+          speak(lang === 'en'
+            ? 'Alright, back to description. Please speak your problem again.'
+            : 'Theek hai, hum description par wapas aa gaye hain. Kripya batayein kya likhna hai.');
+        }, 300);
+        return;
+      }
+
+      // From Step 2 (Description) -> Back to Step 1 (Category Selection)
+      if (current === 'driving_desc') {
+        const backBtn = document.querySelector('#stepSection2 .btn-modal-secondary');
+        animateCursorToAndClick(backBtn, () => {
+          jumpToStep(1, () => {
+            setPhase('driving_category');
+            speak(lang === 'en'
+              ? 'Alright, back to category selection. Which category does your issue belong to?'
+              : 'Theek hai, hum category chunne par wapas aa gaye hain. Aap nayi category chun sakte hain.');
+          });
+        }, 350);
+        return;
+      }
+
+      // If already on Step 1 (Category)
+      if (current === 'driving_category') {
+        speak(lang === 'en'
+          ? 'You are on the first step. Please select your category — road, water, electricity, or sanitation.'
+          : 'Aap shuruati kadam par hi hain. Kripya apni samasya ki category batayein — jaise sadak, bijli, paani, ya safai.');
+        return;
+      }
+    }
+
+    // C. User says: "category badlo", "vibhag change karo", "category sahi nahi hai"
+    const isCategoryChange = /category.*(badlo|change|galat|theek|dobara|badalna|chuno)|vibhag.*(badlo|change|galat)|nayi category/i.test(t);
+    if (isCategoryChange) {
+      console.log('[VoiceAgent] Handling Category Change Command');
+      jumpToStep(1, () => {
+        setPhase('driving_category');
+        const chips = document.getElementById('categoryChipsContainer');
+        animateCursorToAndClick(chips, () => {
+          speak(lang === 'en'
+            ? 'Alright, back to category selection. Please state your category — road, electricity, water, or sanitation?'
+            : 'Theek hai, hum category chunne par wapas aa gaye hain. Kripya batayein — sadak, bijli, paani, ya safai?');
+        }, 300);
+      });
+      return;
+    }
+
+    // D. User says: "priority badal do", "urgent karo", "high karo", "normal karo"
+    const isDirectPriority = /priority (change|badlo|badalna|set)|(urgent|turant|emergency) (kar do|kardo|karo|rakho)|(high|gambhir) (kar do|kardo|karo|rakho)|(normal|medium) (kar do|kardo|karo|rakho)/i.test(t);
+    if (isDirectPriority) {
+      let prioVal = 'high';
+      if (/urgent|turant|emergency/i.test(t)) prioVal = 'urgent';
+      else if (/normal|medium|kam/i.test(t)) prioVal = 'medium';
+
+      const prioRadio = document.querySelector(`input[name="priorityChoice"][value="${prioVal}"]`);
+      const prioTarget = prioRadio ? (prioRadio.parentElement || prioRadio) : null;
+      if (prioTarget) {
+        animateCursorToAndClick(prioTarget, () => {
+          if (prioRadio) prioRadio.checked = true;
+          const label = prioVal === 'medium' ? 'Normal' : prioVal === 'urgent' ? 'Urgent' : 'High';
+          speak(lang === 'en'
+            ? `Alright, priority set to ${label}.`
+            : `Theek hai, maine priority ${label} set kar di hai.`);
+        }, 300);
+      }
+      return;
+    }
+
+    // E. User says: "cancel karo", "band karo", "report band karo"
+    const isCancelCommand = /cancel (karo|kardo|kar do)|report (band|close|cancel)|band (karo|kardo|kar do)|nahi karni report/i.test(t);
+    if (isCancelCommand) {
+      const closeBtn = document.querySelector('#reportModal .modal-close-btn');
+      if (closeBtn) {
+        animateCursorToAndClick(closeBtn, () => {
+          const modal = document.getElementById('reportModal');
+          if (modal) {
+            modal.style.display = 'none';
+            modal.classList.remove('active');
+          }
+          speak(lang === 'en'
+            ? 'Okay, I have cancelled and closed this report.'
+            : 'Theek hai, maine ye report cancel karke band kar di hai.');
+          finishCallGracefully();
+        }, 300);
+      } else {
+        const modal = document.getElementById('reportModal');
+        if (modal) {
+          modal.style.display = 'none';
+          modal.classList.remove('active');
+        }
+        speak(lang === 'en'
+          ? 'Okay, I have cancelled and closed this report.'
+          : 'Theek hai, maine report band kar di hai.');
+        finishCallGracefully();
       }
       return;
     }
@@ -470,15 +746,26 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
         cleanDesc = `${text} - विद्युत आपूर्ति बाधित होने से क्षेत्र में समस्या हो रही है।`;
       }
 
-      if (descEl) descEl.value = cleanDesc;
-      if (titleEl) titleEl.value = cleanTitle;
+      if (descEl) {
+        animateCursorToAndClick(descEl, () => {
+          descEl.value = cleanDesc;
+          if (titleEl) titleEl.value = cleanTitle;
 
-      setPhase('driving_priority');
-      setTimeout(() => {
-        speak(lang === 'en'
-          ? 'What is the urgency of this problem — Urgent, High, or Normal?'
-          : 'Is samasya ki priority kya hai — Urgent, High ya Normal?');
-      }, 400);
+          setPhase('driving_priority');
+          setTimeout(() => {
+            speak(lang === 'en'
+              ? 'What is the urgency of this problem — Urgent, High, or Normal?'
+              : 'Maine aapki samasya likh li hai. Iski priority kya hai — Urgent, High ya Normal?');
+          }, 400);
+        }, 250);
+      } else {
+        setPhase('driving_priority');
+        setTimeout(() => {
+          speak(lang === 'en'
+            ? 'What is the urgency of this problem — Urgent, High, or Normal?'
+            : 'Is samasya ki priority kya hai — Urgent, High ya Normal?');
+        }, 400);
+      }
       return;
     }
 
@@ -786,6 +1073,14 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     setCallDuration(0);
     setCursorVisible(false);
 
+    // Pre-warm audio subsystem and pre-fetch initial dialogues for 0ms latency
+    prewarmAudio();
+    prefetchSpeech('Aapko kya samasya aa rahi hai? Batayiye, main sun raha hoon.', 'hi');
+    prefetchSpeech('Please describe your problem in detail. What is happening and where?', 'en');
+    prefetchSpeech('Bahut accha! Batayiye, main aapki kya madad kar sakta hoon? Aap nayi samasya report kar sakte hain ya purani shikayat ki sthiti jaanch sakte hain.', 'hi');
+    prefetchSpeech('Theek hai, maine category chun li hai.', 'hi');
+    prefetchSpeech('Aap apni samasya vistaar se batayein ki kya dikkat aa rahi hai?', 'hi');
+
     timerRef.current = setInterval(() => {
       setCallDuration(p => p + 1);
     }, 1000);
@@ -793,12 +1088,13 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     // Connect to WebSocket relay
     connectWebSocket();
 
-    speak('Hi! Main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — Hindi ya English?');
+    speak('Hi! Main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — English ya Hinglish?');
     initSpeechRecognition();
 
     return () => {
       stopSpeaking();
       if (timerRef.current) clearInterval(timerRef.current);
+      if (speechDebounceRef.current) clearTimeout(speechDebounceRef.current);
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch (e) {}
       }
@@ -817,10 +1113,10 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     return (
       <div className={`floating-dock-status-pill ${currentStatus}`}>
         <div className={`status-wave-animation ${currentStatus}`}>
-          <span className="wave-line w1" />
-          <span className="wave-line w2" />
-          <span className="wave-line w3" />
-          <span className="wave-line w4" />
+          <span className="wave-line w1" style={{ transform: liveVolume > 0 ? `scaleY(${0.5 + liveVolume * 2.5})` : undefined }} />
+          <span className="wave-line w2" style={{ transform: liveVolume > 0 ? `scaleY(${0.7 + liveVolume * 3.2})` : undefined }} />
+          <span className="wave-line w3" style={{ transform: liveVolume > 0 ? `scaleY(${0.6 + liveVolume * 2.8})` : undefined }} />
+          <span className="wave-line w4" style={{ transform: liveVolume > 0 ? `scaleY(${0.4 + liveVolume * 2.0})` : undefined }} />
         </div>
         <div className="status-label-box">
           <span className="status-badge-text">

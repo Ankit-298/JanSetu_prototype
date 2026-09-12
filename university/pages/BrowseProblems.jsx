@@ -1733,16 +1733,30 @@ export default function BrowseProblems() {
   const [detailModal, setDetailModal] = useState(null);
   const [autoOpenChat, setAutoOpenChat] = useState(false);
   const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch problems from API, fallback to mock data
+  // Fetch problems from API, keeping circular loader active until backend completes
   useEffect(() => {
     if (typeof window !== 'undefined' && typeof window.showJanSetuCivicLoader === 'function') {
-      window.showJanSetuCivicLoader('विश्वविद्यालय नवाचार प्रकोष्ठ: जनसमस्याएं एवं विश्लेषण डेटा लोड हो रहा है...', 1300);
+      window.showJanSetuCivicLoader('University Innovation Cell: Loading Civic Challenges & Analytics Data...', { autoDismiss: false });
     }
+    setLoading(true);
+
     fetch('/api/problems')
       .then(res => res.json())
-      .then(data => { if (Array.isArray(data) && data.length > 0) setProblems(data); })
-      .catch(() => {});
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+        if (list.length > 0) setProblems(list);
+      })
+      .catch((err) => {
+        console.error('Error fetching university problems:', err);
+      })
+      .finally(() => {
+        setLoading(false);
+        if (typeof window !== 'undefined' && typeof window.hideJanSetuCivicLoader === 'function') {
+          window.hideJanSetuCivicLoader();
+        }
+      });
   }, []);
 
   // Check URL parameters for ?problemId=:id or ?openChat=:problemId
@@ -2057,7 +2071,7 @@ export default function BrowseProblems() {
         ))}
       </div>
 
-      {filtered.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <div className="bp-empty">
           <Search style={{ width: 28, height: 28, color: '#CBD5E1' }} />
           <p style={{ fontWeight: 600, color: '#475569', marginTop: 12 }}>No problems match your filters</p>

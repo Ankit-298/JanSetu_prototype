@@ -443,7 +443,7 @@ function enrichProblemDoc(p) {
   return obj;
 }
 
-router.get('/problems', cacheService.middleware('problems:list', 6), async (req, res) => {
+router.get('/problems', cacheService.middleware('problems:list', 60), async (req, res) => {
   try {
     const { category, impact, discipline, search } = req.query;
 
@@ -754,7 +754,7 @@ router.post('/projects', async (req, res) => {
   }
 });
 
-router.get('/projects', cacheService.middleware('problems:projects', 6), async (req, res) => {
+router.get('/projects', cacheService.middleware('problems:projects', 60), async (req, res) => {
   try {
     const { status } = req.query;
     let query = {};

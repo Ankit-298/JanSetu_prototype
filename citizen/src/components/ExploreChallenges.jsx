@@ -128,8 +128,14 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
   // Fetch feed
   const fetchFeed = useCallback(async (cursor = null, isFresh = false) => {
     try {
-      if (isFresh) setLoading(true);
-      else setLoadingMore(true);
+      if (isFresh) {
+        setLoading(true);
+        if (typeof window !== 'undefined' && typeof window.showJanSetuCivicLoader === 'function') {
+          window.showJanSetuCivicLoader('Loading Explore Challenges...', { autoDismiss: false });
+        }
+      } else {
+        setLoadingMore(true);
+      }
 
       const params = new URLSearchParams();
       params.append('limit', '8');
@@ -181,6 +187,9 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
     } finally {
       setLoading(false);
       setLoadingMore(false);
+      if (typeof window !== 'undefined' && typeof window.hideJanSetuCivicLoader === 'function') {
+        window.hideJanSetuCivicLoader();
+      }
     }
   }, [locationScope, selectedDistrict, selectedCategory, sortBy, userLocation, nearbyRadius]);
 
@@ -471,10 +480,71 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
       {/* ── Social Feed Post Cards ── */}
       <div className="explore-feed-list">
         {loading && challenges.length === 0 ? (
-          <>
-            <SkeletonCard />
-            <SkeletonCard />
-          </>
+          <div className="explore-feed-loading-container" style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '50px 24px',
+            background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+            borderRadius: '20px',
+            border: '1.5px solid #E2E8F0',
+            boxShadow: '0 8px 30px rgba(0, 45, 98, 0.06)',
+            textAlign: 'center',
+            margin: '16px 0'
+          }}>
+            <div style={{
+              position: 'relative',
+              width: '76px',
+              height: '76px',
+              marginBottom: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <div style={{
+                position: 'absolute',
+                width: '100%',
+                height: '100%',
+                borderRadius: '50%',
+                border: '2.5px dashed rgba(0, 45, 98, 0.25)',
+                animation: 'civicChakraSpin 12s linear infinite'
+              }}></div>
+              <div style={{
+                position: 'absolute',
+                width: '68px',
+                height: '68px',
+                borderRadius: '50%',
+                border: '4px solid transparent',
+                borderTopColor: '#FF9933',
+                borderRightColor: '#002D62',
+                borderBottomColor: '#138808',
+                borderLeftColor: 'transparent',
+                animation: 'civicCircleSpin 1s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite'
+              }}></div>
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '50%',
+                background: '#002D62',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 14px rgba(0, 45, 98, 0.35)',
+                color: '#ffffff',
+                fontWeight: '900',
+                fontSize: '18px'
+              }}>
+                🏛️
+              </div>
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', marginBottom: '6px' }}>
+              Loading Civic Challenges...
+            </div>
+            <div style={{ fontSize: '13px', color: '#64748B', maxWidth: '340px', lineHeight: '1.5' }}>
+              Connecting to Jharkhand GIS database & community grievance feed...
+            </div>
+          </div>
         ) : challenges.length === 0 ? (
           <div className="empty-feed-state">
             <span style={{ fontSize: '40px' }}>🔍</span>

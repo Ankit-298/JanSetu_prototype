@@ -1549,7 +1549,8 @@ export default function HomePage() {
     }).catch(() => {});
 
     fetch('/api/problems').then(r => r.json()).then(data => {
-      if (Array.isArray(data)) setProblems(data.slice(0, 3));
+      const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+      if (list.length > 0) setProblems(list.slice(0, 3));
     }).catch(() => {});
 
     fetch('/api/projects?status=In Progress').then(r => r.json()).then(data => {

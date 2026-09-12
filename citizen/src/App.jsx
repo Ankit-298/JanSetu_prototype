@@ -11,8 +11,18 @@ function App() {
 
   useEffect(() => {
     window.openAIVoiceReport = () => setIsVoiceAgentOpen(true);
-    window.openExplorePage = () => setActivePage('explore');
-    window.openExploreModal = () => setActivePage('explore');
+    window.openExplorePage = () => {
+      if (typeof window !== 'undefined' && typeof window.showJanSetuCivicLoader === 'function') {
+        window.showJanSetuCivicLoader('Loading Explore Challenges...', { autoDismiss: false });
+      }
+      setActivePage('explore');
+    };
+    window.openExploreModal = () => {
+      if (typeof window !== 'undefined' && typeof window.showJanSetuCivicLoader === 'function') {
+        window.showJanSetuCivicLoader('Loading Explore Challenges...', { autoDismiss: false });
+      }
+      setActivePage('explore');
+    };
     window.openDashboardPage = () => setActivePage('dashboard');
     window.toggleSidebarDrawer = () => {
       const sb = document.getElementById('citizenSidebar');
@@ -33,6 +43,9 @@ function App() {
 
     // Load scripts with cache buster so code fixes are picked up immediately across LAN
     const cb = `?v=${Date.now()}`;
+    if (!window.showJanSetuCivicLoader) {
+      loadScript('/others/js/jansetu-civic-loader.js' + cb);
+    }
     loadScript('https://checkout.razorpay.com/v1/checkout.js');
     setTimeout(() => {
       loadScript('/citizen/translations.js' + cb);
@@ -155,6 +168,9 @@ function App() {
         <button
           className={`nav-item ${activePage === 'explore' ? 'active' : ''}`}
           onClick={() => {
+            if (activePage !== 'explore' && typeof window !== 'undefined' && typeof window.showJanSetuCivicLoader === 'function') {
+              window.showJanSetuCivicLoader('Loading Explore Challenges...', { autoDismiss: false });
+            }
             setActivePage('explore');
             const sb = document.getElementById('citizenSidebar');
             if (sb) sb.classList.remove('mobile-open');

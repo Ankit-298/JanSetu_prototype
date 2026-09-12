@@ -127,7 +127,6 @@ setupVoiceAgentRoutes(app);
 
 app.use('/api/auth', require('./others/routes/auth'));
 app.use('/api/challenges', require('./others/routes/challenges'));
-app.use('/api/problems', require('./others/routes/challenges'));
 app.use('/api/notifications', require('./others/routes/notifications'));
 app.use('/api/analytics', require('./others/routes/analytics'));
 app.use('/api/admin', require('./others/routes/admin'));

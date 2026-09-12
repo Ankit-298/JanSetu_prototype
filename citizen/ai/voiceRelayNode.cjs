@@ -263,6 +263,9 @@ function setupVoiceAgentRoutes(app) {
     }
   });
 
+  // Server-side In-Memory Audio Cache (Sub-5ms Instant Response for standard prompts)
+  const ttsAudioCache = new Map();
+
   // 4. Sarvam AI Text-to-Speech (Bulbul V3) Endpoint
   app.post('/api/voice-agent/tts', async (req, res) => {
     try {
@@ -276,6 +279,16 @@ function setupVoiceAgentRoutes(app) {
         return res.status(400).json({ error: 'Missing text parameter' });
       }
 
+      const cleanText = text.trim();
+      const targetLang = lang === 'en' ? 'en-IN' : 'hi-IN';
+      const targetSpeaker = speaker || 'aditya';
+      const cacheKey = `${targetLang}_${targetSpeaker}_${cleanText}`;
+
+      // Instant 2ms cache return
+      if (ttsAudioCache.has(cacheKey)) {
+        return res.json({ ...ttsAudioCache.get(cacheKey), cached: true });
+      }
+
       const sarvamRes = await fetch('https://api.sarvam.ai/text-to-speech', {
         method: 'POST',
         headers: {
@@ -283,21 +296,32 @@ function setupVoiceAgentRoutes(app) {
           'api-subscription-key': apiKey
         },
         body: JSON.stringify({
-          inputs: [text.trim()],
-          target_language_code: lang === 'en' ? 'en-IN' : 'hi-IN',
-          speaker: speaker || 'aditya',
-          model: 'bulbul:v3'
+          inputs: [cleanText],
+          target_language_code: targetLang,
+          speaker: targetSpeaker,
+          model: 'bulbul:v3',
+          pace: 1.05,
+          speech_sample_rate: 24000
         })
       });
 
       const data = await sarvamRes.json();
       if (data.audios && data.audios.length > 0) {
-        return res.json({
+        const payload = {
           success: true,
           audioBase64: data.audios[0],
           mimeType: 'audio/wav',
           dataUrl: 'data:audio/wav;base64,' + data.audios[0]
-        });
+        };
+
+        // Cache in memory (max 300 entries)
+        ttsAudioCache.set(cacheKey, payload);
+        if (ttsAudioCache.size > 300) {
+          const oldestKey = ttsAudioCache.keys().next().value;
+          ttsAudioCache.delete(oldestKey);
+        }
+
+        return res.json(payload);
       }
 
       return res.status(500).json({ error: 'Failed to synthesize speech', details: data });

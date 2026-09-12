@@ -197,8 +197,9 @@ export default function TeamMentorship() {
   const navigate = useNavigate();
 
   // Multi-project & team states
-  const [teams, setTeams] = useState(defaultFallbackTeams);
-  const [selectedTeamId, setSelectedTeamId] = useState(defaultFallbackTeams[0]._id);
+  const [teams, setTeams] = useState([]);
+  const [selectedTeamId, setSelectedTeamId] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('single'); // 'single' (focused project team) or 'all' (all teams directory)
 
   // Filters within active team
@@ -207,7 +208,7 @@ export default function TeamMentorship() {
   const [projectQuery, setProjectQuery] = useState('');
 
   // Mentors state & filters
-  const [availableMentors, setAvailableMentors] = useState(defaultMentors);
+  const [availableMentors, setAvailableMentors] = useState([]);
   const [mentorDomain, setMentorDomain] = useState('All Domains');
   const [mentorOrg, setMentorOrg] = useState('All Organizations');
   const [mentorSearch, setMentorSearch] = useState('');
@@ -316,7 +317,8 @@ export default function TeamMentorship() {
     fetch('/api/problems')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) setAvailableProblems(data);
+        const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+        if (list.length > 0) setAvailableProblems(list);
       })
       .catch(() => {});
 
@@ -329,26 +331,81 @@ export default function TeamMentorship() {
   };
 
   useEffect(() => {
-    fetchTeams();
-    fetchProblemsAndProjects();
+    if (typeof window !== 'undefined' && typeof window.showJanSetuCivicLoader === 'function') {
+      window.showJanSetuCivicLoader('University Innovation Cell: Loading Teams & Mentorship Data...', { autoDismiss: false });
+    }
+    setLoading(true);
 
-    fetch('/api/mentors')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setAvailableMentors(data);
+    const loadAll = async () => {
+      try {
+        const [teamsRes, mentorsRes, probRes, projRes] = await Promise.all([
+          fetch('/api/teams').then(r => r.json()).catch(() => []),
+          fetch('/api/mentors').then(r => r.json()).catch(() => []),
+          fetch('/api/problems').then(r => r.json()).catch(() => []),
+          fetch('/api/projects').then(r => r.json()).catch(() => [])
+        ]);
+
+        if (Array.isArray(teamsRes) && teamsRes.length > 0) {
+          const sorted = [...teamsRes].sort((a, b) => getTeamTimestamp(b) - getTeamTimestamp(a));
+          setTeams(sorted);
+          const firstActive = sorted.find(t => !isTeamDeployed(t)) || sorted[0];
+          setSelectedTeamId(firstActive?._id || firstActive?.id);
+        } else {
+          setTeams([]);
         }
-      })
-      .catch(() => {});
+
+        if (Array.isArray(mentorsRes) && mentorsRes.length > 0) {
+          setAvailableMentors(mentorsRes);
+        }
+
+        const probList = Array.isArray(probRes) ? probRes : (probRes && Array.isArray(probRes.data) ? probRes.data : []);
+        if (probList.length > 0) setAvailableProblems(probList);
+
+        if (Array.isArray(projRes) && projRes.length > 0) {
+          setAvailableProjects(projRes);
+        }
+      } catch (err) {
+        console.error('Error loading team mentorship data:', err);
+      } finally {
+        setLoading(false);
+        if (typeof window !== 'undefined' && typeof window.hideJanSetuCivicLoader === 'function') {
+          window.hideJanSetuCivicLoader();
+        }
+      }
+    };
+
+    loadAll();
   }, []);
 
   // Determine current active team (defaulting to latest active non-deployed team)
-  const currentTeam = teams.find(t => (t._id || t.id) === selectedTeamId) || teams.find(t => !isTeamDeployed(t)) || teams[0] || defaultFallbackTeams[0];
+  const currentTeam = teams.find(t => (t._id || t.id) === selectedTeamId) || teams.find(t => !isTeamDeployed(t)) || teams[0] || null;
 
   // Team Chat State
   const [showTeamChat, setShowTeamChat] = useState(false);
   const [teamChatMessages, setTeamChatMessages] = useState({});
   const [chatInputText, setChatInputText] = useState('');
+
+  // 1. Loading state (Circular civic animation with clean spinner - rendered before any computations)
+  if (loading) {
+    return (
+      <div className="tm-container animate-in" style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '70px 20px' }}>
+        <div style={{ position: 'relative', width: 92, height: 92, marginBottom: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: '50%', border: '2px dashed rgba(0, 45, 98, 0.25)', animation: 'civicChakraSpin 12s linear infinite' }} />
+          <div style={{ position: 'absolute', width: 84, height: 84, borderRadius: '50%', border: '4px solid transparent', borderTopColor: '#FF9933', borderRightColor: '#002D62', borderBottomColor: '#138808', animation: 'civicCircleSpin 1s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite', filter: 'drop-shadow(0 0 10px rgba(255, 153, 51, 0.35))' }} />
+          <div style={{ width: 50, height: 50, borderRadius: '50%', background: '#002D62', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,45,98,0.45)' }}>
+            <Users style={{ width: 26, height: 26, color: '#FFF' }} />
+          </div>
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#EFF6FF', border: '1.5px solid #BFDBFE', padding: '6px 18px', borderRadius: 20, marginBottom: 12 }}>
+          <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid #BFDBFE', borderTopColor: '#2563EB', animation: 'civicCircleSpin 0.75s linear infinite' }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: '#1E40AF' }}>Loading Teams & Mentors...</span>
+        </div>
+        <p style={{ fontSize: 13, color: '#64748B', margin: 0, fontWeight: 500 }}>
+          Loading live teams, civic challenges, and domain mentors from database...
+        </p>
+      </div>
+    );
+  }
 
   // Helper to get chat for a team
   const getTeamChatList = (team) => {
@@ -390,10 +447,10 @@ export default function TeamMentorship() {
     ];
   };
 
-  const currentTeamChatList = getTeamChatList(currentTeam);
+  const currentTeamChatList = currentTeam ? getTeamChatList(currentTeam) : [];
 
   const handleSendTeamChatMessage = () => {
-    if (!chatInputText.trim()) return;
+    if (!chatInputText.trim() || !currentTeam) return;
     const teamKey = currentTeam._id || currentTeam.id || 'default';
     const newMsg = {
       id: Date.now(),
@@ -412,9 +469,9 @@ export default function TeamMentorship() {
   };
 
   // Filter members of the active team
-  const filteredMembers = (currentTeam.members || []).filter(m => {
+  const filteredMembers = (currentTeam?.members || []).filter(m => {
     const matchesSearch = !memberSearch.trim() ||
-      m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+      (m.name || '').toLowerCase().includes(memberSearch.toLowerCase()) ||
       (m.role || '').toLowerCase().includes(memberSearch.toLowerCase()) ||
       (m.expertise || '').toLowerCase().includes(memberSearch.toLowerCase());
     const matchesStatus = memberStatusFilter === 'All' || m.status === memberStatusFilter;
@@ -422,8 +479,8 @@ export default function TeamMentorship() {
   });
 
   // Calculate skill coverage for current team
-  const presentSkillsCount = (currentTeam.requiredSkills || []).filter(s => s.status === 'present').length;
-  const totalSkillsCount = (currentTeam.requiredSkills || []).length || 1;
+  const presentSkillsCount = (currentTeam?.requiredSkills || []).filter(s => s.status === 'present').length;
+  const totalSkillsCount = (currentTeam?.requiredSkills || []).length || 1;
   const skillCoveragePct = Math.round((presentSkillsCount / totalSkillsCount) * 100);
 
   // Total members across university
@@ -847,6 +904,39 @@ export default function TeamMentorship() {
       (t.name && t.name.toLowerCase().includes(projectQuery.toLowerCase()))
     )
     .sort((a, b) => getTeamTimestamp(b) - getTeamTimestamp(a));
+
+
+
+  // 2. Empty state if genuinely no teams in database
+  if (!loading && (!currentTeam || teams.length === 0)) {
+    return (
+      <div className="tm-container animate-in">
+        <div className="bp-hero tm-hero">
+          <div className="bp-breadcrumb">Home &nbsp;›&nbsp; Team & Mentorship Workspace</div>
+          <div className="bp-hero-content">
+            <div className="bp-hero-left">
+              <h1 className="bp-hero-title">
+                Team & <span style={{ color: '#F97316' }}>Mentorship</span> Workspace
+              </h1>
+              <p className="bp-hero-subtitle">
+                Build cross-disciplinary student teams, switch across live projects, track competencies, and bridge skill gaps.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'center', padding: '80px 20px', background: '#FFF', borderRadius: 16, border: '1px solid #E2E8F0', marginTop: 24, boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <Users size={52} color="#94A3B8" style={{ marginBottom: 16 }} />
+          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', marginBottom: 8 }}>No Innovation Teams Yet</h3>
+          <p style={{ fontSize: 13, color: '#64748B', maxWidth: 440, margin: '0 auto 20px', lineHeight: 1.5 }}>
+            Create your university's first student innovation team to start assigning researchers and collaborating with verified industry mentors.
+          </p>
+          <button onClick={() => setShowCreateTeamModal(true)} className="tm-btn-primary" style={{ padding: '10px 24px', fontSize: 13, fontWeight: 800, borderRadius: 8, cursor: 'pointer' }}>
+            + Create New Team
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="tm-container animate-in">

@@ -396,11 +396,11 @@
                   match.isVerified = true;
                   match.status = 'Verified';
                   match.rawStatus = 'validated';
-                } else if (e.data.status === 'assigned' || e.data.status === 'in_progress') {
+                } else if (['assigned', 'in_progress', 'testing'].includes(e.data.status)) {
                   match.isVerified = true;
                   match.status = 'Being Worked On';
                   match.rawStatus = e.data.status;
-                } else if (e.data.status === 'resolved' || e.data.status === 'closed') {
+                } else if (['resolved', 'closed'].includes(e.data.status)) {
                   match.isResolved = true;
                   match.status = 'Solved';
                   match.rawStatus = e.data.status;
@@ -417,12 +417,15 @@
                 }
                 saveReportsState();
                 renderAllViews();
+                renderTrackerLiveFeed(match, true);
               }
             }
             lastChallengesSyncSignature = '';
             fetchLiveChallenges(true).then(() => {
               loadCitizenNotifications();
               renderAllViews();
+              const active = getCurrentlyTrackedReport();
+              if (active) renderTrackerLiveFeed(active, true);
             });
           } else if (e.data && e.data.type === 'DELETE_CHALLENGE') {
             const { challengeId, mongoId } = e.data;
@@ -435,17 +438,21 @@
         });
       }
 
-      // Window storage listener for cross-tab updates
+      // Window storage listener for instant cross-tab real-time updates
       window.addEventListener('storage', (e) => {
-        if (e.key === 'jansetu_community_pool' || e.key === 'jansetu_active_district' || (e.key && (e.key.includes('jansetu_supports') || e.key.includes('jansetu_citizen_notifs')))) {
-          loadStoredData();
-          renderAllViews();
-          updateTopNotifBellBadge();
+        if (e.key === 'jansetu_status_sync_trigger' || e.key === 'jansetu_community_pool' || e.key === 'jansetu_active_district' || (e.key && (e.key.includes('jansetu_supports') || e.key.includes('jansetu_citizen_notifs')))) {
+          lastChallengesSyncSignature = '';
+          fetchLiveChallenges(true).then(() => {
+            renderAllViews();
+            const active = getCurrentlyTrackedReport();
+            if (active) renderTrackerLiveFeed(active, true);
+            updateTopNotifBellBadge();
+          });
         }
       });
 
-      // Auto-refresh live challenges periodically every 15 seconds with intelligent dirty-checking (silky smooth)
-      setInterval(fetchLiveChallenges, 15000);
+      // Auto-refresh live challenges periodically every 3.5 seconds with intelligent dirty-checking (silky smooth)
+      setInterval(() => fetchLiveChallenges(false), 3500);
 
       // Track user modified state on report district select
       const repDistEl = document.getElementById('reportDistrict');
@@ -1140,6 +1147,40 @@
       if (!data) return [];
 
       const raw = (r.rawStatus || '').toLowerCase();
+      const isClosed = (data.isSolved && r.citizenVerified) || raw === 'closed';
+
+      let s1State = 'completed';
+      let s2State = 'pending';
+      let s3State = 'pending';
+      let s4State = 'pending';
+      let s5State = 'pending';
+
+      if (isClosed) {
+        s1State = 'completed';
+        s2State = 'completed';
+        s3State = 'completed';
+        s4State = 'completed';
+        s5State = 'completed';
+      } else if (data.isSolved) {
+        s1State = 'completed';
+        s2State = 'completed';
+        s3State = 'completed';
+        s4State = 'completed';
+        s5State = 'current';
+      } else if (data.isWorking) {
+        s1State = 'completed';
+        s2State = 'completed';
+        s3State = 'completed';
+        s4State = 'current';
+      } else if (data.isVerified) {
+        s1State = 'completed';
+        s2State = 'completed';
+        s3State = 'current';
+      } else {
+        // Just submitted, awaiting admin review
+        s1State = 'completed';
+        s2State = 'current';
+      }
 
       return [
         {
@@ -1149,16 +1190,16 @@
           date: data.baseDate,
           note: currentLanguage === 'hi' ? 'नागरिक द्वारा दर्ज' : 'Reported by Citizen',
           desc: currentLanguage === 'hi' ? 'समस्या फोटो व लोकेशन सहित पोर्टल पर दर्ज हुई' : 'Grievance submitted with photo & GPS coords',
-          state: 'completed'
+          state: s1State
         },
         {
           num: 2,
           icon: '🏛️',
           name: currentLanguage === 'hi' ? 'प्रशासनिक सत्यापन' : 'Admin Verified',
-          date: data.isVerified ? data.adminInfo.time : (currentLanguage === 'hi' ? 'सत्यापन कतार में' : 'Pending Admin Review'),
+          date: data.isVerified ? (data.adminInfo.time || data.baseDate) : (currentLanguage === 'hi' ? 'सत्यापन कतार में' : 'Pending Admin Review'),
           note: data.isVerified ? (currentLanguage === 'hi' ? 'प्रशासन अनुमोदित ✓' : 'Admin Approved ✓') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'In Queue'),
           desc: `${data.adminInfo.name}`,
-          state: data.isVerified ? 'completed' : 'current'
+          state: s2State
         },
         {
           num: 3,
@@ -1167,7 +1208,7 @@
           date: data.universityInfo.working ? data.universityInfo.time : (data.isVerified ? (currentLanguage === 'hi' ? 'आवंटन कतार' : 'Awaiting University Allocation') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'Pending')),
           note: data.universityInfo.working ? (currentLanguage === 'hi' ? 'टीम सक्रिय ✓' : 'Team Assigned ✓') : (data.isVerified ? (currentLanguage === 'hi' ? 'कतार में' : 'In Queue') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'Pending')),
           desc: `${data.universityInfo.name}`,
-          state: data.universityInfo.completed ? 'completed' : (data.universityInfo.working ? 'current' : 'pending')
+          state: s3State
         },
         {
           num: 4,
@@ -1176,16 +1217,16 @@
           date: data.isSolved ? data.industryInfo.time : (data.isWorking ? (currentLanguage === 'hi' ? 'समाधान क्रियान्वयन' : 'Seeking Implementation Partner') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'Pending')),
           note: data.isSolved ? (currentLanguage === 'hi' ? 'समाधान पूर्ण ✓' : 'Fix Deployed ✓') : (data.isWorking ? (currentLanguage === 'hi' ? 'प्रगति पर' : 'In Progress') : (currentLanguage === 'hi' ? 'प्रतीक्षारत' : 'Pending')),
           desc: `${data.industryInfo.company}`,
-          state: data.isSolved ? 'completed' : (data.isWorking ? 'current' : 'pending')
+          state: s4State
         },
         {
           num: 5,
           icon: '🌟',
           name: currentLanguage === 'hi' ? 'समाधान व पुष्टि' : 'Certified Closed',
-          date: (data.isSolved && r.citizenVerified) ? (r.closedAt ? formatRealDate(r.closedAt) : (currentLanguage === 'hi' ? 'प्रमाणित बंद' : 'Certified Closed')) : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि का इंतजार' : 'Awaiting Feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
-          note: (data.isSolved && r.citizenVerified) ? (currentLanguage === 'hi' ? 'प्रमाणित बंद ✓' : 'Certified Closed ✓') : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि' : 'Citizen Feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
-          desc: (data.isSolved && r.citizenVerified) ? (currentLanguage === 'hi' ? 'नागरिक द्वारा समाधान सत्यापित, केस बंद' : 'Citizen verified resolution, grievance closed') : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि का इंतजार' : 'Awaiting citizen verification feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
-          state: (data.isSolved && r.citizenVerified) ? 'completed' : (data.isSolved ? 'current' : 'pending')
+          date: isClosed ? (r.closedAt ? formatRealDate(r.closedAt) : (currentLanguage === 'hi' ? 'प्रमाणित बंद' : 'Certified Closed')) : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि का इंतजार' : 'Awaiting Feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
+          note: isClosed ? (currentLanguage === 'hi' ? 'प्रमाणित बंद ✓' : 'Certified Closed ✓') : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि' : 'Citizen Feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
+          desc: isClosed ? (currentLanguage === 'hi' ? 'नागरिक द्वारा समाधान सत्यापित, केस बंद' : 'Citizen verified resolution, grievance closed') : (data.isSolved ? (currentLanguage === 'hi' ? 'नागरिक पुष्टि का इंतजार' : 'Awaiting citizen verification feedback') : (currentLanguage === 'hi' ? 'अंतिम चरण' : 'Final Step')),
+          state: s5State
         }
       ];
     }
@@ -1438,96 +1479,69 @@
 
       if (!sSubmitted || !sVerified || !sWorking || !sResolution || !sClosed) return;
 
-      // Reset all steps to pending
-      [sSubmitted, sVerified, sWorking, sResolution, sClosed].forEach((el, idx) => {
-        el.className = 'timeline-dot-bubble';
-        el.textContent = idx + 1;
-      });
-      [c1, c2, c3, c4].forEach(c => {
-        if (c) c.className = 'timeline-connecting-line';
-      });
-
       const active = report || getCurrentlyTrackedReport();
-      const raw = (active?.rawStatus || '').toLowerCase();
-      const stat = (status || active?.status || '').toLowerCase();
-
-      const isSolved = stat === 'solved' || isResolved || raw === 'resolved' || raw === 'closed';
-      const isWorking = stat === 'being worked on' || stat === 'in progress' || stat === 'university assigned' || raw === 'assigned' || raw === 'in_progress' || raw === 'testing';
-      const isVerifiedStage = isSolved || isWorking || stat === 'verified' || raw === 'validated';
-
-      if (isSolved) {
-        sSubmitted.className = 'timeline-dot-bubble completed';
-        sSubmitted.textContent = '✓';
-        if (c1) c1.className = 'timeline-connecting-line active-line';
-
-        sVerified.className = 'timeline-dot-bubble completed';
-        sVerified.textContent = '✓';
-        if (c2) c2.className = 'timeline-connecting-line active-line';
-
-        sWorking.className = 'timeline-dot-bubble completed';
-        sWorking.textContent = '✓';
-        if (c3) c3.className = 'timeline-connecting-line active-line';
-
-        sResolution.className = 'timeline-dot-bubble completed';
-        sResolution.textContent = '✓';
-
-        if (citizenVerified) {
-          if (c4) c4.className = 'timeline-connecting-line active-line';
-          sClosed.className = 'timeline-dot-bubble completed';
-          sClosed.textContent = '✓';
-        } else {
-          sClosed.className = 'timeline-dot-bubble current active-pulse';
-          sClosed.textContent = '⚡';
-        }
-      } else if (isWorking) {
-        sSubmitted.className = 'timeline-dot-bubble completed';
-        sSubmitted.textContent = '✓';
-        if (c1) c1.className = 'timeline-connecting-line active-line';
-
-        sVerified.className = 'timeline-dot-bubble completed';
-        sVerified.textContent = '✓';
-        if (c2) c2.className = 'timeline-connecting-line active-line';
-
-        sWorking.className = 'timeline-dot-bubble current active-pulse';
-        sWorking.textContent = '⚡';
-      } else if (isVerifiedStage) {
-        sSubmitted.className = 'timeline-dot-bubble completed';
-        sSubmitted.textContent = '✓';
-        if (c1) c1.className = 'timeline-connecting-line active-line';
-
-        sVerified.className = 'timeline-dot-bubble current active-pulse';
-        sVerified.textContent = '⚡';
-      } else {
-        // Default: JUST SUBMITTED (Step 1 active)
-        sSubmitted.className = 'timeline-dot-bubble current active-pulse';
-        sSubmitted.textContent = '⚡';
+      if (!active || status === 'none') {
+        [sSubmitted, sVerified, sWorking, sResolution, sClosed].forEach((el, idx) => {
+          el.className = 'timeline-dot-bubble';
+          el.textContent = idx + 1;
+        });
+        [c1, c2, c3, c4].forEach(c => {
+          if (c) c.className = 'timeline-connecting-line';
+        });
+        return;
       }
+
+      const milestones = generateReportMilestones(active);
+      const steps = [sSubmitted, sVerified, sWorking, sResolution, sClosed];
+      const conns = [c1, c2, c3, c4];
+
+      steps.forEach((el, idx) => {
+        const m = milestones[idx];
+        if (!m) return;
+        if (m.state === 'completed') {
+          el.className = 'timeline-dot-bubble completed';
+          el.textContent = '✓';
+        } else if (m.state === 'current') {
+          el.className = 'timeline-dot-bubble current active-pulse';
+          el.textContent = '⚡';
+        } else {
+          el.className = 'timeline-dot-bubble';
+          el.textContent = idx + 1;
+        }
+      });
+
+      conns.forEach((conn, idx) => {
+        if (!conn) return;
+        const m = milestones[idx];
+        if (m && m.state === 'completed') {
+          conn.className = 'timeline-connecting-line active-line';
+        } else {
+          conn.className = 'timeline-connecting-line';
+        }
+      });
 
       // Populate dynamic dates and action notes under the 5 bubbles on dashboard
-      if (active) {
-        const milestones = generateReportMilestones(active);
-        const dSub = document.getElementById('timelineDateSubmitted');
-        const nSub = document.getElementById('timelineNoteSubmitted');
-        const dVer = document.getElementById('timelineDateVerified');
-        const nVer = document.getElementById('timelineNoteVerified');
-        const dWrk = document.getElementById('timelineDateWorking');
-        const nWrk = document.getElementById('timelineNoteWorking');
-        const dRes = document.getElementById('timelineDateResolution');
-        const nRes = document.getElementById('timelineNoteResolution');
-        const dClo = document.getElementById('timelineDateClosed');
-        const nClo = document.getElementById('timelineNoteClosed');
+      const dSub = document.getElementById('timelineDateSubmitted');
+      const nSub = document.getElementById('timelineNoteSubmitted');
+      const dVer = document.getElementById('timelineDateVerified');
+      const nVer = document.getElementById('timelineNoteVerified');
+      const dWrk = document.getElementById('timelineDateWorking');
+      const nWrk = document.getElementById('timelineNoteWorking');
+      const dRes = document.getElementById('timelineDateResolution');
+      const nRes = document.getElementById('timelineNoteResolution');
+      const dClo = document.getElementById('timelineDateClosed');
+      const nClo = document.getElementById('timelineNoteClosed');
 
-        if (dSub) dSub.textContent = milestones[0]?.date || '--';
-        if (nSub) nSub.textContent = milestones[0]?.note || '--';
-        if (dVer) dVer.textContent = milestones[1]?.date || '--';
-        if (nVer) nVer.textContent = milestones[1]?.note || '--';
-        if (dWrk) dWrk.textContent = milestones[2]?.date || '--';
-        if (nWrk) nWrk.textContent = milestones[2]?.note || '--';
-        if (dRes) dRes.textContent = milestones[3]?.date || '--';
-        if (nRes) nRes.textContent = milestones[3]?.note || '--';
-        if (dClo) dClo.textContent = milestones[4]?.date || '--';
-        if (nClo) nClo.textContent = milestones[4]?.note || '--';
-      }
+      if (dSub) dSub.textContent = milestones[0]?.date || '--';
+      if (nSub) nSub.textContent = milestones[0]?.note || '--';
+      if (dVer) dVer.textContent = milestones[1]?.date || '--';
+      if (nVer) nVer.textContent = milestones[1]?.note || '--';
+      if (dWrk) dWrk.textContent = milestones[2]?.date || '--';
+      if (nWrk) nWrk.textContent = milestones[2]?.note || '--';
+      if (dRes) dRes.textContent = milestones[3]?.date || '--';
+      if (nRes) nRes.textContent = milestones[3]?.note || '--';
+      if (dClo) dClo.textContent = milestones[4]?.date || '--';
+      if (nClo) nClo.textContent = milestones[4]?.note || '--';
     }
 
     // ============================================================
@@ -1801,20 +1815,44 @@
         const res = await fetch(`/api/challenges/${targetKey}/updates`);
         if (res.ok) {
           const json = await res.json();
-          if (json.success && Array.isArray(json.updates) && json.updates.length > 0) {
-            updates = json.updates.map(u => ({
-              stage: u.stage,
-              dot: u.dot === 'green' ? 'node-green' : (u.dot === 'blue' ? 'node-blue' : 'node-gray'),
-              message: currentLanguage === 'hi' ? u.messageHi : u.messageEn,
-              timeStr: formatRealDate(u.timestamp),
-              timestamp: new Date(u.timestamp).getTime()
-            }));
-            if (json.avgResolutionDays && estEl) {
-              const daysSince = json.daysSinceSubmission || 0;
-              const daysText = daysSince === 0 ? (currentLanguage === 'hi' ? 'आज ही' : 'today') : (daysSince === 1 ? (currentLanguage === 'hi' ? '1 दिन पहले' : '1 day ago') : (currentLanguage === 'hi' ? `${daysSince} दिन पहले` : `${daysSince} days ago`));
-              estEl.textContent = currentLanguage === 'hi'
-                ? `इस श्रेणी की समस्याएं औसतन ~${json.avgResolutionDays} दिनों में सुलझती हैं। आपकी समस्या ${daysText} दर्ज की गई थी।`
-                : `Similar problems typically resolve in ~${json.avgResolutionDays} days. Yours was submitted ${daysText}.`;
+          if (json.success) {
+            // Real-time status sync: Check if backend status changed
+            if (json.status && json.status !== report.rawStatus) {
+              report.rawStatus = json.status;
+              const statusMap = {
+                'submitted': 'Submitted',
+                'under_review': 'Under Review',
+                'validated': 'Verified',
+                'assigned': 'Being Worked On',
+                'in_progress': 'Being Worked On',
+                'testing': 'Being Worked On',
+                'resolved': 'Solved',
+                'rejected': 'Rejected',
+                'closed': 'Solved',
+                'action_required': 'Action Required'
+              };
+              report.status = statusMap[json.status] || json.status;
+              report.isVerified = !['submitted', 'under_review', 'draft', 'rejected'].includes(json.status);
+              report.isResolved = ['resolved', 'closed'].includes(json.status);
+              saveReportsState();
+              renderActiveProblem();
+            }
+
+            if (Array.isArray(json.updates) && json.updates.length > 0) {
+              updates = json.updates.map(u => ({
+                stage: u.stage,
+                dot: u.dot === 'green' ? 'node-green' : (u.dot === 'blue' ? 'node-blue' : 'node-gray'),
+                message: currentLanguage === 'hi' ? u.messageHi : u.messageEn,
+                timeStr: formatRealDate(u.timestamp),
+                timestamp: new Date(u.timestamp).getTime()
+              }));
+              if (json.avgResolutionDays && estEl) {
+                const daysSince = json.daysSinceSubmission || 0;
+                const daysText = daysSince === 0 ? (currentLanguage === 'hi' ? 'आज ही' : 'today') : (daysSince === 1 ? (currentLanguage === 'hi' ? '1 दिन पहले' : '1 day ago') : (currentLanguage === 'hi' ? `${daysSince} दिन पहले` : `${daysSince} days ago`));
+                estEl.textContent = currentLanguage === 'hi'
+                  ? `इस श्रेणी की समस्याएं औसतन ~${json.avgResolutionDays} दिनों में सुलझती हैं। आपकी समस्या ${daysText} दर्ज की गई थी।`
+                  : `Similar problems typically resolve in ~${json.avgResolutionDays} days. Yours was submitted ${daysText}.`;
+              }
             }
           }
         }
@@ -1824,8 +1862,12 @@
         updates = generateLiveStatusUpdates(report, currentLanguage);
       }
 
-      window.currentActiveUpdates = updates;
-      renderUpdatesList(isSlideIn);
+      const prevSig = (window.currentActiveUpdates || []).map(u => `${u.stage}_${u.timestamp}`).join('|');
+      const newSig = updates.map(u => `${u.stage}_${u.timestamp}`).join('|');
+      if (prevSig !== newSig || isSlideIn || !window.currentActiveUpdates) {
+        window.currentActiveUpdates = updates;
+        renderUpdatesList(isSlideIn);
+      }
     }
     window.renderTrackerLiveFeed = renderTrackerLiveFeed;
 
@@ -1869,25 +1911,41 @@
     }
     window.updateTrackerNotificationButtonState = updateTrackerNotificationButtonState;
 
-    // Real-time polling timer for tracker updates (every 30 seconds)
+    // Real-time polling timer for tracker updates (3.5 second interval)
     let trackerPollTimer = null;
     function startTrackerPolling() {
       if (trackerPollTimer) clearInterval(trackerPollTimer);
       trackerPollTimer = setInterval(async () => {
         const active = getCurrentlyTrackedReport();
         if (!active) return;
-        const ind = document.getElementById('trackerCheckingUpdatesIndicator');
-        if (ind) ind.style.display = 'inline-flex';
         try {
-          await renderTrackerLiveFeed(active, true);
+          await renderTrackerLiveFeed(active, false);
+          await fetchLiveChallenges(false);
         } catch (e) {}
-        setTimeout(() => {
-          if (ind) ind.style.display = 'none';
-        }, 1200);
-      }, 30000);
+      }, 3500);
     }
     if (typeof window !== 'undefined') {
       startTrackerPolling();
+
+      // Instant sync on tab visibility or window focus
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) {
+            lastChallengesSyncSignature = '';
+            fetchLiveChallenges(true).then(() => {
+              const active = getCurrentlyTrackedReport();
+              if (active) renderTrackerLiveFeed(active, true);
+            });
+          }
+        });
+        window.addEventListener('focus', () => {
+          lastChallengesSyncSignature = '';
+          fetchLiveChallenges(true).then(() => {
+            const active = getCurrentlyTrackedReport();
+            if (active) renderTrackerLiveFeed(active, true);
+          });
+        });
+      }
     }
 
     function renderActiveProblem() {
@@ -2109,6 +2167,17 @@
       } catch (e) {
         console.warn('Error in renderActiveProblem:', e);
       }
+
+      // If detail modal is open, refresh detail progress tracker in real time
+      try {
+        const detailModalEl = document.getElementById('detailModal');
+        if (detailModalEl && detailModalEl.classList.contains('active') && currentlyInspectedId) {
+          const item = allReportsList.find(r => r.id === currentlyInspectedId || r.mongoId === currentlyInspectedId) || exploreList.find(r => r.id === currentlyInspectedId || r.mongoId === currentlyInspectedId);
+          if (item) {
+            renderDetailProgressTracker(item, allReportsList.some(r => r.id === item.id || (r.mongoId && r.mongoId === item.mongoId)));
+          }
+        }
+      } catch (e) {}
 
       // Render Recent Reports Horizontal Scroll Track
       try {
@@ -3217,6 +3286,7 @@
         }, 200);
       }
     }
+    window.goToStep = goToStep;
 
     function selectFormCategory(btn, cat) {
       document.querySelectorAll('.category-chip-btn').forEach(b => b.classList.remove('selected'));
@@ -3634,6 +3704,14 @@
       btn.textContent = currentLanguage === 'hi' ? 'दर्ज हो रहा है...' : 'Submitting...';
       btn.disabled = true;
 
+      // Show circular loading screen with "Submitting problem..."
+      if (typeof window.showJanSetuCivicLoader === 'function') {
+        window.showJanSetuCivicLoader(
+          'Submitting problem to JanSetu civic network & local authorities...',
+          { autoDismiss: false, label: 'Submitting problem' }
+        );
+      }
+
       const enteredTitle = document.getElementById('reportTitle') ? document.getElementById('reportTitle').value.trim() : '';
       const category = document.getElementById('reportCategory') ? document.getElementById('reportCategory').value : 'Water Management';
       const locPart = (document.getElementById('reportVillage')?.value?.trim()) || (document.getElementById('reportPanchayat')?.value?.trim()) || (document.getElementById('reportDistrict')?.value?.trim()) || 'Jharkhand';
@@ -3859,7 +3937,18 @@
 
       btn.textContent = TRANSLATIONS[currentLanguage].btn_submit_confirm;
       btn.disabled = false;
-      alert((currentLanguage === 'hi' ? '✅ धन्यवाद! आपकी समस्या पोर्टल पर दर्ज हो गई है।\nReport ID: ' : '✅ Success! Your problem has been submitted.\nReport ID: ') + realId);
+
+      const successAlertMsg = (currentLanguage === 'hi' ? '✅ धन्यवाद! आपकी समस्या पोर्टल पर दर्ज हो गई है।\nReport ID: ' : '✅ Success! Your problem has been submitted.\nReport ID: ') + realId;
+
+      if (typeof window.hideJanSetuCivicLoader === 'function') {
+        window.hideJanSetuCivicLoader(() => {
+          setTimeout(() => {
+            alert(successAlertMsg);
+          }, 80);
+        });
+      } else {
+        alert(successAlertMsg);
+      }
 
       // Background sync with live challenges
       fetchLiveChallenges().catch(() => { });

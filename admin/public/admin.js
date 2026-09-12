@@ -1147,6 +1147,7 @@ async function doValidate(id, status, note = '') {
           syncChan.postMessage({ type: 'STATUS_UPDATE', challengeId: id, status, note: finalNote });
           syncChan.postMessage({ type: 'CHALLENGE_UPDATED', challengeId: id, status, note: finalNote });
         }
+        localStorage.setItem('jansetu_status_sync_trigger', JSON.stringify({ type: 'STATUS_UPDATE', challengeId: id, status, note: finalNote, ts: Date.now() }));
       } catch(e) {}
       loadAdminChallenges(); loadOverview(); loadPendingChallenges();
       if (document.getElementById('challengeActionModal')?.classList.contains('open')) {
@@ -1253,6 +1254,7 @@ window.confirmAssign = async () => {
           syncChan.postMessage({ type: 'STATUS_UPDATE', challengeId: currentAssignChallengeId, status: 'assigned' });
           syncChan.postMessage({ type: 'CHALLENGE_UPDATED', challengeId: currentAssignChallengeId, status: 'assigned' });
         }
+        localStorage.setItem('jansetu_status_sync_trigger', JSON.stringify({ type: 'STATUS_UPDATE', challengeId: currentAssignChallengeId, status: 'assigned', ts: Date.now() }));
       } catch(e) {}
       loadAdminChallenges(); loadOverview();
       const currentActive = document.querySelector('.dashboard-section.active')?.id;
@@ -1291,6 +1293,7 @@ window.confirmAssignIndustry = async () => {
           syncChan.postMessage({ type: 'STATUS_UPDATE', challengeId: currentAssignChallengeId });
           syncChan.postMessage({ type: 'CHALLENGE_UPDATED', challengeId: currentAssignChallengeId });
         }
+        localStorage.setItem('jansetu_status_sync_trigger', JSON.stringify({ type: 'STATUS_UPDATE', challengeId: currentAssignChallengeId, ts: Date.now() }));
       } catch(e) {}
       closeModal('assignIndustryModal');
       loadAdminChallenges();
