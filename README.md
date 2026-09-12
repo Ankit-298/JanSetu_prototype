@@ -1,4 +1,4 @@
-# InnovateSphere — Jharkhand Societal Innovation Collaboration Portal
+# JanSetu— Jharkhand Societal Innovation Collaboration Portal
 
 > **Problem Statement 2643** | Smart India Hackathon  
 > **Theme:** Digital platform to crowdsource societal challenges and facilitate collaborative problem-solving through universities and industry partnerships.
@@ -7,7 +7,7 @@
 
 ## 🌟 Overview
 
-**InnovateSphere** is a digital platform built specifically to address community challenges across the 24 districts of Jharkhand. The platform connects:
+**JanSetu** is a digital platform built specifically to address community challenges across the 24 districts of Jharkhand. The platform connects:
 
 1. **Citizens & Communities:** Identify and submit ground-level societal problems (water quality, healthcare access, crop disease, rural roads, accessibility, etc.) with photos and geo-location.
 2. **Higher Education Institutions (HEIs):** Form interdisciplinary student & faculty teams to design, prototype, and build practical solutions.
