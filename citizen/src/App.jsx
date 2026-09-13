@@ -1497,7 +1497,7 @@ function App() {
 
         <div className="pdm-custom-img-wrap">
           <img id="galleryViewerImg" src="" alt="Evidence" className="pdm-custom-img" />
-          <video id="galleryViewerVideo" controls style={{"display":"none","maxWidth":"100%","maxHeight":"62vh","borderRadius":"10px","background":"#000000","outline":"none"}} src=""></video>
+          <video id="galleryViewerVideo" className="pdm-custom-img pdm-custom-video" controls style={{"display":"none","width":"100%","height":"100%","maxWidth":"100%","maxHeight":"100%","objectFit":"contain","borderRadius":"6px","background":"#000000","outline":"none"}} src=""></video>
         </div>
 
         <button type="button" className="pdm-custom-nav-btn next" id="galleryViewerNextBtn" onClick={() => { nextGalleryViewerPhoto() }} title="Next Photo (>)">

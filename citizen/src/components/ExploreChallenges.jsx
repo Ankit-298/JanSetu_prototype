@@ -384,20 +384,41 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
             <button
               type="button"
               className={`scope-pill-btn scope-nearby ${locationScope === 'nearby' ? 'active' : ''}`}
-              onClick={() => setShowGpsModal(true)}
+              onClick={() => {
+                if (locationScope === 'nearby') {
+                  setShowGpsModal(true);
+                } else if (userLocation) {
+                  setLocationScope('nearby');
+                  setSelectedDistrict('');
+                } else {
+                  handleTurnOnGps();
+                }
+              }}
+              title="Filter civic problems near your current location"
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={locationScope === 'nearby' ? '#2563EB' : '#94A3B8'} strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
                 <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill={locationScope === 'nearby' ? '#2563EB' : '#94A3B8'} />
               </svg>
-              <span>Nearby (Use my location)</span>
+              <span>{gpsLoading ? 'Locating...' : 'Nearby (Use my location)'}</span>
             </button>
 
             {/* Within 10 km */}
             <select
               className={`scope-radius-select ${locationScope === 'nearby' ? 'active' : ''}`}
               value={nearbyRadius}
-              onChange={e => setNearbyRadius(Number(e.target.value))}
+              onChange={e => {
+                const r = Number(e.target.value);
+                setNearbyRadius(r);
+                if (locationScope !== 'nearby') {
+                  if (userLocation) {
+                    setLocationScope('nearby');
+                    setSelectedDistrict('');
+                  } else {
+                    handleTurnOnGps();
+                  }
+                }
+              }}
             >
               <option value="5">Within 5 km</option>
               <option value="10">Within 10 km</option>
@@ -450,11 +471,14 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
             <div className="explore-live-scope-text">
               <span>Showing: </span>
               <span className="explore-live-scope-highlight">
-                {locationScope === 'district' && selectedDistrict ? `${selectedDistrict} District` : locationScope === 'nearby' ? 'Near You (Jharkhand)' : 'All Jharkhand'}
+                {locationScope === 'district' && selectedDistrict ? `${selectedDistrict} District` : locationScope === 'nearby' ? `Near You (Within ${nearbyRadius} km)` : 'All Jharkhand'}
               </span>
             </div>
             <div className="explore-live-subtext">
-              Showing all reported problems from across {locationScope === 'district' && selectedDistrict ? selectedDistrict : 'Jharkhand'}
+              {locationScope === 'nearby'
+                ? `Showing civic problems within ${nearbyRadius} km of your GPS location`
+                : `Showing all reported problems from across ${locationScope === 'district' && selectedDistrict ? selectedDistrict : 'Jharkhand'}`
+              }
             </div>
           </div>
         </div>
@@ -547,10 +571,26 @@ export default function ExploreChallenges({ onNavigateDashboard }) {
             </div>
           </div>
         ) : challenges.length === 0 ? (
-          <div className="empty-feed-state">
-            <span style={{ fontSize: '40px' }}>🔍</span>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>No challenges found</div>
-            <div>Try choosing another district or selecting 'All Categories'.</div>
+          <div className="empty-feed-state" style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <span style={{ fontSize: '40px' }}>📍</span>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', marginTop: '8px' }}>
+              {locationScope === 'nearby' ? `No civic problems found within ${nearbyRadius} km` : 'No challenges found'}
+            </div>
+            <div style={{ fontSize: '13px', color: '#64748B', marginTop: '4px' }}>
+              {locationScope === 'nearby' 
+                ? 'Try selecting a larger radius (25 km or 50 km) to see more nearby reports.'
+                : "Try choosing another district or selecting 'All Categories'."
+              }
+            </div>
+            {locationScope === 'nearby' && nearbyRadius < 50 && (
+              <button
+                type="button"
+                style={{ marginTop: '12px', padding: '6px 14px', fontSize: '12.5px', fontWeight: 600, borderRadius: '8px', background: '#2563EB', color: '#fff', border: 'none', cursor: 'pointer' }}
+                onClick={() => setNearbyRadius(nearbyRadius === 5 ? 10 : nearbyRadius === 10 ? 25 : 50)}
+              >
+                Expand Radius to {nearbyRadius === 5 ? '10 km' : nearbyRadius === 10 ? '25 km' : '50 km'} →
+              </button>
+            )}
           </div>
         ) : (
           challenges.map((challenge, idx) => (
@@ -1022,6 +1062,11 @@ function SocialPostCard({ challenge, currentUser, onOpenTracker }) {
           <div className="post-meta-tag-row">
             <span className="post-location-tag">
               <span>📍</span> {challenge.displayLocation || 'Ranchi, Jharkhand'}
+              {challenge.distanceKm !== undefined && challenge.distanceKm !== null && (
+                <span className="post-distance-tag" style={{ marginLeft: '6px', color: '#2563EB', fontWeight: 700 }}>
+                  • {challenge.distanceKm < 1 ? `${Math.round(challenge.distanceKm * 1000)}m away` : `${challenge.distanceKm} km away`}
+                </span>
+              )}
             </span>
             <span className="post-category-tag">
               <span>🚨</span> {challenge.category || 'Disaster Management'}

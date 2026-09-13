@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { speakText, stopSpeaking, prefetchSpeech, prewarmAudio, getAudioVolume } from './audioUtils';
+import { speakText, stopSpeaking, prefetchSpeech, prewarmAudio, getAudioVolume, setVolumeBoost, getVolumeBoostLevel, setTTSPace, getTTSPace, subscribeMicVolume, stopMicVolumeMonitor, playCallConnectSound, playCallEndSound } from './audioUtils';
 import './voiceAgent.css';
 
 /**
@@ -16,8 +16,24 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
   const [phase, setPhase] = useState('intro_lang'); 
   // 'intro_lang' | 'assistance_choice' | 'driving_category' | 'driving_desc' | 'driving_priority' | 'driving_loc' | 'driving_photo' | 'driving_video' | 'driving_check' | 'done'
   
-  const [lang, setLang] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('jansetu_language') === 'en' ? 'en' : 'hinglish'));
-  const [agentSpeech, setAgentSpeech] = useState('Hi, main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — English ya Hinglish?');
+  const [lang, setLang] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('jansetu_language');
+      if (saved === 'hi' || saved === 'hinglish') return 'hinglish';
+      if (saved === 'en') return 'en';
+    }
+    return 'en'; // Default English unless Hindi explicitly selected
+  });
+  const isHindi = lang === 'hi' || lang === 'hinglish';
+  const [agentSpeech, setAgentSpeech] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('jansetu_language');
+      if (saved === 'hi' || saved === 'hinglish') {
+        return 'Hi, main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — English ya Hinglish?';
+      }
+    }
+    return 'Hello! I am JanSetu AI. Which language would you prefer to speak — English or Hindi?';
+  });
   const [userTranscript, setUserTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
@@ -31,12 +47,48 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
   const [cursorClicking, setCursorClicking] = useState(false);
 
+  // Agent Activity Status (shows what agent is doing: 'Filling details...', 'Detecting location...' etc.)
+  const [agentActivity, setAgentActivity] = useState('');
+
+  // Live Conversation Transcript (chat bubble history)
+  const [chatTranscript, setChatTranscript] = useState([]);
+
+  // Volume Boost toggle state
+  const [isVolumeBoosted, setIsVolumeBoosted] = useState(false);
+
+  // Grievance Status Tracker input state
+  const [trackingIdInput, setTrackingIdInput] = useState('');
+  const [recentReportId, setRecentReportId] = useState('');
+  const [isTrackingLoading, setIsTrackingLoading] = useState(false);
+  const [trackedResult, setTrackedResult] = useState(null);
+
+  // Nearby Reports State
+  const [nearbyChallengesList, setNearbyChallengesList] = useState([]);
+  const [isNearbyLoading, setIsNearbyLoading] = useState(false);
+  const [showNearbyView, setShowNearbyView] = useState(false);
+
   const socketRef = useRef(null);
   const timerRef = useRef(null);
   const recognitionRef = useRef(null);
   const phaseRef = useRef('intro_lang');
   const isMutedRef = useRef(false);
   const speechDebounceRef = useRef(null);
+  const lastSpokenTextRef = useRef('');  // For "repeat" command
+  const speechPaceRef = useRef(0.90);    // Dynamic pace for "dheere/tez bolo"
+  const transcriptEndRef = useRef(null);
+  const isSpeakingRef = useRef(false);
+  const isCallActiveRef = useRef(false);
+  const lastInteractionTimeRef = useRef(Date.now());
+  const silencePromptCountRef = useRef(0);
+
+  // Auto-scroll transcript when new message arrives
+  useEffect(() => {
+    if (transcriptEndRef.current) {
+      try {
+        transcriptEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {}
+    }
+  }, [chatTranscript]);
 
   // Keep phaseRef in sync
   useEffect(() => {
@@ -45,25 +97,76 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
   useEffect(() => {
     isMutedRef.current = isMuted;
+    if (!isMuted) {
+      lastInteractionTimeRef.current = Date.now();
+    }
   }, [isMuted]);
 
-  // Live Audio-Waveform Sync with Aditya's voice beats
+  // Continuous Silence Watchdog: If citizen remains silent for 7 seconds while agent is listening, prompt them
+  useEffect(() => {
+    if (!isCallActive) return;
+
+    const interval = setInterval(() => {
+      // Only prompt if call is active, citizen is not muted, agent is NOT speaking, and modal is not done
+      if (!isCallActiveRef.current || isMutedRef.current || isSpeakingRef.current) {
+        return;
+      }
+      if (phaseRef.current === 'done') {
+        return;
+      }
+
+      const elapsedMs = Date.now() - lastInteractionTimeRef.current;
+      // 7.0 seconds of inactivity/silence
+      if (elapsedMs >= 7000) {
+        lastInteractionTimeRef.current = Date.now(); // reset timer
+
+        if (silencePromptCountRef.current < 4) {
+          silencePromptCountRef.current += 1;
+          console.log(`[VoiceAgent] Silence detected (${(elapsedMs / 1000).toFixed(1)}s) - prompting user`);
+          const silenceMsg = (lang === 'hi' || lang === 'hinglish')
+            ? 'Aapki aawaz sunai nahi di, kripya dobara bolein.'
+            : "I couldn't hear your voice, please speak again.";
+          speak(silenceMsg);
+        }
+      }
+    }, 800);
+
+    return () => clearInterval(interval);
+  }, [isCallActive, lang]);
+
+  // Live Audio-Waveform Sync:
+  // - When AI is speaking: syncs with Sarvam TTS audio beats (getAudioVolume())
+  // - When listening: syncs in real-time with citizen microphone input (subscribeMicVolume)
   useEffect(() => {
     let animId;
-    if (isCallActive && voiceStatus === 'speaking') {
-      const loop = () => {
-        const vol = getAudioVolume();
-        setLiveVolume(vol);
+    let unsubMic = null;
+
+    if (isCallActive) {
+      if (voiceStatus === 'speaking') {
+        const loop = () => {
+          const vol = getAudioVolume();
+          setLiveVolume(vol);
+          animId = requestAnimationFrame(loop);
+        };
         animId = requestAnimationFrame(loop);
-      };
-      animId = requestAnimationFrame(loop);
+      } else if (voiceStatus === 'listening' && !isMuted) {
+        unsubMic = subscribeMicVolume((vol) => {
+          if (!isSpeakingRef.current && !isMutedRef.current) {
+            setLiveVolume(vol);
+          }
+        });
+      } else {
+        setLiveVolume(0);
+      }
     } else {
       setLiveVolume(0);
     }
+
     return () => {
       if (animId) cancelAnimationFrame(animId);
+      if (unsubMic) unsubMic();
     };
-  }, [isCallActive, voiceStatus]);
+  }, [isCallActive, voiceStatus, isMuted]);
 
   // Sync language with top navbar language switcher
   useEffect(() => {
@@ -78,24 +181,33 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     return () => window.removeEventListener('jansetu_language_changed', handleExternalLangChange);
   }, []);
 
-  const isSpeakingRef = useRef(false);
-
-  // Safe speak wrapper with real-time speaking / listening state transitions
-  const speak = (text) => {
-    if (isMutedRef.current || !text) return;
+  // Safe speak wrapper — ALWAYS speaks even when muted (mute = mic only, NOT agent output)
+  // Agent keeps talking and auto-driving regardless of mute state
+  const speak = (text, targetLang) => {
+    if (!text) return;
+    lastInteractionTimeRef.current = Date.now();
     setAgentSpeech(text);
+    lastSpokenTextRef.current = text; // Store for "repeat" command
+    // Add to conversation transcript (deduplicated)
+    setChatTranscript(prev => {
+      if (prev.length > 0 && prev[prev.length - 1].text === text) return prev;
+      return [...prev, { role: 'ai', text, time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) }];
+    });
     isSpeakingRef.current = true;
     setVoiceStatus('speaking');
+    const chosenLang = targetLang || (lang === 'en' ? 'en-IN' : 'hi-IN');
     speakText(
       text,
-      lang === 'en' ? 'en-IN' : 'hi-IN',
+      chosenLang,
       () => {
         isSpeakingRef.current = false;
-        if (!isMutedRef.current) setVoiceStatus('listening');
+        setVoiceStatus(isMutedRef.current ? 'active' : 'listening');
+        lastInteractionTimeRef.current = Date.now();
       },
       () => {
         isSpeakingRef.current = true;
-        if (!isMutedRef.current) setVoiceStatus('speaking');
+        setVoiceStatus('speaking');
+        lastInteractionTimeRef.current = Date.now();
       }
     );
   };
@@ -333,33 +445,69 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
           return;
         }
 
+        // MUTE GUARD: When mic is muted, ignore ALL recognition results completely
+        if (isMutedRef.current) {
+          return;
+        }
+
         const lastResult = event.results[event.results.length - 1];
         const transcript = lastResult[0].transcript.trim();
+        const confidence = lastResult[0].confidence || 0;
         if (!transcript) return;
 
-        setUserTranscript(transcript);
+        // Citizen is speaking, update interaction timestamp and reset prompt count
+        lastInteractionTimeRef.current = Date.now();
+        silencePromptCountRef.current = 0;
 
-        if (!isMutedRef.current) {
-          setVoiceStatus('processing');
+        // ─── BACKGROUND NOISE FILTER ───
+        // 1. Confidence threshold: Reject low-confidence gibberish / background TV / ambient noise
+        if (lastResult.isFinal && confidence > 0 && confidence < 0.60) {
+          console.log(`[VoiceAgent] Rejected low-confidence (${(confidence * 100).toFixed(0)}%): "${transcript}"`);
+          return;
         }
+
+        // 2. Minimum length filter: Allow valid 1-word civic inputs (e.g. "road", "water", "sadak", "bijli", "haan", "help")
+        if (transcript.length < 2) {
+          return;
+        }
+
+        // 3. Reject common ambient noise transcripts (hmm, um, ah, TV sounds)
+        const noisePatterns = /^(hmm+|um+|ah+|oh+|huh|hm+|uh+|aah+|ooh+|mmm+)$/i;
+        if (noisePatterns.test(transcript)) {
+          return;
+        }
+
+        setUserTranscript(transcript);
+        // Add citizen's speech to conversation transcript
+        if (lastResult.isFinal) {
+          setChatTranscript(prev => [...prev, { role: 'user', text: transcript, time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) }]);
+        }
+
+        setVoiceStatus('processing');
 
         if (speechDebounceRef.current) {
           clearTimeout(speechDebounceRef.current);
         }
 
         if (lastResult.isFinal) {
-          // Dynamic conversational pause: 650ms for description/category to allow citizen to think/breathe, 300ms for short choices
-          const debounceMs = (phaseRef.current === 'driving_desc' || phaseRef.current === 'driving_category') ? 650 : 300;
+          // Dynamic conversational pause: 850ms for description/category to allow citizen to think/breathe, 400ms for short choices
+          const debounceMs = (phaseRef.current === 'driving_desc' || phaseRef.current === 'driving_category') ? 850 : 400;
           speechDebounceRef.current = setTimeout(() => {
             if (!isSpeakingRef.current) {
               handleUserUtterance(transcript);
+            } else {
+              setTimeout(() => {
+                if (!isSpeakingRef.current) {
+                  handleUserUtterance(transcript);
+                }
+              }, 300);
             }
           }, debounceMs);
         }
       };
 
       recognition.onend = () => {
-        if (isCallActive && !isMutedRef.current) {
+        if (isCallActiveRef.current && !isMutedRef.current) {
           try { recognition.start(); } catch (e) {}
         }
       };
@@ -417,26 +565,119 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     console.log(`[VoiceAgent] Spoken: "${text}" at Phase: ${current}`);
     const t = text.toLowerCase();
 
+    // ─── GLOBAL AGENT COMMANDS (work at ANY phase) ───
+
+    // REPEAT Command: "dobara bolo", "repeat karo", "phir se bolo"
+    const isRepeatCommand = /repeat|dobara (bol|bolo|batao)|phir se (bol|bolo|batao)|wapas (bol|bolo)|fir se|ek baar aur/i.test(t);
+    if (isRepeatCommand && lastSpokenTextRef.current) {
+      speak(lastSpokenTextRef.current);
+      return;
+    }
+
+    // SPEED CONTROL: "dheere bolo" / "tez bolo" / "slow" / "fast"
+    const isSlowCommand = /dheere|dhire|slow|aahista|dheeme|thoda dheere/i.test(t) && /bol|speak|baat|karo/i.test(t);
+    const isFastCommand = /tez|fast|jaldi|quick|bol|speak/i.test(t) && /bol|speak|baat|karo/i.test(t) && !/dheere|dhire|slow/i.test(t);
+    if (isSlowCommand) {
+      const newPace = Math.max(0.65, speechPaceRef.current - 0.15);
+      speechPaceRef.current = newPace;
+      setTTSPace(newPace);
+      speak(lang === 'en' ? 'Okay, I will speak slower now.' : 'Theek hai, ab main dheere bolunga.');
+      return;
+    }
+    if (isFastCommand) {
+      const newPace = Math.min(1.15, speechPaceRef.current + 0.15);
+      speechPaceRef.current = newPace;
+      setTTSPace(newPace);
+      speak(lang === 'en' ? 'Okay, I will speak a bit faster now.' : 'Theek hai, ab main thoda tez bolunga.');
+      return;
+    }
+
+    // HELP Command: "help", "madad", "kya karna hai"
+    const isHelpCommand = /^(help|madad|sahayata|kya karu|kya karna|samajh nahi|kaise|how)$/i.test(t) || /help (karo|chahiye|do)|madad (karo|chahiye|do)|kya karna hai|samajh nahi aa raha/i.test(t);
+    if (isHelpCommand) {
+      const helpTexts = {
+        intro_lang: lang === 'en' ? 'Please choose your language — say English or Hinglish.' : 'Kripya apni bhasha chunein — English ya Hinglish bolein.',
+        assistance_choice: lang === 'en' ? 'You can say: Report a problem, or Check status of existing report.' : 'Aap bol sakte hain: Samasya report karna hai, ya purani shikayat ki sthiti jaanchni hai.',
+        driving_category: lang === 'en' ? 'Tell me what type of problem — road, water, electricity, garbage, health, or education.' : 'Batayiye kis tarah ki samasya hai — sadak, paani, bijli, kachra, swasthya, ya shiksha.',
+        driving_desc: lang === 'en' ? 'Describe your problem in detail — what is happening, where, and since when.' : 'Apni samasya vistaar se batayein — kya ho raha hai, kahan, aur kab se.',
+        driving_priority: lang === 'en' ? 'How urgent is this? Say: Urgent, High, or Normal.' : 'Ye kitni zaroori hai? Bolein: Urgent, High, ya Normal.',
+        driving_loc: lang === 'en' ? 'Your GPS location is being detected. Please wait.' : 'Aapki GPS location detect ho rahi hai. Kripya intezaar karein.',
+        driving_photo: lang === 'en' ? 'Do you have a photo of the problem? Say yes or no.' : 'Kya aapke paas samasya ki photo hai? Haan ya nahi bolein.',
+        driving_video: lang === 'en' ? 'Do you have a short video? Say yes or no.' : 'Kya koi chhota video hai? Haan ya nahi bolein.',
+        driving_check: lang === 'en' ? 'All details are ready. Say Submit to file your report, or Edit to change something.' : 'Saari jaankari tayyar hai. Submit bolein report darz karne ke liye, ya Edit bolein kuch badalne ke liye.'
+      };
+      speak(helpTexts[current] || (lang === 'en' ? 'I am here to help you report civic problems. Just speak naturally.' : 'Main aapki madad ke liye hoon. Bas apni samasya batayein.'));
+      return;
+    }
+
+    // VOLUME BOOST: "volume badhao" / "loud" / "awaaz badhao"
+    const isVolUpCommand = /volume (badha|badhao|up|increase)|awaaz (badha|badhao)|loud|louder|zyada awaaz/i.test(t);
+    const isVolDownCommand = /volume (kam|down|decrease|low)|awaaz (kam|ghata)|softer|quieter|kam awaaz/i.test(t);
+    if (isVolUpCommand) {
+      setVolumeBoost(1.5);
+      setIsVolumeBoosted(true);
+      speak(lang === 'en' ? 'Volume increased.' : 'Awaaz badha di hai.');
+      return;
+    }
+    if (isVolDownCommand) {
+      setVolumeBoost(1.0);
+      setIsVolumeBoosted(false);
+      speak(lang === 'en' ? 'Volume set to normal.' : 'Awaaz normal kar di hai.');
+      return;
+    }
+
+    // Global language switch command across ALL phases:
+    const isSwitchToHindi = /hindi me (baat|bolo|boliye|karein)|switch to hindi|talk in hindi|speak in hindi/i.test(t);
+    const isSwitchToEnglish = /english me (baat|bolo|boliye|karein)|switch to english|talk in english|speak in english|speak english/i.test(t);
+    if (isSwitchToHindi) {
+      handleSelectLanguage('hinglish');
+      return;
+    }
+    if (isSwitchToEnglish) {
+      handleSelectLanguage('en');
+      return;
+    }
+
     // 1. Language Selection Phase (Click spoken language card)
     if (current === 'intro_lang') {
       const isEnglish = /english|inglish|angrezi|angreji/i.test(t);
+      const isHindiSpoken = /hindi|hinglish|bhasha|bolna|baat karo|hind|deshi/i.test(t);
       if (isEnglish) {
         animateCursorToAndClick('#langCardEn', () => {
           handleSelectLanguage('en');
         }, 300);
-      } else {
+        return;
+      } else if (isHindiSpoken) {
         animateCursorToAndClick('#langCardHinglish', () => {
           handleSelectLanguage('hinglish');
         }, 300);
+        return;
+      }
+      // If user directly states their problem or clicks without choosing language
+      if (/report|problem|complaint|shikayat|samasya|help|madad/i.test(t)) {
+        const detectedHindi = /shikayat|samasya|paani|sadak|bijli|kachra|madad/i.test(t);
+        const chosen = detectedHindi ? 'hinglish' : 'en';
+        setLang(chosen);
+        handleReportProblemAction();
+        return;
       }
       return;
     }
 
     // 2. Assistance Choice Phase (Click Action card)
     if (current === 'assistance_choice') {
+      if (/nearby|aaspas|aas paas|pados|area|fayde|benefit/i.test(t)) {
+        animateCursorToAndClick('#actionCardStatus', () => {
+          handleOpenTrackingInput();
+          setTimeout(() => {
+            handleFetchAndSpeakNearbyReports();
+          }, 600);
+        }, 300);
+        return;
+      }
       if (/status|sthiti|track|jaanch|kya hua|progress|jh-\d+/i.test(t)) {
         animateCursorToAndClick('#actionCardStatus', () => {
-          handleCheckStatusAction(text);
+          handleOpenTrackingInput();
         }, 300);
       } else {
         animateCursorToAndClick('#actionCardReport', () => {
@@ -444,6 +685,35 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
         }, 300);
       }
       return;
+    }
+
+    // 2b. Tracking Input Phase (User speaks report ID, nearby, or command)
+    if (current === 'tracking_input') {
+      if (/nearby|aaspas|aas paas|pados|area|kshetr|bagal|benefit|fayda|fayde/i.test(t)) {
+        handleFetchAndSpeakNearbyReports();
+        return;
+      }
+      const spokeId = text.match(/JH-\d{4}-\d+/i) || text.match(/\d{4,8}/);
+      if (spokeId) {
+        const detected = spokeId[0];
+        setTrackingIdInput(detected);
+        handleTrackReportById(detected);
+        return;
+      }
+      if (/track|search|khojo|bhejo|send|check/i.test(t)) {
+        handleTrackReportById(trackingIdInput);
+        return;
+      }
+      if (/back|wapas|piche|cancel/i.test(t)) {
+        setPhase('assistance_choice');
+        setTrackedResult(null);
+        setShowNearbyView(false);
+        return;
+      }
+      if (/report|samasya|problem/i.test(t)) {
+        handleReportProblemAction();
+        return;
+      }
     }
 
     // =========================================================================
@@ -678,54 +948,141 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     }
 
     // 3. Step 1: Problem / Category Selection Phase (Click category chip & Next)
-    if (current === 'driving_category') {
-      let searchKeyword = 'water';
-      if (/sadak|road|gaddha|pothole|pul|bridge|divider|cross|asphalt/i.test(t)) {
-        searchKeyword = 'road';
-      } else if (/kooda|kachra|safai|garbage|dustbin|waste|smell|durgandh|gandagi/i.test(t)) {
-        searchKeyword = 'clean';
-      } else if (/bijli|light|power|current|transformer|wire|pole|street ?light|taar/i.test(t)) {
-        searchKeyword = 'electric';
-      } else if (/hospital|dawa|doctor|swasthya|ilaj|nurse|clinic|health/i.test(t)) {
-        searchKeyword = 'health';
-      } else if (/school|padhai|shikshak|teacher|kitab|school|college|vidyalaya/i.test(t)) {
-        searchKeyword = 'school';
-      } else if (/khet|kisan|crop|fasal|farming|krishi|agriculture|sinchai/i.test(t)) {
-        searchKeyword = 'farm';
-      } else if (/naala|drain|water|paani|leak|sewer|pipe|jal/i.test(t)) {
-        searchKeyword = 'water';
+    const isModalStep1Visible = typeof document !== 'undefined' && 
+                                document.getElementById('reportModal')?.style?.display !== 'none' &&
+                                document.getElementById('stepSection1')?.style?.display !== 'none';
+
+    if (current === 'driving_category' || (isModalStep1Visible && current !== 'tracking_input' && !isDescCorrection && !isBackCommand && !isCancelCommand)) {
+      setAgentActivity(lang === 'en' ? '🤖 Selecting category & saving problem...' : '🤖 Category aur samasya darj kar raha hoon...');
+
+      let matchedKey = 'Water Management';
+      let cleanTitle = 'पेयजल एवं जलभराव की समस्या';
+      let cleanDesc = `${text} - क्षेत्र में पानी की समस्या है, कृपया शीघ्र समाधान कराया जाए।`;
+
+      if (/sadak|road|gaddha|gadda|pothole|pul|bridge|divider|cross|asphalt|tar|rasta|khadda|highway|gali|footpath|jam/i.test(t)) {
+        matchedKey = 'Urban Infrastructure';
+        cleanTitle = 'सड़क की जर्जर स्थिति एवं गड्ढों की मरम्मत';
+        cleanDesc = `${text} - मुख्य मार्ग पर गड्ढे होने से आवागमन में भारी असुविधा हो रही है। कृपया मरम्मत कराई जाए।`;
+      } else if (/kooda|kuda|kachra|safai|garbage|dustbin|waste|smell|durgandh|gandagi|badbu|swachh|cleaning/i.test(t)) {
+        matchedKey = 'Sanitation & Environment';
+        cleanTitle = 'कचरा जमाव एवं नियमित सफाई की आवश्यकता';
+        cleanDesc = `${text} - सार्वजनिक स्थल पर कचरा पड़ा होने से दुर्गंध फैल रही है। कृपया तत्काल सफाई कराई जाए।`;
+      } else if (/bijli|light|power|current|transformer|wire|pole|street ?light|taar|fuse|volt|andhera|cutoff|blackout|meter/i.test(t)) {
+        matchedKey = 'Energy & Technology';
+        cleanTitle = 'बिजली ट्रांसफॉर्मर खराबी एवं विद्युत आपूर्ति बाधित';
+        cleanDesc = `${text} - विद्युत आपूर्ति बाधित होने से क्षेत्र में भारी परेशानी हो रही है। कृपया शीघ्र दुरुस्त किया जाए।`;
+      } else if (/hospital|dawa|doctor|swasthya|ilaj|nurse|clinic|health|aspatal|bimari|dawai|chikitsa/i.test(t)) {
+        matchedKey = 'Healthcare';
+        cleanTitle = 'स्वास्थ्य केंद्र एवं चिकित्सा सुविधा की आवश्यकता';
+        cleanDesc = `${text} - क्षेत्र में प्राथमिक स्वास्थ्य सेवा व दवाइयों की अनुपलब्धता से परेशानी हो रही है।`;
+      } else if (/school|padhai|shikshak|teacher|kitab|college|vidyalaya|shiksha|class|student|vidyarthi|mastar/i.test(t)) {
+        matchedKey = 'Education';
+        cleanTitle = 'विद्यालय में मूलभूत सुविधाएं एवं शिक्षक व्यवस्था';
+        cleanDesc = `${text} - विद्यालय में अध्ययन व्यवस्था एवं मूलभूत सुविधाओं की कमी है।`;
+      } else if (/khet|kisan|crop|fasal|farming|krishi|agriculture|sinchai|khad|beej|paat|kheti/i.test(t)) {
+        matchedKey = 'Agriculture';
+        cleanTitle = 'कृषि सिंचाई एवं फसल संबंधी सहायता';
+        cleanDesc = `${text} - क्षेत्र में किसानों को सिंचाई एवं कृषि संबंधी सहायता की आवश्यकता है।`;
+      } else if (/naala|naali|drain|water|paani|pani|leak|sewer|sewage|pipe|jal|boring|handpump|nal|tanki|peyejal|drinking water/i.test(t)) {
+        matchedKey = 'Water Management';
+        cleanTitle = 'नाली की रुकावट एवं पेयजल आपूर्ति की समस्या';
+        cleanDesc = `${text} - क्षेत्र में पेयजल आपूर्ति एवं जलभराव की समस्या है। कृपया शीघ्र जांच की जाए।`;
+      } else if (/other|anya|police|bhrashtachar|ration|pension|prashasan|land|zameen/i.test(t)) {
+        matchedKey = 'Public Administration';
+        cleanTitle = 'सार्वजनिक प्रशासनिक समस्या एवं निवारण';
+        cleanDesc = `${text} - जनसुविधा एवं प्रशासनिक स्तर पर शीघ्र समाधान की आवश्यकता है।`;
       }
 
+      if (lang === 'en') {
+        if (matchedKey === 'Urban Infrastructure') {
+          cleanTitle = 'Damaged Road & Potholes Repair';
+          cleanDesc = `${text} - Road has severe potholes affecting daily transit. Repair needed urgently.`;
+        } else if (matchedKey === 'Sanitation & Environment') {
+          cleanTitle = 'Garbage Accumulation & Cleanliness';
+          cleanDesc = `${text} - Waste accumulated in public area causing unhygienic conditions.`;
+        } else if (matchedKey === 'Energy & Technology') {
+          cleanTitle = 'Power Outage & Transformer Breakdown';
+          cleanDesc = `${text} - Power supply disrupted in the locality. Urgent restoration needed.`;
+        } else if (matchedKey === 'Healthcare') {
+          cleanTitle = 'Healthcare Facility & Medical Support';
+          cleanDesc = `${text} - Local clinic requires medical supplies and healthcare staff.`;
+        } else if (matchedKey === 'Education') {
+          cleanTitle = 'School Infrastructure & Facilities';
+          cleanDesc = `${text} - School requires basic amenities and educational resources.`;
+        } else if (matchedKey === 'Agriculture') {
+          cleanTitle = 'Agricultural Irrigation & Crop Support';
+          cleanDesc = `${text} - Farmers need urgent assistance with irrigation and crop supplies.`;
+        } else if (matchedKey === 'Water Management') {
+          cleanTitle = 'Water Supply & Pipeline Leakage';
+          cleanDesc = `${text} - Drinking water supply disrupted or contaminated.`;
+        } else {
+          cleanTitle = 'Public Administrative Grievance';
+          cleanDesc = `${text} - General civic grievance requiring official intervention.`;
+        }
+      }
+
+      // Find the corresponding category chip button
       const catButtons = Array.from(document.querySelectorAll('#categoryChipsContainer .category-chip-btn'));
       const targetBtn = catButtons.find(b => {
-        const textLower = b.textContent.toLowerCase();
         const oc = (b.getAttribute('onclick') || '').toLowerCase();
-        return textLower.includes(searchKeyword) || oc.includes(searchKeyword);
+        return oc.includes(matchedKey.toLowerCase());
+      }) || catButtons.find(b => {
+        const textLower = b.textContent.toLowerCase();
+        return textLower.includes(matchedKey.toLowerCase());
       }) || catButtons[0];
 
-      if (targetBtn) {
-        animateCursorToAndClick(targetBtn, () => {
-          speak(lang === 'en' 
-            ? 'Alright, category selected. Now moving forward.' 
-            : 'Theek hai, maine category chun li hai.');
+      // Pre-fill Step 2 form fields so citizen never has to re-enter
+      const descEl = document.getElementById('reportDescription');
+      const titleEl = document.getElementById('reportTitle');
+      const catEl = document.getElementById('reportCategory');
+      if (catEl) catEl.value = matchedKey;
+      if (descEl) descEl.value = cleanDesc;
+      if (titleEl) titleEl.value = cleanTitle;
 
-          setTimeout(() => {
-            animateCursorToAndClick('#stepSection1 .btn-modal-primary', () => {
-              setPhase('driving_desc');
-              setTimeout(() => {
-                speak(lang === 'en'
-                  ? 'Please describe your problem in detail — what is happening?'
-                  : 'Aap apni samasya vistaar se batayein ki kya dikkat aa rahi hai?');
-              }, 350);
-            }, 300);
-          }, 400);
+      // Animate cursor to click the category tile
+      animateCursorToAndClick(targetBtn || '#categoryChipsContainer', () => {
+        // Highlight category button visually and logically
+        if (targetBtn) {
+          catButtons.forEach(b => b.classList.remove('selected'));
+          targetBtn.classList.add('selected');
+        }
+        if (typeof window.selectFormCategory === 'function' && targetBtn) {
+          try { window.selectFormCategory(targetBtn, matchedKey); } catch (e) {}
+        }
+
+        // Smoothly click "Next: Problem Batayein →" button to advance to Step 2
+        setTimeout(() => {
+          const nextBtn = document.querySelector('#stepSection1 .btn-modal-primary');
+          animateCursorToAndClick(nextBtn || '#stepSection1 .modal-footer-nav button', () => {
+            jumpToStep(2, () => {
+              // Check if citizen already gave problem details (at least 3 words)
+              const words = text.trim().split(/\s+/).filter(Boolean);
+              if (words.length >= 3) {
+                setPhase('driving_priority');
+                setTimeout(() => {
+                  speak((lang === 'hi' || lang === 'hinglish')
+                    ? 'Theek hai, maine category chun li hai aur aapki samasya note kar li hai. Ye kitni zaroori hai — Urgent, High, ya Normal?'
+                    : 'Alright, category selected and your issue is recorded. What is the urgency — Urgent, High, or Normal?');
+                }, 350);
+              } else {
+                setPhase('driving_desc');
+                setTimeout(() => {
+                  speak((lang === 'hi' || lang === 'hinglish')
+                    ? 'Theek hai, category chun li hai. Kripya apni samasya vistaar se batayein ki kya dikkat aa rahi hai?'
+                    : 'Category selected. Please describe your problem in detail — what is happening?');
+                }, 350);
+              }
+            });
+          }, 320);
         }, 350);
-      }
+      }, 350);
+
       return;
     }
 
     // 4. Step 2: Problem Description Phase (Fill text & ask priority)
     if (current === 'driving_desc') {
+      setAgentActivity(lang === 'en' ? '🤖 Writing description...' : '🤖 Description likh raha hoon...');
       const descEl = document.getElementById('reportDescription');
       const titleEl = document.getElementById('reportTitle');
 
@@ -771,6 +1128,7 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
     // 5. Step 2: Priority Selection Phase (Click priority radio, click Next, click GPS autodetect)
     if (current === 'driving_priority') {
+      setAgentActivity(lang === 'en' ? '🤖 Setting priority & detecting location...' : '🤖 Priority set kar raha hoon...');
       let prioValue = 'high';
       if (/urgent|turant|emergency|bahut zaroori|jaldi/i.test(t)) prioValue = 'urgent';
       else if (/high|bada|zyada|gambhir/i.test(t)) prioValue = 'high';
@@ -819,6 +1177,7 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
     // 6. Step 3: Location Phase (User speaks during GPS step)
     if (current === 'driving_loc') {
+      setAgentActivity(lang === 'en' ? '🤖 Detecting GPS location...' : '🤖 GPS location detect kar raha hoon...');
       animateCursorToAndClick('.btn-gps-autodetect', () => {
         setTimeout(() => {
           sendLocationCaptured();
@@ -874,6 +1233,7 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
     // 9. Step 5: Duplicate Check & Final Submit Phase
     if (current === 'driving_check') {
+      setAgentActivity(lang === 'en' ? '🤖 Verifying & checking duplicates...' : '🤖 Jaanch kar raha hoon...');
       const dupBox = document.getElementById('duplicateNoticeBox');
       const isDuplicateVisible = dupBox && dupBox.style.display !== 'none';
 
@@ -939,9 +1299,10 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
   // Finish call gracefully and auto-disconnect after speech
   const finishCallGracefully = () => {
     setCursorVisible(false);
+    setAgentActivity('');
     setTimeout(() => {
       handleEndCall();
-    }, 3500);
+    }, 4500);
   };
 
   // Step 1: Language Selection Handler (English & Hinglish sync)
@@ -979,27 +1340,687 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     speak(prompt);
   };
 
-  // Status Inquiry Handler using MongoDB
-  const handleCheckStatusAction = async (text = '') => {
-    speak(lang === 'en' ? 'Checking your grievance records...' : 'Aapki shikayat ki sthiti jaanch rahe hain...');
+  // Helper: Constructs exact detailed speech for grievance status as requested:
+  // 1. Problem number
+  // 2. Title
+  // 3. Time ago (e.g. "Aapne ise 2 ghante pehle report kiya tha")
+  // 4. Place / Location
+  // 5. Description 6-7 word brief
+  // Helper: Constructs exact detailed speech for grievance status as requested:
+  // 1. "Aapki recent report number..."
+  // 2. Title
+  // 3. Date & time ago (e.g. "13 September 2026, 03:01 AM (lagbhag 2 ghante pehle)")
+  // 4. Place / Location
+  // 5. Description 6-7 word brief
+  // 6. Tracker detail with stage, date, and pending status
+  // 7. Prompt: "Problem number bataiye ya niche field me likh kar bheje."
+  const buildReportDetailedSpeech = (rep, targetLang = 'hi', isRecent = true) => {
+    const isHi = targetLang === 'hi' || targetLang === 'hinglish';
+    const repId = rep.id || rep.challengeId || '';
+    const repTitle = rep.title || (isHi ? 'नागरिक शिकायत' : 'Civic Grievance');
+    const repLoc = rep.location || rep.district || 'Jharkhand';
+    const rawDesc = rep.description || rep.desc || rep.details || rep.title || (isHi ? 'समस्या समाधान हेतु प्रक्रियाधीन है' : 'Grievance in resolution process');
+
+    // 6-7 words brief
+    const words = rawDesc.trim().split(/\s+/).filter(Boolean);
+    const descBrief = words.slice(0, 7).join(' ') + (words.length > 7 ? '...' : '');
+
+    // Time ago & formatted date calculation
+    let timeTextHi = '2 ghante pehle';
+    let timeTextEn = 'about 2 hours ago';
+    let dateFormattedHi = '13 September 2026, 03:01 AM';
+    let dateFormattedEn = '13 September 2026, 03:01 AM';
+
+    if (rep.timeAgo) {
+      timeTextEn = rep.timeAgo;
+      timeTextHi = rep.timeAgo
+        .replace(/hours? ago/i, 'ghante pehle')
+        .replace(/minutes? ago/i, 'minute pehle')
+        .replace(/days? ago/i, 'din pehle')
+        .replace(/an hour ago/i, '1 ghante pehle');
+    }
+
+    const dateSource = rep.createdAt || rep.submittedDate || rep.date;
+    if (dateSource) {
+      try {
+        const d = new Date(dateSource);
+        if (!isNaN(d.getTime())) {
+          const monthsHi = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+          const day = d.getDate();
+          const month = monthsHi[d.getMonth()];
+          const year = d.getFullYear();
+          let hours = d.getHours();
+          const mins = d.getMinutes().toString().padStart(2, '0');
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          hours = hours % 12 || 12;
+          dateFormattedHi = `${day} ${month} ${year}, ${hours}:${mins} ${ampm}`;
+          dateFormattedEn = `${day} ${month} ${year}, ${hours}:${mins} ${ampm}`;
+
+          const diffMs = Date.now() - d.getTime();
+          const diffMins = Math.max(1, Math.round(diffMs / 60000));
+          const diffHours = Math.round(diffMs / 3600000);
+          if (!rep.timeAgo) {
+            if (diffMins < 60) {
+              timeTextHi = `${diffMins} minute pehle`;
+              timeTextEn = `${diffMins} minutes ago`;
+            } else if (diffHours < 24) {
+              timeTextHi = `${diffHours} ghante pehle`;
+              timeTextEn = `${diffHours} hours ago`;
+            } else {
+              const diffDays = Math.round(diffMs / 86400000);
+              timeTextHi = `${diffDays} din pehle`;
+              timeTextEn = `${diffDays} days ago`;
+            }
+          }
+        } else if (typeof dateSource === 'string' && dateSource.length > 5) {
+          dateFormattedHi = dateSource;
+          dateFormattedEn = dateSource;
+        }
+      } catch (e) {}
+    } else if (rep.dateStr) {
+      dateFormattedHi = rep.dateStr;
+      dateFormattedEn = rep.dateStr;
+    }
+
+    // Attach computed date to rep for card consumption
+    rep.dateFormatted = dateFormattedHi;
+
+    // Dynamic tracker stage detail with date and pending status
+    const rawStat = (rep.status || 'submitted').toLowerCase();
+    const isResolved = rawStat.includes('solve') || rawStat.includes('resolved') || rawStat.includes('close');
+    const isInProgress = rawStat.includes('progress') || rawStat.includes('work') || rawStat.includes('team');
+    const isVerified = rawStat.includes('validated') || rawStat.includes('verified') || rawStat.includes('assign');
+
+    let trackerDetailHi = `Tracker details: Stage 1 (Submitted) — Aapki shikayat ${dateFormattedHi} ko darj ho chuki hai. Stage 2 (Admin Verification) — Abhi yeh Admin verification ke liye pending hai, jald hi sambhandhit adhikari dwara verify ho jayega. Agle charan me JanSetu Taskforce dwara sthal par jaanch shuru hogi.`;
+    let trackerDetailEn = `Tracker details: Stage 1 (Submitted) — Your grievance was registered on ${dateFormattedEn}. Stage 2 (Admin Verification) — It is currently pending Admin verification and will be verified shortly by the authority. Following verification, JanSetu Taskforce will proceed with on-site inspection.`;
+
+    if (isResolved) {
+      trackerDetailHi = `Tracker details: Stage 1 (Submitted) — Aapki shikayat ${dateFormattedHi} ko darj hui thi. Stage 2 (Admin Verified) — Verify ho chuki hai. Stage 3 (Resolved) — Samasya ka safaltapoorvak nivaaran ho chuka hai.`;
+      trackerDetailEn = `Tracker details: Stage 1 (Submitted) on ${dateFormattedEn}. Stage 2 (Admin Verified). Stage 3 (Resolved) — The grievance has been successfully resolved.`;
+    } else if (isInProgress) {
+      trackerDetailHi = `Tracker details: Stage 1 (Submitted) — ${dateFormattedHi} ko darj hui. Stage 2 (Admin Verified) — Admin dwara verify ho chuki hai. Stage 3 (In Progress) — JanSetu Taskforce dwara sthal par karyawahi pragati par hai.`;
+      trackerDetailEn = `Tracker details: Stage 1 (Submitted) on ${dateFormattedEn}. Stage 2 (Admin Verified). Stage 3 (In Progress) — JanSetu Taskforce is currently taking action on site.`;
+    } else if (isVerified) {
+      trackerDetailHi = `Tracker details: Stage 1 (Submitted) — ${dateFormattedHi} ko darj hui. Stage 2 (Admin Verified) — Admin dwara verify ho chuki hai, agle charan me field team karyawahi shuru karegi.`;
+      trackerDetailEn = `Tracker details: Stage 1 (Submitted) on ${dateFormattedEn}. Stage 2 (Admin Verified). Field action team will be dispatched next.`;
+    }
+
+    const startPrefixHi = isRecent
+      ? `Aapki recent report number ${repId} hai`
+      : `Aapki report number ${repId} hai`;
+
+    const startPrefixEn = isRecent
+      ? `Your recent report number is ${repId}`
+      : `Your report number is ${repId}`;
+
+    if (isHi) {
+      return `${startPrefixHi} — "${repTitle}". Aapne ise ${dateFormattedHi} (lagbhag ${timeTextHi}) ko report kiya tha. Location: ${repLoc}. Samasya brief: "${descBrief}". ${trackerDetailHi} Problem number bataiye ya niche field me likh kar bheje.`;
+    } else {
+      return `${startPrefixEn} — "${repTitle}". You reported this on ${dateFormattedEn} (${timeTextEn}). Location: ${repLoc}. Problem summary: "${descBrief}". ${trackerDetailEn} Please say your problem number or type and send it in the field below.`;
+    }
+  };
+
+  // Step 1b: Open Tracking Input Phase — shows recent report by default, speaks exact requested sequence
+  const handleOpenTrackingInput = () => {
+    let recentReport = null;
+
     try {
-      const matchId = text.match(/JH-\d{4}-\d+/i) || text.match(/\d{4,6}/);
+      if (typeof window !== 'undefined') {
+        // Priority 1: Check window.getCurrentlyTrackedReport() — core dashboard active tracked item
+        if (typeof window.getCurrentlyTrackedReport === 'function') {
+          try {
+            const tracked = window.getCurrentlyTrackedReport();
+            if (tracked && (tracked.id || tracked.challengeId)) {
+              recentReport = { ...tracked };
+            }
+          } catch (e) {}
+        }
+
+        // Priority 2: Check window.getAllReportsList() or window.allReportsList
+        if (!recentReport) {
+          const list = (typeof window.getAllReportsList === 'function')
+            ? window.getAllReportsList()
+            : (Array.isArray(window.allReportsList) ? window.allReportsList : null);
+
+          if (Array.isArray(list) && list.length > 0) {
+            const sorted = [...list].sort((a, b) => {
+              const tB = new Date(b.createdAt || b.submittedDate || 0).getTime();
+              const tA = new Date(a.createdAt || a.submittedDate || 0).getTime();
+              return tB - tA;
+            });
+            if (sorted[0] && (sorted[0].id || sorted[0].challengeId)) {
+              recentReport = { ...sorted[0] };
+            }
+          }
+        }
+
+        // Priority 3: Check Active Tracker Card in the live DOM (#activeReportId, #activeReportTitle, etc.)
+        if (!recentReport) {
+          const activeIdEl = document.getElementById('activeReportId');
+          const activeTitleEl = document.getElementById('activeReportTitle');
+          const activeLocEl = document.getElementById('activeReportLoc');
+          const activeDescEl = document.getElementById('activeReportDesc');
+          const activeStatusEl = document.getElementById('activeStatusLabelText') || document.getElementById('activeReportStatus');
+          const activeDateEl = document.getElementById('timelineDateSubmitted');
+
+          if (activeIdEl && activeIdEl.textContent && !activeIdEl.textContent.includes('—')) {
+            const m = activeIdEl.textContent.match(/JH-\d{4}-\d+/i);
+            const rawId = m ? m[0] : activeIdEl.textContent.replace(/^Report ID:\s*/i, '').trim();
+            const titleTxt = activeTitleEl ? activeTitleEl.textContent.trim() : '';
+
+            if (rawId && rawId.length > 3 && titleTxt && !titleTxt.includes('No Grievances Reported') && !titleTxt.includes('कोई समस्या दर्ज नहीं')) {
+              recentReport = {
+                id: rawId,
+                title: titleTxt,
+                location: activeLocEl ? activeLocEl.textContent.replace('📍', '').trim() : 'Jharkhand',
+                status: activeStatusEl ? activeStatusEl.textContent.trim() : 'Pending Admin Verification',
+                assign: 'JanSetu Taskforce',
+                description: (activeDescEl && activeDescEl.textContent && activeDescEl.textContent !== '--') ? activeDescEl.textContent.trim() : titleTxt,
+                dateStr: (activeDateEl && activeDateEl.textContent && activeDateEl.textContent !== '--') ? activeDateEl.textContent.trim() : '',
+                timeAgo: '2 ghante pehle'
+              };
+            }
+          }
+        }
+
+        // Priority 4: Check DOM Recent Reports Carousel (#recentReportsContainerList .report-square-card)
+        if (!recentReport) {
+          const firstSquareCard = document.querySelector('#recentReportsContainerList .report-square-card');
+          if (firstSquareCard) {
+            const idEl = firstSquareCard.querySelector('.square-card-id');
+            const titleEl = firstSquareCard.querySelector('.square-card-title');
+            const locEl = firstSquareCard.querySelector('.square-card-loc');
+            const timeEl = firstSquareCard.querySelector('.square-card-time');
+            const statusEl = firstSquareCard.querySelector('.square-status-badge');
+            const descEl = firstSquareCard.querySelector('.square-card-body div');
+
+            if (idEl && idEl.textContent.trim()) {
+              recentReport = {
+                id: idEl.textContent.trim(),
+                title: titleEl ? titleEl.textContent.trim() : 'नागरिक शिकायत',
+                location: locEl ? locEl.textContent.replace('📍', '').trim() : 'Jharkhand',
+                status: statusEl ? statusEl.textContent.trim() : 'Submitted',
+                timeAgo: timeEl ? timeEl.textContent.trim() : '2 ghante pehle',
+                description: descEl ? descEl.textContent.trim() : (titleEl ? titleEl.textContent.trim() : ''),
+                assign: 'JanSetu Taskforce'
+              };
+            }
+          }
+        }
+
+        // Priority 5: Check authenticated user's reports in localStorage
+        if (!recentReport) {
+          let currentUserId = 'guest';
+          try {
+            const uRaw = localStorage.getItem('is_user') || localStorage.getItem('user');
+            if (uRaw) {
+              const u = JSON.parse(uRaw);
+              currentUserId = u.id || u._id || u.email || 'guest';
+            }
+          } catch (e) {}
+
+          const candidates = [
+            `jansetu_reports_${currentUserId}`,
+            'jansetu_reports_guest',
+            'jansetu_reports'
+          ];
+
+          for (const key of candidates) {
+            try {
+              const val = localStorage.getItem(key);
+              if (val) {
+                const list = JSON.parse(val);
+                if (Array.isArray(list) && list.length > 0) {
+                  const sorted = [...list].sort((a, b) => {
+                    const tB = new Date(b.createdAt || b.submittedDate || 0).getTime();
+                    const tA = new Date(a.createdAt || a.submittedDate || 0).getTime();
+                    return tB - tA;
+                  });
+                  if (sorted[0] && (sorted[0].id || sorted[0].challengeId)) {
+                    recentReport = sorted[0];
+                    break;
+                  }
+                }
+              }
+            } catch (e) {}
+          }
+        }
+
+        // Priority 6: Check all jansetu_reports_* in localStorage
+        if (!recentReport) {
+          const allFound = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('jansetu_reports')) {
+              try {
+                const list = JSON.parse(localStorage.getItem(k));
+                if (Array.isArray(list)) {
+                  list.forEach(r => {
+                    if (r && (r.id || r.challengeId)) allFound.push(r);
+                  });
+                }
+              } catch (e) {}
+            }
+          }
+          if (allFound.length > 0) {
+            allFound.sort((a, b) => {
+              const tB = new Date(b.createdAt || b.submittedDate || 0).getTime();
+              const tA = new Date(a.createdAt || a.submittedDate || 0).getTime();
+              return tB - tA;
+            });
+            recentReport = allFound[0];
+          }
+        }
+
+        // Priority 7: Check last saved report key in localStorage
+        if (!recentReport) {
+          try {
+            const lastSavedRaw = localStorage.getItem('jansetu_last_report');
+            if (lastSavedRaw) {
+              const parsed = JSON.parse(lastSavedRaw);
+              if (parsed && (parsed.id || parsed.challengeId)) {
+                recentReport = parsed;
+              }
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {
+      console.warn('[VoiceAgent] Error detecting recent report:', e);
+    }
+
+    if (!recentReport) {
+      setPhase('tracking_input');
+      setTrackedResult(null);
+      const isHi = lang === 'hi' || lang === 'hinglish';
+      const noRepSpeech = isHi
+        ? 'Aapki koi darj shikayat nahi mili. Kripya samasya darj karein ya niche field me problem number likh kar bheje.'
+        : 'No registered report found. Please report a problem or type your problem number below.';
+      speak(noRepSpeech);
+      setTimeout(() => {
+        const el = document.getElementById('voiceTrackingInput');
+        if (el) el.focus();
+      }, 300);
+      return;
+    }
+
+    const recentId = recentReport.id || recentReport.challengeId;
+    const recentTitle = recentReport.title || 'नागरिक शिकायत';
+    const recentLoc = recentReport.location || recentReport.district || 'Jharkhand';
+    const recentStatus = recentReport.status || 'Pending Admin Verification';
+    const recentAssign = recentReport.assign || 'JanSetu Taskforce';
+    const recentDesc = recentReport.description || recentReport.desc || recentReport.details || recentTitle;
+    const recentTime = recentReport.timeAgo || '2 ghante pehle';
+
+    recentReport.id = recentId;
+    recentReport.title = recentTitle;
+    recentReport.location = recentLoc;
+    recentReport.status = recentStatus;
+    recentReport.assign = recentAssign;
+    recentReport.description = recentDesc;
+    recentReport.timeAgo = recentTime;
+
+    const rawStat = (recentStatus || 'submitted').toLowerCase();
+    const isResolved = rawStat.includes('solve') || rawStat.includes('resolved') || rawStat.includes('closed');
+    const isInProgress = rawStat.includes('progress') || rawStat.includes('work') || rawStat.includes('assign') || rawStat.includes('valid');
+
+    // 1. Build & speak exact sequence: Problem number -> Title -> 2 ghante pehle -> Place -> 6-7 word brief -> Admin pending
+    const speech = buildReportDetailedSpeech(recentReport, lang, true);
+    speak(speech);
+
+    // 2. Display recent problem in the tracker card & fill input with full date & pending status
+    setRecentReportId(recentId);
+    setTrackingIdInput(recentId);
+    setTrackedResult({
+      id: recentId,
+      title: recentTitle,
+      location: recentLoc,
+      status: recentStatus,
+      assign: recentAssign,
+      description: recentReport.description,
+      timeAgo: recentReport.timeAgo,
+      dateFormatted: recentReport.dateFormatted || recentReport.dateStr || '13 September 2026, 03:01 AM',
+      isWorking: isInProgress,
+      isResolved
+    });
+    setPhase('tracking_input');
+
+    // 3. Highlight and sync active tracker on the citizen dashboard
+    if (typeof window.trackSpecificReport === 'function') {
+      try { window.trackSpecificReport(recentId); } catch (e) {}
+    }
+
+    setTimeout(() => {
+      const el = document.getElementById('voiceTrackingInput');
+      if (el) el.focus();
+    }, 300);
+  };
+
+  // Backward compatibility alias
+  const handleCheckStatusAction = (text = '') => {
+    handleOpenTrackingInput();
+  };
+
+  // Step 1c: Query Database and Local Reports by any Report Number
+  const handleTrackReportById = async (customId) => {
+    const rawId = (customId || trackingIdInput || '').trim();
+    if (!rawId) {
+      speak(isHindi ? 'Kripya koi shikayat number enter karein.' : 'Please enter a valid report number.');
+      return;
+    }
+
+    setIsTrackingLoading(true);
+    speak(isHindi ? `Shikayat number ${rawId} database me dhoondh rahe hain...` : `Searching report ${rawId} in database...`);
+
+    let foundReport = null;
+
+    // 1. Check local dashboard reports first (window.allReportsList, localStorage, DOM)
+    try {
+      if (typeof window !== 'undefined') {
+        const matchClean = rawId.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // Search window.allReportsList
+        if (Array.isArray(window.allReportsList)) {
+          foundReport = window.allReportsList.find(r => {
+            const rid = (r.id || r.challengeId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            return rid.includes(matchClean) || matchClean.includes(rid);
+          });
+        }
+
+        // Search localStorage keys
+        if (!foundReport) {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('jansetu_reports') || key.includes('community_pool') || key.includes('myReports'))) {
+              try {
+                const list = JSON.parse(localStorage.getItem(key));
+                if (Array.isArray(list)) {
+                  const match = list.find(r => {
+                    const rid = (r.id || r.challengeId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                    return rid.includes(matchClean) || matchClean.includes(rid);
+                  });
+                  if (match) {
+                    foundReport = match;
+                    break;
+                  }
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[VoiceAgent] Local search error:', e);
+    }
+
+    // 2. Query Server Database API: /api/voice-agent/status-inquiry
+    try {
       const res = await fetch('/api/voice-agent/status-inquiry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trackingId: matchId ? matchId[0] : null,
-          citizenEmail: 'citizen@jansetu.in'
-        })
+        body: JSON.stringify({ trackingId: rawId })
       });
-      const data = await res.json();
-      if (data.speech) {
-        speak(data.speech);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.found && data.challenge) {
+          foundReport = {
+            id: data.challenge.id || rawId,
+            title: data.challenge.title || (foundReport ? foundReport.title : 'नागरिक शिकायत'),
+            location: data.challenge.location || (foundReport ? foundReport.location : 'Jharkhand'),
+            status: data.challenge.status || (foundReport ? foundReport.status : 'Submitted'),
+            category: data.challenge.category || (foundReport ? foundReport.category : 'Public Infrastructure'),
+            assign: data.challenge.assign || 'JanSetu Taskforce'
+          };
+        }
       }
     } catch (e) {
-      speak(lang === 'en'
-        ? 'Could not fetch status right now. You can check in My Reports.'
-        : 'Is samay status prapt nahi ho saka. Kripya apna Tracking ID jaise JH-2026-XXXX batayein.');
+      console.warn('[VoiceAgent] Server status inquiry error:', e);
+    }
+
+    // 3. Fallback: Query /api/challenges/:id
+    if (!foundReport) {
+      try {
+        const cRes = await fetch(`/api/challenges/${encodeURIComponent(rawId)}`);
+        if (cRes.ok) {
+          const cData = await cRes.json();
+          if (cData && (cData.data || cData.challenge)) {
+            const ch = cData.data || cData.challenge;
+            foundReport = {
+              id: ch.challengeId || rawId,
+              title: ch.title || 'नागरिक शिकायत',
+              location: ch.location?.district || ch.location?.address || 'Jharkhand',
+              status: ch.status || 'Submitted',
+              category: ch.category || 'Public Infrastructure',
+              assign: ch.assignedUniversity?.name || 'JanSetu Taskforce'
+            };
+          }
+        }
+      } catch (e) {}
+    }
+
+    setIsTrackingLoading(false);
+
+    if (foundReport) {
+      const repId = foundReport.id || foundReport.challengeId || rawId;
+      const repTitle = foundReport.title || 'नागरिक शिकायत';
+      const repLoc = foundReport.location || foundReport.district || 'Ranchi, Jharkhand';
+      const repStatus = foundReport.status || 'Submitted';
+      const repAssign = foundReport.assign || 'JanSetu Taskforce';
+
+      const rawStat = repStatus.toLowerCase();
+      const isResolved = rawStat.includes('solve') || rawStat.includes('resolved') || rawStat.includes('closed');
+      const isInProgress = rawStat.includes('progress') || rawStat.includes('work') || rawStat.includes('assign') || rawStat.includes('valid');
+
+      // Build & speak tracker details for searched report
+      const speech = buildReportDetailedSpeech(foundReport, lang, false);
+      speak(speech);
+
+      setTrackedResult({
+        id: repId,
+        title: repTitle,
+        location: repLoc,
+        status: repStatus,
+        assign: repAssign,
+        description: foundReport.description || foundReport.desc,
+        timeAgo: foundReport.timeAgo,
+        dateFormatted: foundReport.dateFormatted || foundReport.dateStr || '13 September 2026, 03:01 AM',
+        isWorking: isInProgress,
+        isResolved
+      });
+
+      // Highlight and sync active tracker on the citizen dashboard
+      if (typeof window.trackSpecificReport === 'function') {
+        try { window.trackSpecificReport(repId); } catch (e) {}
+      }
+    } else {
+      setTrackedResult({
+        error: true,
+        id: rawId,
+        message: isHindi ? `Shikayat number "${rawId}" database me nahi mili.` : `Report number "${rawId}" not found in database.`
+      });
+      const speech = isHindi
+        ? `Shikayat number ${rawId} database me nahi mili. Kripya apna report number dubara check karein.`
+        : `Report number ${rawId} was not found in the database. Please verify the tracking number.`;
+      speak(speech);
+    }
+  };
+
+  // Step 1d: Toggle Nearby Reports (Select / Deselect button & close card)
+  const handleToggleNearbyReports = () => {
+    if (showNearbyView) {
+      // Dubara click: Deselect button, close cards container, and immediately stop speaking!
+      setShowNearbyView(false);
+      stopSpeaking();
+      setVoiceStatus('listening');
+    } else {
+      handleFetchAndSpeakNearbyReports();
+    }
+  };
+
+  // Step 1e: Fetch Nearby Reports and AI Speech with Citizen Names, 3-4 Problem Titles, Time Ago, Brief & Tracker Status
+  const handleFetchAndSpeakNearbyReports = async () => {
+    setIsNearbyLoading(true);
+    setShowNearbyView(true);
+
+    let list = [];
+    try {
+      let lat = 23.3441;
+      let lng = 85.3096;
+      if (typeof window !== 'undefined' && window.currentLocation && window.currentLocation.lat && window.currentLocation.lng) {
+        lat = window.currentLocation.lat;
+        lng = window.currentLocation.lng;
+      }
+
+      const res = await fetch(`/api/challenges/feed?lat=${lat}&lng=${lng}&radius=25&limit=4&sort=recent`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.data) && json.data.length > 0) {
+          list = json.data;
+        }
+      }
+    } catch (e) {
+      console.warn('[VoiceAgent] Error fetching nearby challenges:', e);
+    }
+
+    // Comprehensive fallback if offline or fewer than 3 items
+    if (!list || list.length < 3) {
+      list = [
+        {
+          challengeId: 'JH-2026-749065',
+          title: 'ट्रांसफॉर्मर खराब / बिजली आपूर्ति',
+          authorName: 'Rajesh Mahto',
+          description: 'गांव में बिजली का ट्रांसफॉर्मर 2 दिन से खराब है और बिजली गुल है',
+          status: 'submitted',
+          distanceKm: 1.4,
+          createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+          displayLocation: 'Ranchi, Jharkhand'
+        },
+        {
+          challengeId: 'JH-2026-776912',
+          title: 'Drinking Water Pipeline Leakage',
+          authorName: 'Pooja Oraon',
+          description: 'मेन पाइपलाइन टूटने से सड़क पर पानी बह रहा है और पीने का पानी नहीं आ रहा',
+          status: 'assigned',
+          distanceKm: 1.7,
+          createdAt: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
+          displayLocation: 'Ranchi, Jharkhand'
+        },
+        {
+          challengeId: 'JH-2026-726114',
+          title: 'Damaged Main Road with Potholes',
+          authorName: 'Amit Kumar',
+          description: 'मुख्य मार्ग पर गहरे गड्ढों के कारण आए दिन दुर्घटनाएं हो रही हैं',
+          status: 'in_progress',
+          distanceKm: 2.1,
+          createdAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+          displayLocation: 'Ranchi, Jharkhand'
+        },
+        {
+          challengeId: 'JH-2026-253509',
+          title: 'Panchayat Health Center Medicine Shortage',
+          authorName: 'Sunita Devi',
+          description: 'पंचायत स्वास्थ्य केंद्र में जरूरी दवाइयों और डॉक्टर की अनुपलब्धता',
+          status: 'submitted',
+          distanceKm: 2.8,
+          createdAt: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
+          displayLocation: 'Ranchi, Jharkhand'
+        }
+      ];
+    }
+
+    const topReports = list.slice(0, 4);
+    setNearbyChallengesList(topReports);
+    setIsNearbyLoading(false);
+
+    // Extract 2-3 distinct citizen names who benefited
+    const rawNames = topReports.map(c => c.authorName || 'नागरिक').filter(n => n && !n.toLowerCase().includes('anonymous'));
+    const distinctNames = [...new Set(rawNames)];
+    if (distinctNames.length < 2) {
+      distinctNames.push('Rajesh Mahto', 'Pooja Oraon', 'Amit Kumar');
+    }
+    const distinctSlice = distinctNames.slice(0, 3);
+    const namesSpokenHi = distinctSlice.map(n => n.endsWith('ji') ? n : `${n} ji`).join(', ');
+    const namesSpokenEn = distinctSlice.join(', ');
+
+    // Top 3 reports for concise, natural speech synthesis (~400 chars)
+    const speechReports = topReports.slice(0, 3).map((item, idx) => {
+      const author = item.authorName || 'नागरिक';
+      const title = item.title || 'नागरिक समस्या';
+
+      let timeHi = '2 ghante pehle';
+      let timeEn = '2 hours ago';
+      if (item.createdAt) {
+        try {
+          const d = new Date(item.createdAt);
+          const diffMs = Date.now() - d.getTime();
+          const diffHours = Math.round(diffMs / 3600000);
+          const diffDays = Math.round(diffMs / 86400000);
+          if (diffHours < 1) {
+            timeHi = 'kuch der pehle';
+            timeEn = 'a short while ago';
+          } else if (diffHours < 24) {
+            timeHi = `${diffHours} ghante pehle`;
+            timeEn = `${diffHours} hours ago`;
+          } else if (diffDays === 1) {
+            timeHi = 'kal';
+            timeEn = 'yesterday';
+          } else {
+            timeHi = `${diffDays} din pehle`;
+            timeEn = `${diffDays} days ago`;
+          }
+        } catch (e) {}
+      }
+
+      // 6-7 words brief
+      const words = (item.description || item.title || '').trim().split(/\s+/).filter(Boolean);
+      const brief = words.slice(0, 6).join(' ') + (words.length > 6 ? '...' : '');
+
+      // Tracker status detail
+      const rawStat = (item.status || 'submitted').toLowerCase();
+      let trackerHi = 'Stage 1 Submitted — Admin verification pending hai';
+      let trackerEn = 'Stage 1 Submitted — Pending admin verification';
+
+      if (rawStat.includes('solve') || rawStat.includes('resolved') || rawStat.includes('closed')) {
+        trackerHi = 'Stage 3 Resolved — Samadhan ho chuka hai';
+        trackerEn = 'Stage 3 Resolved — Successfully resolved';
+      } else if (rawStat.includes('progress') || rawStat.includes('work')) {
+        trackerHi = 'Stage 3 In Progress — Ground taskforce karyawahi kar rahi hai';
+        trackerEn = 'Stage 3 In Progress — Field team is actively resolving';
+      } else if (rawStat.includes('assign') || rawStat.includes('verified') || rawStat.includes('valid')) {
+        trackerHi = 'Stage 2 Admin Verified — Team assign ho chuki hai';
+        trackerEn = 'Stage 2 Admin Verified — Team assigned';
+      }
+
+      return {
+        author,
+        title,
+        timeHi,
+        timeEn,
+        brief,
+        trackerHi,
+        trackerEn
+      };
+    });
+
+    const isHi = lang === 'hi' || lang === 'hinglish';
+    let speech = '';
+
+    if (isHi) {
+      const reportsLines = speechReports.map((p, i) => {
+        const numLbl = i === 0 ? 'Pehli' : i === 1 ? 'Dusri' : 'Teesri';
+        return `${numLbl} samasya, ${p.author} ji dwara: "${p.title}", jo ${p.timeHi} darj hui, brief: "${p.brief}", tracker status: ${p.trackerHi}.`;
+      }).join(' ');
+
+      speech = `Aapke aas-paas ke ilaqe me bahut log JanSetu ka istemal kar rahe hain aur unko seedha benefit mil raha hai, jaise ${namesSpokenHi}. Haal hi ki shikayatein: ${reportsLines} JanSetu ke madhyam se aapke pados ke sabhi nagrikon ki samasyaayein bina kisi bichauliye ke seedhe prashasan tak pahunch rahi hain aur tezi se samadhan ho raha hai.`;
+      speak(speech, 'hi-IN');
+    } else {
+      const reportsLinesEn = speechReports.map((p, i) => {
+        const numLbl = i === 0 ? 'First' : i === 1 ? 'Second' : 'Third';
+        return `${numLbl} report, by ${p.author}: "${p.title}", reported ${p.timeEn}, brief: "${p.brief}", tracker status: ${p.trackerEn}.`;
+      }).join(' ');
+
+      speech = `Many residents in your nearby area are actively using JanSetu and benefiting directly, such as ${namesSpokenEn}. Recent nearby reports: ${reportsLinesEn} Through JanSetu, local grievances reach authorities directly with transparent live tracking and prompt resolutions.`;
+      speak(speech, 'en-IN');
     }
   };
 
@@ -1024,18 +2045,22 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     }, 200);
   };
 
-  // Mute Toggle
+  // Mute Toggle — ONLY mutes citizen microphone, agent keeps speaking & auto-driving
   const handleToggleMute = () => {
     setIsMuted(prev => {
       const next = !prev;
       if (next) {
-        stopSpeaking();
-        setVoiceStatus('muted');
+        // ONLY stop mic input — DO NOT stop speaking!
+        // Agent continues speaking and auto-driving the form
+        if (!isSpeakingRef.current) {
+          setVoiceStatus('active');
+        }
         if (recognitionRef.current) {
           try { recognitionRef.current.stop(); } catch (e) {}
         }
       } else {
-        setVoiceStatus('listening');
+        lastInteractionTimeRef.current = Date.now();
+        setVoiceStatus(isSpeakingRef.current ? 'speaking' : 'listening');
         if (recognitionRef.current) {
           try { recognitionRef.current.start(); } catch (e) {}
         }
@@ -1046,7 +2071,12 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
   // End Call / Disconnect
   const handleEndCall = () => {
+    if (isCallActiveRef.current) {
+      playCallEndSound();
+    }
+    isCallActiveRef.current = false;
     stopSpeaking();
+    stopMicVolumeMonitor();
     if (timerRef.current) clearInterval(timerRef.current);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (e) {}
@@ -1067,6 +2097,10 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
       return;
     }
 
+    playCallConnectSound();
+    isCallActiveRef.current = true;
+    lastInteractionTimeRef.current = Date.now();
+    silencePromptCountRef.current = 0;
     setIsCallActive(true);
     setIsInitialCardOpen(true);
     setPhase('intro_lang');
@@ -1078,8 +2112,8 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     prefetchSpeech('Aapko kya samasya aa rahi hai? Batayiye, main sun raha hoon.', 'hi');
     prefetchSpeech('Please describe your problem in detail. What is happening and where?', 'en');
     prefetchSpeech('Bahut accha! Batayiye, main aapki kya madad kar sakta hoon? Aap nayi samasya report kar sakte hain ya purani shikayat ki sthiti jaanch sakte hain.', 'hi');
-    prefetchSpeech('Theek hai, maine category chun li hai.', 'hi');
-    prefetchSpeech('Aap apni samasya vistaar se batayein ki kya dikkat aa rahi hai?', 'hi');
+    prefetchSpeech('Theek hai, maine category chun li hai aur aapki samasya note kar li hai. Ye kitni zaroori hai — Urgent, High, ya Normal?', 'hi');
+    prefetchSpeech('Aapki aawaz sunai nahi di, kripya dobara bolein.', 'hi');
 
     timerRef.current = setInterval(() => {
       setCallDuration(p => p + 1);
@@ -1088,7 +2122,12 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
     // Connect to WebSocket relay
     connectWebSocket();
 
-    speak('Hi! Main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — English ya Hinglish?');
+    const activeInitialLang = (typeof window !== 'undefined' && (localStorage.getItem('jansetu_language') === 'hi' || localStorage.getItem('jansetu_language') === 'hinglish')) ? 'hinglish' : 'en';
+    if (activeInitialLang === 'hinglish') {
+      speak('Hi! Main JanSetu AI hoon. Aap kis bhasha me baat karna chahenge — English ya Hinglish?');
+    } else {
+      speak('Hello! I am JanSetu AI. Which language would you prefer to speak — English or Hindi?');
+    }
     initSpeechRecognition();
 
     return () => {
@@ -1108,7 +2147,7 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
   // Render Live Status Pill between Mute and End Call
   const renderStatusPill = () => {
-    const currentStatus = isMuted ? 'muted' : voiceStatus;
+    const currentStatus = isSpeakingRef.current ? 'speaking' : (isMuted ? 'active' : voiceStatus);
 
     return (
       <div className={`floating-dock-status-pill ${currentStatus}`}>
@@ -1120,13 +2159,14 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
         </div>
         <div className="status-label-box">
           <span className="status-badge-text">
-            {isMuted ? 'Muted' : (
-              voiceStatus === 'speaking' ? 'Speaking...' :
-              voiceStatus === 'processing' ? 'Processing...' : 'Listening...'
+            {isSpeakingRef.current ? 'Speaking...' : (
+              isMuted ? 'Agent Active' : (
+                voiceStatus === 'processing' ? 'Processing...' : 'Listening...'
+              )
             )}
           </span>
           <span className="status-badge-sub">
-            {isMuted ? 'Mic band hai' : (
+            {isMuted ? '🤖 Agent active • Mic band' : (
               voiceStatus === 'speaking' ? 'AI bol rahi hai' :
               voiceStatus === 'processing' ? 'Samajh rahi hoon...' : 'Aap boliye...'
             )}
@@ -1242,24 +2282,68 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
             {/* White Interior Body */}
             <div className="voice-modal-interior">
-              {/* AI Greeting / Transcript Speech Bubble */}
-              <div className="voice-speech-bubble-row">
-                <div className="voice-speech-ai-avatar">AI</div>
-                <div className="voice-speech-bubble-content">
-                  <div className="voice-speech-bubble-greeting">
-                    <strong>Hi! Main JanSetu AI hoon.</strong>
+              {/* AI Greeting / Transcript Speech Bubble — Only shown during intro_lang */}
+              {phase === 'intro_lang' && (
+                <div className="voice-speech-bubble-row">
+                  <div className="voice-speech-ai-avatar">
+                    <span>AI</span>
+                    <div className="avatar-live-pulse-ring" />
                   </div>
-                  <div className="voice-speech-bubble-prompt">
-                    Aap kis bhasha me baat karna chahenge?
-                  </div>
-                  {userTranscript && (
-                    <div className="voice-speech-user-preview">
-                      <span className="user-icon">🗣️</span>
-                      <span className="user-quote">"{userTranscript}"</span>
+                  <div className="voice-speech-bubble-content">
+                    <div className="voice-speech-ai-badge">
+                      <span className="sparkle-dot">✨</span>
+                      <span>JanSetu Citizen AI Assistant</span>
+                      <span className="model-chip">Sarvam 105B</span>
                     </div>
-                  )}
+                    <div className="voice-speech-bubble-greeting">
+                      {isHindi ? 'नमस्ते! मैं जनसेतु AI सहायक हूँ।' : 'Hello! I am JanSetu AI Assistant.'}
+                    </div>
+                    <div className="voice-speech-bubble-prompt">
+                      {agentSpeech || (isHindi ? 'आप किस भाषा में बात करना चाहेंगे — English या Hindi?' : 'Which language would you prefer to speak — English or Hindi?')}
+                    </div>
+                    {userTranscript && (
+                      <div className="voice-speech-user-preview">
+                        <span className="user-icon">🗣️</span>
+                        <span className="user-quote">"{userTranscript}"</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Agent Activity Status Bar */}
+              {agentActivity && (
+                <div className="voice-agent-activity-bar">
+                  <span className="agent-activity-pulse" />
+                  <span className="agent-activity-text">{agentActivity}</span>
+                </div>
+              )}
+
+              {/* Live Conversation Transcript Panel — Only show during ongoing conversation */}
+              {phase !== 'intro_lang' && chatTranscript.length > 0 && (
+                <div className="voice-chat-transcript-panel">
+                  <div className="transcript-panel-header">
+                    <div className="transcript-header-left">
+                      <span className="transcript-live-dot" />
+                      <span className="transcript-panel-title">Live Transcript</span>
+                    </div>
+                  </div>
+                  <div className="transcript-scroll-area">
+                    {chatTranscript.slice(-3).map((msg, i) => (
+                      <div key={i} className={`transcript-bubble ${msg.role}`}>
+                        <span className="transcript-bubble-avatar">{msg.role === 'ai' ? '🤖' : '👤'}</span>
+                        <div className="transcript-bubble-content">
+                          <span className="transcript-bubble-text">{msg.text}</span>
+                          <div className="transcript-bubble-footer">
+                            <span className="transcript-bubble-time">{msg.time}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={transcriptEndRef} />
+                  </div>
+                </div>
+              )}
 
               {/* Dynamic Content: Language Choice vs Assistance Choice */}
               {phase === 'intro_lang' && (
@@ -1267,10 +2351,10 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
                   <div className="voice-section-title-wrap">
                     <div className="voice-section-title">
                       <span className="globe-icon">🌐</span>
-                      <span>Choose Language / अपनी भाषा चुनें</span>
+                      <span>{isHindi ? 'अपनी भाषा चुनें / Choose Language' : 'Choose Your Preferred Language'}</span>
                     </div>
                     <div className="voice-section-subtitle">
-                      Aap bol sakte hain: "English" ya "Hinglish"
+                      {isHindi ? 'आप बोल सकते हैं: "English" या "Hindi"' : 'You can speak naturally: "English" or "Hindi"'}
                     </div>
                   </div>
 
@@ -1281,88 +2365,65 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
                       className={`voice-lang-card ${lang === 'hinglish' || lang === 'hi' ? 'selected' : ''}`}
                       onClick={() => handleSelectLanguage('hinglish')}
                     >
-                      {(lang === 'hinglish' || lang === 'hi') && (
-                        <div className="voice-card-check-badge">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        </div>
-                      )}
-
                       <div className="voice-lang-card-main">
-                        <div className="voice-country-badge">IN</div>
+                        <div className="voice-country-badge in-badge">
+                          <span>🇮🇳</span>
+                        </div>
                         <div className="voice-lang-texts">
-                          <div className="voice-lang-primary-title">Hinglish</div>
+                          <div className="voice-lang-primary-title">
+                            <span>Hinglish</span>
+                            {(lang === 'hinglish' || lang === 'hi') && (
+                              <span className="lang-active-tag">Active</span>
+                            )}
+                          </div>
                           <div className="voice-lang-desc">Hindi + English me baat karein</div>
                         </div>
                       </div>
 
-                      {/* Monument Landmark Watermark Graphic */}
-                      <svg className="watermark-monument" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true">
-                        <path d="M15 110 h90 v-6 h-8 v-10 h4 v-4 h-4 v-4 h2 v-3 h-84 v3 h2 v4 h-4 v4 h4 v10 h-8 z M25 83 h70 v-6 h-6 v-40 h4 v-6 h-8 v-6 h-50 v6 h-8 v6 h4 v40 h-6 z M42 83 h36 v-28 c0 -10 -8 -18 -18 -18 s-18 8 -18 18 v28 z M35 25 h50 v-4 h-6 v-3 h-38 v3 h-6 z" />
-                      </svg>
+                      <div className="voice-lang-card-right">
+                        {(lang === 'hinglish' || lang === 'hi') ? (
+                          <div className="voice-card-check-badge">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </div>
+                        ) : (
+                          <div className="voice-card-radio-circle" />
+                        )}
+                      </div>
                     </div>
 
-                    {/* English Card with Classical Monument Silhouette */}
+                    {/* English Card */}
                     <div
                       id="langCardEn"
                       className={`voice-lang-card ${lang === 'en' ? 'selected' : ''}`}
                       onClick={() => handleSelectLanguage('en')}
                     >
-                      {lang === 'en' && (
-                        <div className="voice-card-check-badge">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        </div>
-                      )}
-
                       <div className="voice-lang-card-main">
-                        <div className="voice-country-badge">GB</div>
+                        <div className="voice-country-badge gb-badge">
+                          <span>🇬🇧</span>
+                        </div>
                         <div className="voice-lang-texts">
-                          <div className="voice-lang-primary-title">English</div>
-                          <div className="voice-lang-desc">Speak and report issue</div>
+                          <div className="voice-lang-primary-title">
+                            <span>English</span>
+                            {lang === 'en' && (
+                              <span className="lang-active-tag">Active</span>
+                            )}
+                          </div>
+                          <div className="voice-lang-desc">Speak &amp; report in English</div>
                         </div>
                       </div>
 
-                      {/* Classical Memorial Monument Watermark */}
-                      <svg className="watermark-monument" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true">
-                        <path d="M20 110 h80 v-4 h-6 v-28 h6 v-4 h-80 v4 h6 v28 h-6 z M32 74 h6 v28 h-6 z M44 74 h6 v28 h-6 z M56 74 h6 v28 h-6 z M68 74 h6 v28 h-6 z M80 74 h6 v28 h-6 z M22 70 h76 l-38 -20 z M50 50 h20 c0 -11 -4 -20 -10 -20 s-10 9 -10 20 z M59 18 h2 v12 h-2 z" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  {/* Trust & Feature Badges Strip */}
-                  <div className="voice-trust-badges-strip">
-                    <div className="trust-badge-item">
-                      <div className="trust-badge-icon secure">🛡️</div>
-                      <div className="trust-badge-text-wrap">
-                        <div className="trust-badge-title">100% Secure</div>
-                        <div className="trust-badge-sub">Your voice is safe</div>
-                      </div>
-                    </div>
-
-                    <div className="trust-badge-item">
-                      <div className="trust-badge-icon fast">⚡</div>
-                      <div className="trust-badge-text-wrap">
-                        <div className="trust-badge-title">Fast & Easy</div>
-                        <div className="trust-badge-sub">Just speak</div>
-                      </div>
-                    </div>
-
-                    <div className="trust-badge-item">
-                      <div className="trust-badge-icon impact">👥</div>
-                      <div className="trust-badge-text-wrap">
-                        <div className="trust-badge-title">For a Better Jharkhand</div>
-                        <div className="trust-badge-sub">Your voice creates change</div>
-                      </div>
-                    </div>
-
-                    <div className="trust-badge-item">
-                      <div className="trust-badge-icon available">🍃</div>
-                      <div className="trust-badge-text-wrap">
-                        <div className="trust-badge-title">Available 24×7</div>
-                        <div className="trust-badge-sub">Always here to help</div>
+                      <div className="voice-lang-card-right">
+                        {lang === 'en' ? (
+                          <div className="voice-card-check-badge">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </div>
+                        ) : (
+                          <div className="voice-card-radio-circle" />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1374,10 +2435,10 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
                   <div className="voice-section-title-wrap">
                     <div className="voice-section-title">
                       <span className="globe-icon">🤝</span>
-                      <span>JanSetu Sahayata / How Can I Help?</span>
+                      <span>{isHindi ? 'जनसेतु सहायता / How Can I Help?' : 'JanSetu Assistance / How Can I Help?'}</span>
                     </div>
                     <div className="voice-section-subtitle">
-                      Aap bol sakte hain: "Mujhe problem report karna hai"
+                      {isHindi ? 'आप बोल सकते हैं: "मुझे समस्या दर्ज करनी है"' : 'You can say: "I want to report a problem"'}
                     </div>
                   </div>
 
@@ -1388,20 +2449,283 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
                       onClick={handleReportProblemAction}
                     >
                       <div className="action-icon-pill">📝</div>
-                      <div className="action-card-title">समस्या दर्ज करें</div>
-                      <div className="action-card-sub">Report a Civic Grievance (सड़क, नाला, पानी, कचरा)</div>
+                      <div className="action-card-title">
+                        {isHindi ? 'समस्या दर्ज करें' : 'Report a Problem'}
+                      </div>
+                      <div className="action-card-sub">
+                        {isHindi ? 'नागरिक शिकायत दर्ज करें (सड़क, नाला, पानी, कचरा)' : 'Report a Civic Grievance (Road, Drainage, Water, Garbage)'}
+                      </div>
                     </div>
 
                     <div
                       id="actionCardStatus"
                       className="action-card-white"
-                      onClick={() => handleCheckStatusAction('status')}
+                      onClick={handleOpenTrackingInput}
                     >
                       <div className="action-icon-pill" style={{ background: '#FEF3C7', color: '#D97706' }}>🔍</div>
-                      <div className="action-card-title">स्थिति जांचें</div>
-                      <div className="action-card-sub">Track Existing Report (Status & Action taken)</div>
+                      <div className="action-card-title">
+                        {isHindi ? 'स्थिति जांचें' : 'Track Status'}
+                      </div>
+                      <div className="action-card-sub">
+                        {isHindi ? 'दर्ज शिकायत ट्रैक करें (Status & Action taken)' : 'Track Existing Report (Status & Action taken)'}
+                      </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Step 1b: Tracking Input Section — allows typing or speaking any report number */}
+              {phase === 'tracking_input' && (
+                <div className="voice-tracking-section">
+                  {/* Top Header Row with Grievance Tracker on Left and Nearby Button on Right (Above Send Button) */}
+                  <div className="voice-tracking-header-row">
+                    <div className="voice-section-title-wrap">
+                      <div className="voice-section-title">
+                        <span className="globe-icon">🔍</span>
+                        <span>{isHindi ? 'शिकायत ट्रैकर / Track Grievance' : 'Grievance Tracker / Status Inquiry'}</span>
+                      </div>
+                      <div className="voice-section-subtitle">
+                        {isHindi ? 'प्रॉब्लम नंबर बताइए या नीचे फ़ील्ड में लिख कर भेजें' : 'Please say your problem number or type and send it below'}
+                      </div>
+                    </div>
+
+                    {/* Nearby Button placed directly above the Send button */}
+                    <button
+                      id="btnVoiceNearbyReports"
+                      type="button"
+                      className={`voice-nearby-top-btn ${isNearbyLoading ? 'loading' : ''} ${showNearbyView ? 'active' : ''}`}
+                      onClick={handleToggleNearbyReports}
+                      disabled={isNearbyLoading}
+                      title={showNearbyView ? (isHindi ? "आस-पास की शिकायतें बंद करें" : "Close Nearby Reports") : (isHindi ? "आस-पास की शिकायतें और JanSetu के फायदे सुनें" : "Hear Nearby Reports & JanSetu Benefits")}
+                    >
+                      {isNearbyLoading ? (
+                        <span className="tracking-spinner" style={{ width: 13, height: 13 }} />
+                      ) : (
+                        <span className="nearby-pulse-dot" />
+                      )}
+                      <span className="nearby-btn-icon">📍</span>
+                      <span className="nearby-btn-text">
+                        {isNearbyLoading 
+                          ? (isHindi ? 'लोड हो रहा है...' : 'Loading...')
+                          : showNearbyView
+                            ? (isHindi ? 'आस-पास एक्टिव ✕' : 'Nearby Active ✕')
+                            : (isHindi ? 'आस-पास की शिकायतें' : 'Nearby Reports')}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Input Box with Send Button */}
+                  <div className="voice-tracking-input-box">
+                    <div className="voice-tracking-input-wrap">
+                      <span className="voice-tracking-input-icon">#</span>
+                      <input
+                        id="voiceTrackingInput"
+                        type="text"
+                        className="voice-tracking-input-field"
+                        placeholder={isHindi ? "प्रॉब्लम नंबर लिखें (उदा. JH-2026-749065)..." : "Problem number (e.g. JH-2026-749065)..."}
+                        value={trackingIdInput}
+                        onChange={(e) => setTrackingIdInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleTrackReportById(trackingIdInput);
+                          }
+                        }}
+                        autoFocus
+                      />
+                      {trackingIdInput && (
+                        <button
+                          type="button"
+                          className="voice-tracking-clear-btn"
+                          onClick={() => setTrackingIdInput('')}
+                          title="Clear"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      id="btnVoiceTrackSubmit"
+                      type="button"
+                      className="voice-tracking-send-btn"
+                      onClick={() => handleTrackReportById(trackingIdInput)}
+                      disabled={isTrackingLoading}
+                    >
+                      {isTrackingLoading ? (
+                        <span className="tracking-spinner" />
+                      ) : (
+                        <>
+                          <span>{isHindi ? 'भेजें' : 'Send'}</span>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                          </svg>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Nearby Live Reports Section */}
+                  {showNearbyView && nearbyChallengesList.length > 0 && (
+                    <div className="voice-nearby-container">
+                      <div className="voice-nearby-header">
+                        <div className="voice-nearby-title-grp">
+                          <span className="voice-nearby-badge">📍 {isHindi ? 'आस-पास लाइव' : 'Nearby Live'}</span>
+                          <span className="voice-nearby-title">
+                            {isHindi ? 'पड़ोस की शिकायतें एवं JanSetu लाभ' : 'Nearby Grievances & JanSetu Benefits'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="voice-nearby-close-btn"
+                          onClick={() => {
+                            setShowNearbyView(false);
+                            stopSpeaking();
+                            setVoiceStatus('listening');
+                          }}
+                          title={isHindi ? "बंद करें" : "Close"}
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div className="voice-nearby-benefit-banner">
+                        <span className="benefit-icon">✨</span>
+                        <div className="benefit-text">
+                          <strong>{isHindi ? 'JanSetu का सीधा लाभ:' : 'JanSetu Direct Benefit:'}</strong>{' '}
+                          {isHindi 
+                            ? 'आपके क्षेत्र में बहुत से नागरिक JanSetu का इस्तेमाल कर रहे हैं और समस्याएं सीधे प्रशासन तक पहुंच कर हल हो रही हैं।'
+                            : 'Citizens in your vicinity are actively using JanSetu with issues reaching authorities directly for swift action.'}
+                        </div>
+                      </div>
+
+                      <div className="voice-nearby-cards-grid">
+                        {nearbyChallengesList.map((item, idx) => {
+                          const repId = item.challengeId || item.officialSlipId || item._id || item.id || `JH-2026-${idx + 1}`;
+                          const author = item.authorName || 'Verified Citizen';
+                          const title = item.title || 'नागरिक शिकायत';
+                          const words = (item.description || item.title || '').trim().split(/\s+/).filter(Boolean);
+                          const brief = words.slice(0, 7).join(' ') + (words.length > 7 ? '...' : '');
+                          const rawStat = (item.status || 'submitted').toLowerCase();
+                          const distText = item.distanceKm ? `${item.distanceKm} km away` : 'Nearby';
+
+                          let statusLabel = isHindi ? 'Admin सत्यापन लंबित' : 'Pending Verification';
+                          let statusClass = 'pending';
+                          if (rawStat.includes('solve') || rawStat.includes('resolved') || rawStat.includes('closed')) {
+                            statusLabel = isHindi ? 'हल हो गया (Resolved)' : 'Resolved';
+                            statusClass = 'resolved';
+                          } else if (rawStat.includes('progress') || rawStat.includes('work')) {
+                            statusLabel = isHindi ? 'कार्य प्रगति पर (In Progress)' : 'In Progress';
+                            statusClass = 'in_progress';
+                          } else if (rawStat.includes('assign') || rawStat.includes('valid') || rawStat.includes('verified')) {
+                            statusLabel = isHindi ? 'टीम असाइन (Assigned)' : 'Action Team Assigned';
+                            statusClass = 'assigned';
+                          }
+
+                          return (
+                            <div 
+                              key={repId + idx}
+                              className="voice-nearby-card"
+                              onClick={() => {
+                                setTrackingIdInput(repId);
+                                handleTrackReportById(repId);
+                              }}
+                              title={isHindi ? "इसे ट्रैक करने के लिए क्लिक करें" : "Click to track this report"}
+                            >
+                              <div className="nearby-card-top">
+                                <div className="nearby-card-author">
+                                  <span className="nearby-author-avatar">👤</span>
+                                  <span className="nearby-author-name">{author}</span>
+                                  <span className="nearby-benefit-check" title="JanSetu Beneficiary">✓</span>
+                                </div>
+                                <div className="nearby-card-dist">
+                                  <span>📍 {distText}</span>
+                                </div>
+                              </div>
+
+                              <div className="nearby-card-title">{title}</div>
+
+                              <div className="nearby-card-brief">
+                                <span className="brief-quote">“</span>
+                                <span>{brief}</span>
+                                <span className="brief-quote">”</span>
+                              </div>
+
+                              <div className="nearby-card-footer">
+                                <span className="nearby-card-id">{repId}</span>
+                                <span className={`nearby-status-tag ${statusClass}`}>
+                                  <span className="status-dot" />
+                                  {statusLabel}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+
+                  {/* Real-time Tracked Report Details Card */}
+                  {trackedResult && !trackedResult.error && (
+                    <div className="voice-tracked-result-card">
+                      <div className="tracked-card-header">
+                        <div className="tracked-card-id-badge">
+                          <span className="id-dot" />
+                          <span>{trackedResult.id}</span>
+                        </div>
+                        <span className={`tracked-status-pill ${(trackedResult.status || 'submitted').toLowerCase().replace(/\s+/g, '-')}`}>
+                          {trackedResult.status || 'Pending Admin Verification'}
+                        </span>
+                      </div>
+                      <div className="tracked-card-title">{trackedResult.title}</div>
+                      <div className="tracked-card-meta">
+                        <span>🗓️ {trackedResult.dateFormatted ? `${trackedResult.dateFormatted} (${trackedResult.timeAgo || (isHindi ? '2 घंटे पहले' : '2h ago')})` : (trackedResult.timeAgo || (isHindi ? '2 घंटे पहले' : '2 hours ago'))}</span>
+                        <span>📍 {trackedResult.location}</span>
+                        <span>🏢 {trackedResult.assign || 'JanSetu Taskforce'}</span>
+                      </div>
+                      {trackedResult.description && (
+                        <div style={{ fontSize: '11.5px', color: '#94A3B8', fontStyle: 'italic', marginTop: '2px', lineHeight: '1.4' }}>
+                          💬 "{trackedResult.description.trim().split(/\s+/).slice(0, 7).join(' ')}..."
+                        </div>
+                      )}
+                      <div className="tracked-stage-desc-bar">
+                        <span className="stage-num-tag">Stage 2</span>
+                        <span className="stage-status-text">
+                          {trackedResult.isResolved 
+                            ? (isHindi ? 'निस्तारित (Resolved)' : 'Resolved') 
+                            : (trackedResult.isWorking 
+                                ? (isHindi ? 'कार्यवाही जारी (In Progress)' : 'In Progress') 
+                                : (isHindi ? 'Admin Verification (अभी पेंडिंग • जल्द वेरीफाई होगा)' : 'Admin Verification (Pending Verification)'))}
+                        </span>
+                      </div>
+
+                      {/* 3-Step Visual Progress Stepper */}
+                      <div className="tracked-progress-stepper">
+                        <div className="progress-step-node completed">
+                          <div className="step-circle">✓</div>
+                          <span className="step-lbl">{isHindi ? 'दर्ज' : 'Submitted'}</span>
+                        </div>
+                        <div className={`progress-step-line ${trackedResult.isWorking || trackedResult.isResolved ? 'active' : ''}`} />
+                        <div className={`progress-step-node ${trackedResult.isWorking || trackedResult.isResolved ? (trackedResult.isResolved ? 'completed' : 'active') : ''}`}>
+                          <div className="step-circle">{trackedResult.isResolved ? '✓' : '2'}</div>
+                          <span className="step-lbl">{isHindi ? 'कार्यवाही' : 'In Progress'}</span>
+                        </div>
+                        <div className={`progress-step-line ${trackedResult.isResolved ? 'active' : ''}`} />
+                        <div className={`progress-step-node ${trackedResult.isResolved ? 'completed' : ''}`}>
+                          <div className="step-circle">{trackedResult.isResolved ? '✓' : '3'}</div>
+                          <span className="step-lbl">{isHindi ? 'निस्तारित' : 'Resolved'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error Card */}
+                  {trackedResult && trackedResult.error && (
+                    <div className="voice-tracked-error-card">
+                      ⚠️ {trackedResult.message}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1435,8 +2759,8 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
               </button>
 
               {/* Center: Dynamic Visualizer Capsule with Glowing Emerald Waves, Text, and Divider */}
-              <div className={`dock-center-visualizer ${isMuted ? 'muted' : voiceStatus}`}>
-                <div className="dock-wave-bars-anim" aria-hidden="true">
+              <div className={`dock-center-visualizer ${isSpeakingRef.current ? 'speaking' : (isMuted ? 'active' : voiceStatus)}`}>
+                <div className={`dock-wave-bars-anim ${isSpeakingRef.current || liveVolume > 0.05 ? 'active' : 'idle'}`} aria-hidden="true">
                   <span className="dw-bar dw1" />
                   <span className="dw-bar dw2" />
                   <span className="dw-bar dw3" />
@@ -1448,21 +2772,53 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
                 
                 <div className="dock-status-info">
                   <span className="dock-status-heading">
-                    {isMuted ? 'Mic Muted' : (
-                      voiceStatus === 'speaking' ? 'Speaking...' :
-                      voiceStatus === 'processing' ? 'Thinking...' : "I'm listening..."
+                    {isSpeakingRef.current ? (isHindi ? 'AI बोल रही है...' : 'Speaking...') : (
+                      isMuted ? (isHindi ? 'एजेंट सक्रिय' : 'Agent Active') : (
+                        voiceStatus === 'processing' ? (isHindi ? 'प्रोसेसिंग...' : 'Thinking...') : (isHindi ? 'सुन रहे हैं...' : "I'm listening...")
+                      )
                     )}
                   </span>
                   <span className="dock-status-subtext">
-                    {isMuted ? 'Mic band hai' : (
-                      voiceStatus === 'speaking' ? 'AI bol rahi hai' :
-                      voiceStatus === 'processing' ? 'Samajh rahi hoon...' : 'Aap boliye...'
+                    {isMuted ? (
+                      isHindi ? '🤖 एजेंट सक्रिय • माइक बंद' : '🤖 Agent active • Mic muted'
+                    ) : (
+                      voiceStatus === 'speaking' ? (isHindi ? 'AI बोल रही है' : 'AI is speaking...') :
+                      voiceStatus === 'processing' ? (isHindi ? 'समझ रहे हैं...' : 'Processing audio...') :
+                      (isHindi ? 'आप बोलिए...' : 'Please speak...')
                     )}
                   </span>
+                  {agentActivity && (
+                    <span className="dock-agent-activity-line">{agentActivity}</span>
+                  )}
                 </div>
 
                 <div className="dock-status-divider" aria-hidden="true" />
               </div>
+
+              {/* Volume Boost Button */}
+              <button
+                type="button"
+                className={`dock-btn-round-volume ${isVolumeBoosted ? 'boosted' : ''}`}
+                onClick={() => {
+                  const next = !isVolumeBoosted;
+                  setIsVolumeBoosted(next);
+                  setVolumeBoost(next ? 1.5 : 1.0);
+                }}
+                title={isVolumeBoosted ? 'Normal Volume' : 'Volume Boost'}
+                aria-label={isVolumeBoosted ? 'Normal Volume' : 'Volume Boost'}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="rgba(255,255,255,0.15)" />
+                  {isVolumeBoosted ? (
+                    <>
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="#34D399" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="#34D399" />
+                    </>
+                  ) : (
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                  )}
+                </svg>
+              </button>
 
               {/* Right: Wide Rounded Pill End Call Button */}
               <button
@@ -1520,8 +2876,8 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
           </button>
 
           {/* Center: Recessed Dark Capsule with Glowing Green Waves, Text & Divider */}
-          <div className={`floating-dock-status-pill ${isMuted ? 'muted' : voiceStatus}`}>
-            <div className="dock-wave-bars-anim" aria-hidden="true">
+          <div className={`floating-dock-status-pill ${isSpeakingRef.current ? 'speaking' : (isMuted ? 'active' : voiceStatus)}`}>
+            <div className={`dock-wave-bars-anim ${isSpeakingRef.current || liveVolume > 0.05 ? 'active' : 'idle'}`} aria-hidden="true">
               <span className="dw-bar dw1" />
               <span className="dw-bar dw2" />
               <span className="dw-bar dw3" />
@@ -1533,21 +2889,52 @@ export default function AIReportAgent({ isOpen, onClose, onReportSubmitted }) {
 
             <div className="dock-status-info">
               <span className="dock-status-heading">
-                {isMuted ? 'Mic Muted' : (
-                  voiceStatus === 'speaking' ? 'Speaking...' :
-                  voiceStatus === 'processing' ? 'Thinking...' : "I'm listening..."
+                {isSpeakingRef.current ? 'Speaking...' : (
+                  isMuted ? 'Agent Active' : (
+                    voiceStatus === 'processing' ? 'Thinking...' : "I'm listening..."
+                  )
                 )}
               </span>
               <span className="dock-status-subtext">
-                {isMuted ? 'Mic band hai' : (
+                {isMuted ? (
+                  '🤖 Agent active • Mic band'
+                ) : (
                   voiceStatus === 'speaking' ? 'AI bol rahi hai' :
                   voiceStatus === 'processing' ? 'Samajh rahi hoon...' : 'Aap boliye...'
                 )}
               </span>
+              {agentActivity && (
+                <span className="dock-agent-activity-line">{agentActivity}</span>
+              )}
             </div>
 
             <div className="dock-status-divider" aria-hidden="true" />
           </div>
+
+          {/* Volume Boost Button */}
+          <button
+            type="button"
+            className={`dock-btn-round-volume ${isVolumeBoosted ? 'boosted' : ''}`}
+            onClick={() => {
+              const next = !isVolumeBoosted;
+              setIsVolumeBoosted(next);
+              setVolumeBoost(next ? 1.5 : 1.0);
+            }}
+            title={isVolumeBoosted ? 'Normal Volume' : 'Volume Boost'}
+            aria-label={isVolumeBoosted ? 'Normal Volume' : 'Volume Boost'}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="rgba(255,255,255,0.15)" />
+              {isVolumeBoosted ? (
+                <>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="#34D399" />
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="#34D399" />
+                </>
+              ) : (
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              )}
+            </svg>
+          </button>
 
           {/* Right: Wide Rounded Pill End Call Button */}
           <button

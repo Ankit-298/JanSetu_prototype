@@ -586,6 +586,7 @@
           r.beforeImg = r.image;
         }
       });
+      window.allReportsList = allReportsList;
 
       // Preserved reports state loaded directly from persistence/database
 
@@ -650,6 +651,7 @@
     function saveReportsState() {
       try {
         localStorage.setItem(getUserStorageKey('jansetu_reports'), JSON.stringify(allReportsList));
+        window.allReportsList = allReportsList;
       } catch (e) {
         console.warn('LocalStorage save error (reports):', e);
       }
@@ -8187,6 +8189,7 @@
     window.showToast = showToast;
     window.allReportsList = allReportsList;
     window.getAllReportsList = function() { return allReportsList; };
+    window.getCurrentlyTrackedReport = getCurrentlyTrackedReport;
     window.supportExistingDetectedReport = supportExistingDetectedReport;
 
     // Trap Back navigation while authenticated: keep user on dashboard

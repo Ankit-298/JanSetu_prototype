@@ -97,16 +97,39 @@ exports.getChallenges = async (req, res, next) => {
 // @access  Public
 exports.getChallenge = async (req, res, next) => {
   try {
-    const challenge = await Challenge.findById(req.params.id)
-      .populate('submittedBy', 'name email role avatar stats')
-      .populate('assignedUniversity', 'name shortName code location logo stats')
-      .populate('assignedBy', 'name email role')
-      .populate('statusHistory.changedBy', 'name email role')
-      .populate('projectTeam.faculty', 'name email avatar department designation')
-      .populate('projectTeam.students', 'name email avatar department currentYear')
-      .populate('industryCollaborators.partner', 'name companyType logo website')
-      .populate('resolutionProof.verifiedBy', 'name role')
-      .populate('feedback.submittedBy', 'name avatar');
+    const targetId = req.params.id;
+    let challenge = null;
+
+    if (mongoose.Types.ObjectId.isValid(targetId)) {
+      challenge = await Challenge.findById(targetId)
+        .populate('submittedBy', 'name email role avatar stats')
+        .populate('assignedUniversity', 'name shortName code location logo stats')
+        .populate('assignedBy', 'name email role')
+        .populate('statusHistory.changedBy', 'name email role')
+        .populate('projectTeam.faculty', 'name email avatar department designation')
+        .populate('projectTeam.students', 'name email avatar department currentYear')
+        .populate('industryCollaborators.partner', 'name companyType logo website')
+        .populate('resolutionProof.verifiedBy', 'name role')
+        .populate('feedback.submittedBy', 'name avatar');
+    }
+
+    if (!challenge) {
+      challenge = await Challenge.findOne({
+        $or: [
+          { challengeId: targetId.toUpperCase().trim() },
+          { challengeId: { $regex: targetId.trim(), $options: 'i' } }
+        ]
+      })
+        .populate('submittedBy', 'name email role avatar stats')
+        .populate('assignedUniversity', 'name shortName code location logo stats')
+        .populate('assignedBy', 'name email role')
+        .populate('statusHistory.changedBy', 'name email role')
+        .populate('projectTeam.faculty', 'name email avatar department designation')
+        .populate('projectTeam.students', 'name email avatar department currentYear')
+        .populate('industryCollaborators.partner', 'name companyType logo website')
+        .populate('resolutionProof.verifiedBy', 'name role')
+        .populate('feedback.submittedBy', 'name avatar');
+    }
 
     if (!challenge) {
       return res.status(404).json({ success: false, message: 'Challenge not found' });
@@ -982,19 +1005,10 @@ exports.getPublicFeed = async (req, res, next) => {
       const pLng = parseFloat(lng);
       const radKm = parseFloat(radius) || 25;
       if (!isNaN(pLat) && !isNaN(pLng)) {
-        const degDelta = radKm / 111;
-        query.$and = query.$and || [];
-        query.$and.push({
-          $or: [
-            {
-              'location.coordinates.lat': { $gte: pLat - degDelta, $lte: pLat + degDelta },
-              'location.coordinates.lng': { $gte: pLng - degDelta, $lte: pLng + degDelta }
-            },
-            {
-              'location.coordinates.lat': null
-            }
-          ]
-        });
+        const degDeltaLat = radKm / 110;
+        const degDeltaLng = radKm / (110 * Math.max(Math.cos(pLat * Math.PI / 180), 0.5));
+        query['location.coordinates.lat'] = { $gte: pLat - degDeltaLat, $lte: pLat + degDeltaLat };
+        query['location.coordinates.lng'] = { $gte: pLng - degDeltaLng, $lte: pLng + degDeltaLng };
       }
     }
 
@@ -1028,7 +1042,7 @@ exports.getPublicFeed = async (req, res, next) => {
       Challenge.find(query)
         .populate('submittedBy', 'name avatar role')
         .populate('assignedUniversity', 'name shortName logo')
-        .select('title description category priority status location attachments coverImage image filePath videoUrl video media resolutionProof supportCount supports praiseCount praisedBy displayNamePublicly commentCount viewCount createdAt submittedBy assignedUniversity isFeatured submitterContact reportedBy duplicateCount twinnedChallenges twinnedWith officialSlipId authority department')
+        .select('title description category priority status location attachments coverImage image filePath videoUrl video media resolutionProof supportCount supports praiseCount praisedBy displayNamePublicly commentCount viewCount createdAt submittedBy assignedUniversity isFeatured submitterContact reportedBy duplicateCount twinnedChallenges twinnedWith officialSlipId authority department challengeId')
         .sort(sortBy)
         .skip(skip)
         .limit(parsedLimit)
@@ -1130,6 +1144,16 @@ exports.getPublicFeed = async (req, res, next) => {
         }
       }
 
+      // Calculate distance in km if client provided lat/lng
+      let distanceKm = null;
+      if (lat && lng && c.location?.coordinates?.lat != null && c.location?.coordinates?.lng != null) {
+        const uLat = parseFloat(lat);
+        const uLng = parseFloat(lng);
+        const dLat = (c.location.coordinates.lat - uLat) * 111;
+        const dLng = (c.location.coordinates.lng - uLng) * 111 * Math.cos(uLat * Math.PI / 180);
+        distanceKm = Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 10) / 10;
+      }
+
       return {
         ...c,
         authorName,
@@ -1137,6 +1161,7 @@ exports.getPublicFeed = async (req, res, next) => {
         district,
         state,
         displayLocation,
+        distanceKm,
         praiseCount: pCount,
         supportCount: sCount,
         meTooCount: mCount,
